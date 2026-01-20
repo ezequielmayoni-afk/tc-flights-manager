@@ -16,9 +16,13 @@ function getSupabaseClient() {
  * Execute the requote bot and stream progress via SSE
  */
 export async function POST() {
-  const botPath = path.resolve(process.cwd(), '../tc-requote-bot')
+  // In production (VPS), use absolute path; in dev, use relative
+  const isProduction = process.env.NODE_ENV === 'production'
+  const botPath = isProduction
+    ? '/root/tc-requote-bot'
+    : path.resolve(process.cwd(), '../tc-requote-bot')
 
-  console.log('[Requote Run] Starting bot at:', botPath)
+  console.log('[Requote Run] Starting bot at:', botPath, '(production:', isProduction, ')')
 
   // Create a TransformStream to stream data to the client
   const encoder = new TextEncoder()
@@ -51,7 +55,13 @@ export async function POST() {
       // Force headless mode for server execution
       const env = { ...process.env, HEADLESS: 'true' }
 
-      const child = spawn('npx', ['tsx', 'src/index.ts'], {
+      // In production use compiled JS, in dev use tsx
+      const command = isProduction ? 'node' : 'npx'
+      const args = isProduction ? ['dist/index.js'] : ['tsx', 'src/index.ts']
+
+      console.log('[Requote Run] Running:', command, args.join(' '))
+
+      const child = spawn(command, args, {
         cwd: botPath,
         env,
         shell: true,
