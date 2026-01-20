@@ -100,9 +100,7 @@ export async function GET(request: NextRequest) {
 
     // Build query with appropriate fields
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let query = db
-      .from('packages')
-      .select(selectQuery, { count: 'exact' }) as any
+    let query = (db.from('packages') as any).select(selectQuery, { count: 'exact' })
 
     // Apply filters
     if (tcPackageId) {
