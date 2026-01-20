@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -26,13 +26,12 @@ import {
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/hooks/useAuth'
 
 interface NavItem {
   name: string
   href: string
   icon: React.ComponentType<{ className?: string }>
-  section?: string // Section required to view this item
+  section?: string
 }
 
 const cuposItems: NavItem[] = [
@@ -51,56 +50,116 @@ const productosItems: NavItem[] = [
   { name: 'Comercial', href: '/packages/comercial', icon: ShoppingCart, section: 'comercial' },
 ]
 
+// Role permissions - must match middleware
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento'],
+  diseño: ['productos', 'diseño'],
+}
+
+// Static shell component - no hooks, no state, just static JSX
+function SidebarShell() {
+  return (
+    <div className="flex flex-col h-full w-64 bg-[#1A237E] text-white">
+      <div className="flex items-center gap-2 px-6 py-5 border-b border-[#283593]">
+        <div className="bg-[#1DE9B6] rounded-lg p-2">
+          <Plane className="h-5 w-5 text-[#1A237E]" />
+        </div>
+        <span className="font-semibold text-lg">HUB Sí, Viajo</span>
+      </div>
+      <nav className="flex-1 px-3 py-4">
+        <div className="animate-pulse space-y-2">
+          <div className="h-10 bg-[#283593] rounded-lg" />
+          <div className="h-10 bg-[#283593] rounded-lg" />
+        </div>
+      </nav>
+    </div>
+  )
+}
+
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
-  const { isAdmin, canAccessSection } = useAuth()
 
-  // Track if component is mounted to avoid hydration mismatch
+  // All state that affects rendering
   const [isMounted, setIsMounted] = useState(false)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
-
-  // Filter items based on user's role
-  const visibleCuposItems = cuposItems.filter(item =>
-    !item.section || canAccessSection(item.section)
-  )
-  const visibleProductosItems = productosItems.filter(item =>
-    !item.section || canAccessSection(item.section)
-  )
-
-  // Check if any visible item is active to auto-expand
-  const isCuposActive = visibleCuposItems.some(item =>
-    pathname === item.href || pathname.startsWith(item.href)
-  )
-  const isProductosActive = visibleProductosItems.some(item =>
-    pathname === item.href || pathname.startsWith(item.href)
-  )
-
-  // Track expanded state for each section
-  // Initialize with false to avoid hydration mismatch, useEffect will expand if needed
+  const [userRole, setUserRole] = useState<string | null>(null)
   const [cuposExpanded, setCuposExpanded] = useState(false)
   const [productosExpanded, setProductosExpanded] = useState(false)
 
-  // Auto-expand when navigating to a page in that section
+  // Fetch user role on mount
   useEffect(() => {
-    if (isCuposActive) setCuposExpanded(true)
-  }, [isCuposActive])
+    let mounted = true
+
+    const fetchRole = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user && mounted) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single<{ role: string }>()
+
+          if (mounted) {
+            setUserRole(profile?.role || 'producto')
+            setIsMounted(true)
+          }
+        } else if (mounted) {
+          setUserRole('producto')
+          setIsMounted(true)
+        }
+      } catch {
+        if (mounted) {
+          setUserRole('producto')
+          setIsMounted(true)
+        }
+      }
+    }
+
+    fetchRole()
+
+    return () => { mounted = false }
+  }, [supabase])
+
+  // Compute permissions based on role
+  const permissions = useMemo(() => {
+    if (!userRole) return []
+    return ROLE_PERMISSIONS[userRole] || []
+  }, [userRole])
+
+  const canAccessSection = (section: string) => permissions.includes(section)
+  const isAdmin = userRole === 'admin' || userRole === 'marketing'
+
+  // Filter items
+  const visibleCuposItems = useMemo(() =>
+    cuposItems.filter(item => !item.section || canAccessSection(item.section)),
+    [permissions]
+  )
+
+  const visibleProductosItems = useMemo(() =>
+    productosItems.filter(item => !item.section || canAccessSection(item.section)),
+    [permissions]
+  )
+
+  // Check active sections
+  const isCuposActive = visibleCuposItems.some(item =>
+    pathname === item.href || pathname.startsWith(item.href + '/')
+  )
+  const isProductosActive = visibleProductosItems.some(item =>
+    pathname === item.href || pathname.startsWith(item.href + '/')
+  )
+
+  // Auto-expand on navigation
+  useEffect(() => {
+    if (isMounted && isCuposActive) setCuposExpanded(true)
+  }, [isMounted, isCuposActive])
 
   useEffect(() => {
-    if (isProductosActive) setProductosExpanded(true)
-  }, [isProductosActive])
-
-  const handleCuposToggle = () => {
-    setCuposExpanded(!cuposExpanded)
-  }
-
-  const handleProductosToggle = () => {
-    setProductosExpanded(!productosExpanded)
-  }
+    if (isMounted && isProductosActive) setProductosExpanded(true)
+  }, [isMounted, isProductosActive])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -108,43 +167,25 @@ export function Sidebar() {
     router.refresh()
   }
 
-  // All menu items for checking more specific matches
   const allMenuItems = [...cuposItems, ...productosItems]
 
   const isItemActive = (href: string) => {
-    // Exact match is always active
     if (pathname === href) return true
-
-    // For startsWith match, check that no other menu item is a more specific match
     if (pathname.startsWith(href + '/')) {
-      // Check if any other menu item is more specific and matches
       const hasMoreSpecificMatch = allMenuItems.some(item =>
         item.href !== href &&
         item.href.length > href.length &&
         item.href.startsWith(href) &&
         (pathname === item.href || pathname.startsWith(item.href + '/'))
       )
-
-      // Only active if no more specific match exists
       return !hasMoreSpecificMatch
     }
-
     return false
   }
 
-  // Render minimal shell during SSR to avoid hydration mismatch
+  // Show shell until mounted and role is fetched
   if (!isMounted) {
-    return (
-      <div className="flex flex-col h-full w-64 bg-[#1A237E] text-white">
-        <div className="flex items-center gap-2 px-6 py-5 border-b border-[#283593]">
-          <div className="bg-[#1DE9B6] rounded-lg p-2">
-            <Plane className="h-5 w-5 text-[#1A237E]" />
-          </div>
-          <span className="font-semibold text-lg">HUB Sí, Viajo</span>
-        </div>
-        <nav className="flex-1 px-3 py-4" />
-      </div>
-    )
+    return <SidebarShell />
   }
 
   return (
@@ -158,12 +199,12 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {/* CUPOS Group - only show if user can access any cupos items */}
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {/* CUPOS Group */}
         {visibleCuposItems.length > 0 && (
           <div>
             <button
-              onClick={handleCuposToggle}
+              onClick={() => setCuposExpanded(!cuposExpanded)}
               className={cn(
                 'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 isCuposActive
@@ -175,44 +216,36 @@ export function Sidebar() {
                 <Package className="h-5 w-5" />
                 CUPOS
               </div>
-              {cuposExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
+              {cuposExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
 
-            {/* Cupos Sub-items */}
             {cuposExpanded && (
               <div className="mt-1 ml-4 space-y-1">
-                {visibleCuposItems.map((item) => {
-                  const isActive = isItemActive(item.href)
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                        isActive
-                          ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
-                          : 'text-white/70 hover:bg-[#283593] hover:text-white'
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.name}
-                    </Link>
-                  )
-                })}
+                {visibleCuposItems.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      isItemActive(item.href)
+                        ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
+                        : 'text-white/70 hover:bg-[#283593] hover:text-white'
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* PRODUCTOS Group - only show if user can access any productos items */}
+        {/* PRODUCTOS Group */}
         {visibleProductosItems.length > 0 && (
           <div>
             <button
-              onClick={handleProductosToggle}
+              onClick={() => setProductosExpanded(!productosExpanded)}
               className={cn(
                 'flex items-center justify-between w-full px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
                 isProductosActive
@@ -224,40 +257,32 @@ export function Sidebar() {
                 <MapPin className="h-5 w-5" />
                 PRODUCTOS
               </div>
-              {productosExpanded ? (
-                <ChevronDown className="h-4 w-4" />
-              ) : (
-                <ChevronRight className="h-4 w-4" />
-              )}
+              {productosExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
             </button>
 
-            {/* Productos Sub-items */}
             {productosExpanded && (
               <div className="mt-1 ml-4 space-y-1">
-                {visibleProductosItems.map((item) => {
-                  const isActive = isItemActive(item.href)
-                  return (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className={cn(
-                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                        isActive
-                          ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
-                          : 'text-white/70 hover:bg-[#283593] hover:text-white'
-                      )}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.name}
-                    </Link>
-                  )
-                })}
+                {visibleProductosItems.map((item) => (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={cn(
+                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                      isItemActive(item.href)
+                        ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
+                        : 'text-white/70 hover:bg-[#283593] hover:text-white'
+                    )}
+                  >
+                    <item.icon className="h-4 w-4" />
+                    {item.name}
+                  </Link>
+                ))}
               </div>
             )}
           </div>
         )}
 
-        {/* Rendimiento - only show if user can access */}
+        {/* Rendimiento */}
         {canAccessSection('rendimiento') && (
           <Link
             href="/rendimiento"
@@ -273,7 +298,7 @@ export function Sidebar() {
           </Link>
         )}
 
-        {/* Admin Section - Only visible to admins (admin or marketing) */}
+        {/* Admin Section */}
         {isAdmin && (
           <>
             <div className="my-4 border-t border-[#283593]" />
@@ -296,7 +321,6 @@ export function Sidebar() {
             </Link>
           </>
         )}
-
       </nav>
 
       {/* Logout */}
