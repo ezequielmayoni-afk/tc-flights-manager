@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -73,26 +73,25 @@ export function Sidebar() {
     pathname === item.href || pathname.startsWith(item.href)
   )
 
-  // Track manually expanded inactive sections
-  const [cuposManuallyExpanded, setCuposManuallyExpanded] = useState(false)
-  const [productosManuallyExpanded, setProductosManuallyExpanded] = useState(false)
+  // Track expanded state for each section (auto-expand if active)
+  const [cuposExpanded, setCuposExpanded] = useState(isCuposActive)
+  const [productosExpanded, setProductosExpanded] = useState(isProductosActive)
 
-  // Section is expanded if active OR manually expanded
-  const cuposExpanded = isCuposActive || cuposManuallyExpanded
-  const productosExpanded = isProductosActive || productosManuallyExpanded
+  // Auto-expand when navigating to a page in that section
+  useEffect(() => {
+    if (isCuposActive) setCuposExpanded(true)
+  }, [isCuposActive])
+
+  useEffect(() => {
+    if (isProductosActive) setProductosExpanded(true)
+  }, [isProductosActive])
 
   const handleCuposToggle = () => {
-    // Only toggle manual expand for inactive sections
-    if (!isCuposActive) {
-      setCuposManuallyExpanded(!cuposManuallyExpanded)
-    }
+    setCuposExpanded(!cuposExpanded)
   }
 
   const handleProductosToggle = () => {
-    // Only toggle manual expand for inactive sections
-    if (!isProductosActive) {
-      setProductosManuallyExpanded(!productosManuallyExpanded)
-    }
+    setProductosExpanded(!productosExpanded)
   }
 
   const handleLogout = async () => {
