@@ -342,10 +342,16 @@ export function PackageRowExpanded({
       const res = await fetch(`/api/meta/copy/${pkg.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ copies: [copy] }),
+        body: JSON.stringify(copy),
       })
 
       if (!res.ok) throw new Error('Error guardando copy')
+
+      const data = await res.json()
+      if (data.copy) {
+        setCopies(prev => prev.map(c => c.variant === data.copy.variant ? data.copy : c))
+      }
+
       toast.success(`Variante ${copy.variant} guardada`)
       setEditingCopy(null)
     } catch {
