@@ -137,27 +137,18 @@ const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm', '.mpeg']
 
 function getAuth() {
   const credentials = JSON.parse(process.env.GOOGLE_DRIVE_CREDENTIALS!)
+  const IMPERSONATE_EMAIL = process.env.GOOGLE_DRIVE_IMPERSONATE_EMAIL || 'emayoni@siviajo.com'
 
-  // If impersonation email is set, use domain-wide delegation
-  // Otherwise, use direct service account access (folder must be shared with service account)
-  const impersonateEmail = process.env.GOOGLE_DRIVE_IMPERSONATE_EMAIL
-
-  const authConfig: {
-    email: string
-    key: string
-    scopes: string[]
-    subject?: string
-  } = {
+  // Use JWT with domain-wide delegation to impersonate a real user
+  // Must use same scope as google-drive/client.ts for consistency
+  const auth = new google.auth.JWT({
     email: credentials.client_email,
     key: credentials.private_key,
-    scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-  }
+    scopes: ['https://www.googleapis.com/auth/drive'],
+    subject: IMPERSONATE_EMAIL,
+  })
 
-  if (impersonateEmail) {
-    authConfig.subject = impersonateEmail
-  }
-
-  return new google.auth.JWT(authConfig)
+  return auth
 }
 
 function getDrive() {
