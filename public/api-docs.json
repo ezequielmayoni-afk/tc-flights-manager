@@ -1,0 +1,559 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Hub Sí Viajo - API de Paquetes",
+    "description": "API para gestionar paquetes turísticos del Hub Sí Viajo. Permite listar, filtrar y actualizar paquetes de forma programática.",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Soporte Hub Sí Viajo",
+      "url": "https://hub.siviajo.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://hub.siviajo.com/api",
+      "description": "Producción"
+    }
+  ],
+  "security": [
+    {
+      "ApiKeyAuth": []
+    }
+  ],
+  "paths": {
+    "/packages": {
+      "get": {
+        "summary": "Listar paquetes",
+        "description": "Obtiene una lista de paquetes con filtros opcionales y paginación.",
+        "operationId": "getPackages",
+        "tags": ["Paquetes"],
+        "parameters": [
+          {
+            "name": "tc_package_id",
+            "in": "query",
+            "description": "Filtrar por ID de TravelCompositor",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "example": 12345
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "Filtrar por estado del paquete",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["imported", "reviewing", "approved", "in_design", "in_marketing", "published", "expired"],
+              "example": "in_marketing"
+            }
+          },
+          {
+            "name": "needs_quote",
+            "in": "query",
+            "description": "Filtrar por necesidad de cotización manual",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "example": true
+            }
+          },
+          {
+            "name": "active",
+            "in": "query",
+            "description": "Filtrar por estado activo en TravelCompositor",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "example": true
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Buscar en el título del paquete",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "example": "cancun"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Cantidad de resultados por página",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 500,
+              "example": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Desplazamiento para paginación",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "minimum": 0,
+              "example": 0
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "description": "Campo para ordenar resultados",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "created_at",
+              "enum": ["created_at", "departure_date", "current_price_per_pax", "title", "last_sync_at"],
+              "example": "departure_date"
+            }
+          },
+          {
+            "name": "order",
+            "in": "query",
+            "description": "Dirección del ordenamiento",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "desc",
+              "enum": ["asc", "desc"],
+              "example": "asc"
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "description": "Nivel de detalle. Usar 'full' para incluir destinos, transportes y hoteles",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": ["full"],
+              "example": "full"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista de paquetes obtenida exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackagesListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado - API Key inválida o faltante",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Actualizar paquetes en lote",
+        "description": "Actualiza múltiples paquetes con los mismos valores.",
+        "operationId": "updatePackages",
+        "tags": ["Paquetes"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Paquetes actualizados exitosamente",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkUpdateResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Solicitud inválida - IDs o updates faltantes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No autorizado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Error interno del servidor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "API Key proporcionada por el administrador del Hub"
+      }
+    },
+    "schemas": {
+      "Package": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "ID único en la base de datos del Hub",
+            "example": 1
+          },
+          "tc_package_id": {
+            "type": "integer",
+            "description": "ID del paquete en TravelCompositor",
+            "example": 12345
+          },
+          "title": {
+            "type": "string",
+            "description": "Título del paquete",
+            "example": "Cancún All Inclusive 7 noches"
+          },
+          "large_title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Título largo/descriptivo",
+            "example": "Cancún All Inclusive 7 noches con vuelo directo"
+          },
+          "current_price_per_pax": {
+            "type": "number",
+            "description": "Precio actual por persona",
+            "example": 1500.00
+          },
+          "currency": {
+            "type": "string",
+            "description": "Moneda del precio",
+            "example": "USD"
+          },
+          "departure_date": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Fecha de salida",
+            "example": "2025-03-15"
+          },
+          "date_range_start": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Inicio del rango de fechas disponibles",
+            "example": "2025-03-01"
+          },
+          "date_range_end": {
+            "type": "string",
+            "format": "date",
+            "nullable": true,
+            "description": "Fin del rango de fechas disponibles",
+            "example": "2025-03-31"
+          },
+          "nights_count": {
+            "type": "integer",
+            "description": "Cantidad de noches",
+            "example": 7
+          },
+          "adults_count": {
+            "type": "integer",
+            "description": "Cantidad de adultos",
+            "example": 2
+          },
+          "children_count": {
+            "type": "integer",
+            "description": "Cantidad de niños",
+            "example": 0
+          },
+          "destinations_count": {
+            "type": "integer",
+            "description": "Cantidad de destinos",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": ["imported", "reviewing", "approved", "in_design", "in_marketing", "published", "expired"],
+            "description": "Estado del paquete en el flujo de trabajo",
+            "example": "in_marketing"
+          },
+          "tc_active": {
+            "type": "boolean",
+            "description": "Si está activo en TravelCompositor",
+            "example": true
+          },
+          "needs_manual_quote": {
+            "type": "boolean",
+            "description": "Si requiere cotización manual",
+            "example": false
+          },
+          "ads_created_count": {
+            "type": "integer",
+            "description": "Cantidad de anuncios creados",
+            "example": 3
+          },
+          "image_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL de la imagen principal",
+            "example": "https://cdn.siviajo.com/images/package-123.jpg"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha de creación en el Hub",
+            "example": "2025-01-15T10:30:00Z"
+          },
+          "last_sync_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Última sincronización con TC",
+            "example": "2025-01-20T08:00:00Z"
+          },
+          "send_to_design": {
+            "type": "boolean",
+            "description": "Marcado para diseño",
+            "example": true
+          },
+          "design_completed": {
+            "type": "boolean",
+            "description": "Diseño completado",
+            "example": true
+          },
+          "send_to_marketing": {
+            "type": "boolean",
+            "description": "Marcado para marketing",
+            "example": true
+          },
+          "marketing_completed": {
+            "type": "boolean",
+            "description": "Marketing completado",
+            "example": false
+          }
+        }
+      },
+      "PackageWithRelations": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Package"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "package_destinations": {
+                "type": "array",
+                "description": "Destinos del paquete (solo con include=full)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "destination_name": { "type": "string" },
+                    "country": { "type": "string" }
+                  }
+                }
+              },
+              "package_transports": {
+                "type": "array",
+                "description": "Transportes del paquete (solo con include=full)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "type": { "type": "string" },
+                    "company": { "type": "string" }
+                  }
+                }
+              },
+              "package_hotels": {
+                "type": "array",
+                "description": "Hoteles del paquete (solo con include=full)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "integer" },
+                    "hotel_name": { "type": "string" },
+                    "stars": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "total": {
+            "type": "integer",
+            "description": "Total de registros",
+            "example": 150
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Límite por página",
+            "example": 50
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Desplazamiento actual",
+            "example": 0
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Si hay más páginas disponibles",
+            "example": true
+          }
+        }
+      },
+      "PackagesListResponse": {
+        "type": "object",
+        "properties": {
+          "packages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Package"
+            }
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          }
+        }
+      },
+      "BulkUpdateRequest": {
+        "type": "object",
+        "required": ["ids", "updates"],
+        "properties": {
+          "ids": {
+            "type": "array",
+            "description": "Array de IDs de paquetes a actualizar",
+            "items": {
+              "type": "integer"
+            },
+            "example": [1, 2, 3]
+          },
+          "updates": {
+            "type": "object",
+            "description": "Campos a actualizar",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["imported", "reviewing", "approved", "in_design", "in_marketing", "published", "expired"]
+              },
+              "send_to_design": {
+                "type": "boolean"
+              },
+              "design_completed": {
+                "type": "boolean"
+              },
+              "send_to_marketing": {
+                "type": "boolean"
+              },
+              "marketing_completed": {
+                "type": "boolean"
+              },
+              "needs_manual_quote": {
+                "type": "boolean"
+              },
+              "seo_title": {
+                "type": "string"
+              },
+              "seo_description": {
+                "type": "string"
+              },
+              "ai_description": {
+                "type": "string"
+              },
+              "in_sitemap": {
+                "type": "boolean"
+              }
+            }
+          }
+        }
+      },
+      "BulkUpdateResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "updated": {
+            "type": "integer",
+            "description": "Cantidad de registros actualizados",
+            "example": 3
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Package"
+            }
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Mensaje de error",
+            "example": "No autorizado"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Paquetes",
+      "description": "Operaciones para gestionar paquetes turísticos"
+    }
+  ]
+}
