@@ -278,6 +278,8 @@ export async function POST(request: NextRequest) {
           case 'complete-requote':
             updateData = {
               requote_status: 'completed',
+              requote_price: pkg.current_price_per_pax,
+              target_price: pkg.current_price_per_pax,
               last_requote_at: new Date().toISOString(),
             }
             break
