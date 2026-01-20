@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { getUserWithRole } from '@/lib/auth'
 
 // Supabase client with service role for server operations
 function getSupabaseClient() {
@@ -28,6 +29,12 @@ function getSupabaseClient() {
  * - include: Level of detail - 'full' for all relations, otherwise minimal fields (OPTIMIZED)
  */
 export async function GET(request: NextRequest) {
+  // Check authentication
+  const user = await getUserWithRole()
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
   const db = getSupabaseClient()
   const { searchParams } = new URL(request.url)
 
@@ -131,6 +138,12 @@ export async function GET(request: NextRequest) {
  * - updates: Object with fields to update
  */
 export async function PATCH(request: NextRequest) {
+  // Check authentication
+  const user = await getUserWithRole()
+  if (!user) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+
   const db = getSupabaseClient()
 
   try {
