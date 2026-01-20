@@ -228,7 +228,7 @@ export function PackageImportButton() {
 
                         <div>Precio:</div>
                         <div className="font-medium text-green-600">
-                          {result.package.currency} {result.package.price.toLocaleString()}
+                          {result.package.currency} {result.package.price.toLocaleString('es-AR')}
                         </div>
                       </div>
                     </div>

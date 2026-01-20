@@ -268,7 +268,7 @@ export default function ReservationsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${stats.totalRevenue.toLocaleString()}
+                ${stats.totalRevenue.toLocaleString('es-AR')}
               </div>
               <p className="text-xs text-muted-foreground">
                 Total facturado
@@ -413,7 +413,7 @@ export default function ReservationsPage() {
                     <TableCell>
                       {reservation.total_amount ? (
                         <span className="font-medium">
-                          ${Number(reservation.total_amount).toLocaleString()}
+                          ${Number(reservation.total_amount).toLocaleString('es-AR')}
                         </span>
                       ) : (
                         '-'
@@ -538,7 +538,7 @@ export default function ReservationsPage() {
                   <h4 className="text-sm font-medium text-muted-foreground">Monto Total</h4>
                   <p className="text-lg font-bold">
                     {selectedReservation.total_amount
-                      ? `$${Number(selectedReservation.total_amount).toLocaleString()} ${selectedReservation.currency}`
+                      ? `$${Number(selectedReservation.total_amount).toLocaleString('es-AR')} ${selectedReservation.currency}`
                       : '-'}
                   </p>
                 </div>

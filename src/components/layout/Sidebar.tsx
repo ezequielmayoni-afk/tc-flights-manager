@@ -57,6 +57,13 @@ export function Sidebar() {
   const supabase = createClient()
   const { isAdmin, canAccessSection } = useAuth()
 
+  // Track if component is mounted to avoid hydration mismatch
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
   // Filter items based on user's role
   const visibleCuposItems = cuposItems.filter(item =>
     !item.section || canAccessSection(item.section)
@@ -123,6 +130,21 @@ export function Sidebar() {
     }
 
     return false
+  }
+
+  // Render minimal shell during SSR to avoid hydration mismatch
+  if (!isMounted) {
+    return (
+      <div className="flex flex-col h-full w-64 bg-[#1A237E] text-white">
+        <div className="flex items-center gap-2 px-6 py-5 border-b border-[#283593]">
+          <div className="bg-[#1DE9B6] rounded-lg p-2">
+            <Plane className="h-5 w-5 text-[#1A237E]" />
+          </div>
+          <span className="font-semibold text-lg">HUB Sí, Viajo</span>
+        </div>
+        <nav className="flex-1 px-3 py-4" />
+      </div>
+    )
   }
 
   return (

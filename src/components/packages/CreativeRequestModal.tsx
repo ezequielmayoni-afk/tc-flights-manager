@@ -118,7 +118,7 @@ export function CreativeRequestModal({
                 <>
                   <span>-</span>
                   <span>
-                    {currency} {currentPrice.toLocaleString()}/pax
+                    {currency} {currentPrice.toLocaleString('es-AR')}/pax
                   </span>
                 </>
               )}

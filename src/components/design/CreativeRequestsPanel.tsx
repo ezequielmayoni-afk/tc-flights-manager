@@ -230,7 +230,7 @@ export function CreativeRequestsPanel({ requests: initialRequests }: CreativeReq
                       {request.packages?.current_price_per_pax && (
                         <span>
                           Precio: {request.packages.currency}{' '}
-                          {request.packages.current_price_per_pax.toLocaleString()}
+                          {request.packages.current_price_per_pax.toLocaleString('es-AR')}
                         </span>
                       )}
                     </div>

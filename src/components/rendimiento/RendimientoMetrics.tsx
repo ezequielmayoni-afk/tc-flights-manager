@@ -461,7 +461,7 @@ export function RendimientoMetrics({
                         </TableCell>
                         <TableCell>
                           {item.current_price_per_pax
-                            ? `${item.currency} ${item.current_price_per_pax.toLocaleString()}`
+                            ? `${item.currency} ${item.current_price_per_pax.toLocaleString('es-AR')}`
                             : '-'}
                         </TableCell>
                         <TableCell>
