@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { deactivatePackage, getPackageDetail } from '@/lib/travelcompositor/client'
 import { sendSlackMessage, buildCreativeRequestMessage, buildSentToMarketingMessage } from '@/lib/slack/client'
 
-const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
 function getSupabaseClient() {
   return createClient(

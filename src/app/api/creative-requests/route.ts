@@ -13,7 +13,7 @@ function getSupabaseClient() {
   )
 }
 
-const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
 /**
  * GET /api/creative-requests

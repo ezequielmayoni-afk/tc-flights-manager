@@ -10,7 +10,7 @@ function getSupabaseClient() {
   )
 }
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
 /**
  * Send price change notification via internal API
