@@ -685,26 +685,16 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     setRequoteProgress({ completed: [] })
 
     try {
-      // First, clear any existing pending packages (mark as completed)
-      const clearResponse = await fetch('/api/requote/clear-pending', { method: 'POST' })
-      if (!clearResponse.ok) {
-        console.warn('Could not clear pending packages')
-      }
+      // Get selected package IDs (if any)
+      const packageIdsToProcess = selectedIds.size > 0 ? Array.from(selectedIds) : []
 
-      // Then mark ONLY selected packages as pending
-      if (selectedIds.size > 0) {
-        await fetch('/api/packages/bulk-action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            packageIds: Array.from(selectedIds),
-            action: 'run_requote',
-          }),
-        })
-      }
-
-      // Run the bot with SSE streaming
-      const response = await fetch('/api/requote/run', { method: 'POST' })
+      // Run the bot with SSE streaming, passing specific package IDs if selected
+      // If no packages selected, the bot will run in batch mode (all pending packages)
+      const response = await fetch('/api/requote/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageIds: packageIdsToProcess }),
+      })
 
       if (!response.body) {
         throw new Error('No response body')

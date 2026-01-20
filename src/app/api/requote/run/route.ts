@@ -14,8 +14,23 @@ function getSupabaseClient() {
 /**
  * POST /api/requote/run
  * Execute the requote bot and stream progress via SSE
+ *
+ * Body (optional): { packageIds: number[] }
+ * If packageIds is provided, only those packages will be processed
+ * If not provided, the bot will process all pending packages (batch mode for cron)
  */
-export async function POST() {
+export async function POST(request: Request) {
+  // Parse optional packageIds from request body
+  let packageIds: number[] | null = null
+  try {
+    const body = await request.json()
+    if (body.packageIds && Array.isArray(body.packageIds) && body.packageIds.length > 0) {
+      packageIds = body.packageIds
+    }
+  } catch {
+    // No body or invalid JSON - that's fine, will run in batch mode
+  }
+
   // In production (VPS), use absolute path; in dev, use relative
   const isProduction = process.env.NODE_ENV === 'production'
   const botPath = isProduction
@@ -23,6 +38,11 @@ export async function POST() {
     : path.resolve(process.cwd(), '../tc-requote-bot')
 
   console.log('[Requote Run] Starting bot at:', botPath, '(production:', isProduction, ')')
+  if (packageIds) {
+    console.log('[Requote Run] Specific package IDs:', packageIds.join(', '))
+  } else {
+    console.log('[Requote Run] Running in batch mode (all pending packages)')
+  }
 
   // Create a TransformStream to stream data to the client
   const encoder = new TextEncoder()
@@ -57,7 +77,12 @@ export async function POST() {
 
       // In production use compiled JS, in dev use tsx
       const command = isProduction ? 'node' : 'npx'
-      const args = isProduction ? ['dist/index.js'] : ['tsx', 'src/index.ts']
+      let args = isProduction ? ['dist/index.js'] : ['tsx', 'src/index.ts']
+
+      // If specific package IDs provided, pass them as argument
+      if (packageIds && packageIds.length > 0) {
+        args = [...args, `--package-ids=${packageIds.join(',')}`]
+      }
 
       console.log('[Requote Run] Running:', command, args.join(' '))
 
