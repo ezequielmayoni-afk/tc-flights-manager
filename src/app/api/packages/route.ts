@@ -10,6 +10,19 @@ function getSupabaseClient() {
   )
 }
 
+// Check authentication: API Key for external systems OR session for Hub users
+async function checkAuth(request: NextRequest): Promise<boolean> {
+  // Check API Key header first (for external systems)
+  const apiKey = request.headers.get('X-API-Key')
+  if (apiKey && apiKey === process.env.HUB_API_KEY) {
+    return true
+  }
+
+  // Fall back to session auth (for Hub users)
+  const user = await getUserWithRole()
+  return !!user
+}
+
 /**
  * GET /api/packages
  * List all packages with optional filtering
@@ -29,9 +42,9 @@ function getSupabaseClient() {
  * - include: Level of detail - 'full' for all relations, otherwise minimal fields (OPTIMIZED)
  */
 export async function GET(request: NextRequest) {
-  // Check authentication
-  const user = await getUserWithRole()
-  if (!user) {
+  // Check authentication (API Key or session)
+  const isAuthorized = await checkAuth(request)
+  if (!isAuthorized) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
@@ -138,9 +151,9 @@ export async function GET(request: NextRequest) {
  * - updates: Object with fields to update
  */
 export async function PATCH(request: NextRequest) {
-  // Check authentication
-  const user = await getUserWithRole()
-  if (!user) {
+  // Check authentication (API Key or session)
+  const isAuthorized = await checkAuth(request)
+  if (!isAuthorized) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
