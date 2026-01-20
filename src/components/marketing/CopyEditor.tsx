@@ -127,7 +127,7 @@ export function CopyEditor({
       const res = await fetch(`/api/meta/copy/${packageId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ copies: [copy] }),
+        body: JSON.stringify(copy),
       })
 
       if (!res.ok) {
@@ -136,15 +136,11 @@ export function CopyEditor({
 
       // Update local state with saved data
       const data = await res.json()
-      if (data.copies) {
+      if (data.copy) {
         setCopies((prev) =>
-          prev.map((c) => {
-            const updated = data.copies.find(
-              (u: MetaAdCopy) => u.variant === c.variant
-            )
-            return updated || c
-          })
+          prev.map((c) => c.variant === data.copy.variant ? data.copy : c)
         )
+        onCopiesChange?.(copies.map((c) => c.variant === data.copy.variant ? data.copy : c))
       }
     } catch (err) {
       console.error('Error saving copy:', err)
