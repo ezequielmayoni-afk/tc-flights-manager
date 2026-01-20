@@ -441,7 +441,15 @@ export async function POST(request: NextRequest) {
     })
 
     // Process transport services from the booking
-    const transportServices = bookingDetails.transportservice || []
+    // Filter to only process services from our supplier (cupos)
+    const TC_SUPPLIER_ID = parseInt(process.env.TC_SUPPLIER_ID || '0', 10)
+    const allTransportServices = bookingDetails.transportservice || []
+    const transportServices = allTransportServices.filter(
+      service => service.providerConfigurationId === TC_SUPPLIER_ID
+    )
+
+    console.log(`[TC Webhook] Filtering services: ${allTransportServices.length} total, ${transportServices.length} from our supplier (${TC_SUPPLIER_ID})`)
+
     const results: Array<{ service: string; result: unknown }> = []
     const eventType = getEventType(notification)
     const bookingPayload = bookingDetails as unknown as Record<string, unknown>
