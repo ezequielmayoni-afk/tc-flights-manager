@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
         id, tc_package_id, title, large_title, current_price_per_pax, currency,
         departure_date, date_range_start, date_range_end,
         nights_count, adults_count, children_count, destinations_count,
-        status, marketing_status, design_status, tc_active, needs_manual_quote,
+        status, tc_active, needs_manual_quote,
         ads_created_count, image_url, created_at, last_sync_at,
         send_to_design, design_completed, send_to_marketing, marketing_completed
       `
