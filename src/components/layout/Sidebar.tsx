@@ -73,9 +73,10 @@ export function Sidebar() {
     pathname === item.href || pathname.startsWith(item.href)
   )
 
-  // Track expanded state for each section (auto-expand if active)
-  const [cuposExpanded, setCuposExpanded] = useState(isCuposActive)
-  const [productosExpanded, setProductosExpanded] = useState(isProductosActive)
+  // Track expanded state for each section
+  // Initialize with false to avoid hydration mismatch, useEffect will expand if needed
+  const [cuposExpanded, setCuposExpanded] = useState(false)
+  const [productosExpanded, setProductosExpanded] = useState(false)
 
   // Auto-expand when navigating to a page in that section
   useEffect(() => {

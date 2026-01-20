@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Hub Sí Viajo - API de Paquetes",
-    "description": "API para gestionar paquetes turísticos del Hub Sí Viajo. Permite listar, filtrar y actualizar paquetes de forma programática.",
-    "version": "1.0.0",
+    "description": "API para gestionar paquetes turísticos del Hub Sí Viajo. Permite listar, filtrar y actualizar paquetes de forma programática. Con `include=full` se obtiene el itinerario completo: destinos, transporte con segmentos, hoteles con habitaciones e imágenes, transfers, tours, autos, tickets, seguros, imágenes y precios.",
+    "version": "2.0.0",
     "contact": {
       "name": "Soporte Hub Sí Viajo",
       "url": "https://hub.siviajo.com"
@@ -24,7 +24,7 @@
     "/packages": {
       "get": {
         "summary": "Listar paquetes",
-        "description": "Obtiene una lista de paquetes con filtros opcionales y paginación.",
+        "description": "Obtiene una lista de paquetes con filtros opcionales y paginación. Usar `include=full` para obtener el itinerario completo con todas las relaciones.",
         "operationId": "getPackages",
         "tags": ["Paquetes"],
         "parameters": [
@@ -131,7 +131,7 @@
           {
             "name": "include",
             "in": "query",
-            "description": "Nivel de detalle. Usar 'full' para incluir destinos, transportes y hoteles",
+            "description": "Nivel de detalle. Usar 'full' para incluir itinerario completo: destinos, transportes con segmentos, hoteles con habitaciones e imágenes, transfers, tours, autos, tickets, seguros, imágenes del paquete, precios por servicio, desglose de costos e historial de precios",
             "required": false,
             "schema": {
               "type": "string",
@@ -245,6 +245,7 @@
     "schemas": {
       "Package": {
         "type": "object",
+        "description": "Paquete turístico básico (sin include=full)",
         "properties": {
           "id": {
             "type": "integer",
@@ -267,15 +268,27 @@
             "description": "Título largo/descriptivo",
             "example": "Cancún All Inclusive 7 noches con vuelo directo"
           },
-          "current_price_per_pax": {
-            "type": "number",
-            "description": "Precio actual por persona",
-            "example": 1500.00
-          },
-          "currency": {
+          "description": {
             "type": "string",
-            "description": "Moneda del precio",
-            "example": "USD"
+            "nullable": true,
+            "description": "Descripción del paquete"
+          },
+          "image_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL de la imagen principal",
+            "example": "https://cdn.siviajo.com/images/package-123.jpg"
+          },
+          "external_reference": {
+            "type": "string",
+            "nullable": true,
+            "description": "Referencia externa"
+          },
+          "tc_creation_date": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Fecha de creación en TravelCompositor"
           },
           "departure_date": {
             "type": "string",
@@ -298,10 +311,29 @@
             "description": "Fin del rango de fechas disponibles",
             "example": "2025-03-31"
           },
-          "nights_count": {
-            "type": "integer",
-            "description": "Cantidad de noches",
-            "example": 7
+          "original_price_per_pax": {
+            "type": "number",
+            "nullable": true,
+            "description": "Precio original por persona"
+          },
+          "current_price_per_pax": {
+            "type": "number",
+            "description": "Precio actual por persona",
+            "example": 1500.00
+          },
+          "total_price": {
+            "type": "number",
+            "nullable": true,
+            "description": "Precio total del paquete"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Moneda del precio",
+            "example": "USD"
+          },
+          "price_variance_pct": {
+            "type": "number",
+            "description": "Porcentaje de variación del precio"
           },
           "adults_count": {
             "type": "integer",
@@ -313,10 +345,49 @@
             "description": "Cantidad de niños",
             "example": 0
           },
+          "infants_count": {
+            "type": "integer",
+            "description": "Cantidad de infantes",
+            "example": 0
+          },
+          "nights_count": {
+            "type": "integer",
+            "description": "Cantidad de noches",
+            "example": 7
+          },
           "destinations_count": {
             "type": "integer",
             "description": "Cantidad de destinos",
             "example": 1
+          },
+          "transports_count": {
+            "type": "integer",
+            "description": "Cantidad de transportes"
+          },
+          "hotels_count": {
+            "type": "integer",
+            "description": "Cantidad de hoteles"
+          },
+          "transfers_count": {
+            "type": "integer",
+            "description": "Cantidad de transfers"
+          },
+          "cars_count": {
+            "type": "integer",
+            "description": "Cantidad de autos"
+          },
+          "tickets_count": {
+            "type": "integer",
+            "description": "Cantidad de tickets/entradas"
+          },
+          "tours_count": {
+            "type": "integer",
+            "description": "Cantidad de tours"
+          },
+          "tc_active": {
+            "type": "boolean",
+            "description": "Si está activo en TravelCompositor",
+            "example": true
           },
           "status": {
             "type": "string",
@@ -324,32 +395,155 @@
             "description": "Estado del paquete en el flujo de trabajo",
             "example": "in_marketing"
           },
-          "tc_active": {
-            "type": "boolean",
-            "description": "Si está activo en TravelCompositor",
-            "example": true
-          },
           "needs_manual_quote": {
             "type": "boolean",
             "description": "Si requiere cotización manual",
             "example": false
+          },
+          "send_to_design": {
+            "type": "boolean",
+            "description": "Marcado para diseño",
+            "example": true
+          },
+          "send_to_design_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Fecha de envío a diseño"
+          },
+          "design_completed": {
+            "type": "boolean",
+            "description": "Diseño completado",
+            "example": true
+          },
+          "design_completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Fecha de completado de diseño"
+          },
+          "send_to_marketing": {
+            "type": "boolean",
+            "description": "Marcado para marketing",
+            "example": true
+          },
+          "send_to_marketing_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Fecha de envío a marketing"
+          },
+          "marketing_completed": {
+            "type": "boolean",
+            "description": "Marketing completado",
+            "example": false
+          },
+          "marketing_completed_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Fecha de completado de marketing"
+          },
+          "seo_title": {
+            "type": "string",
+            "nullable": true,
+            "description": "Título SEO"
+          },
+          "seo_description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Descripción SEO"
+          },
+          "ai_description": {
+            "type": "string",
+            "nullable": true,
+            "description": "Descripción generada por IA"
+          },
+          "in_sitemap": {
+            "type": "boolean",
+            "description": "Incluido en el sitemap"
+          },
+          "origin_code": {
+            "type": "string",
+            "nullable": true,
+            "description": "Código del origen"
+          },
+          "origin_name": {
+            "type": "string",
+            "nullable": true,
+            "description": "Nombre del origen"
+          },
+          "origin_country": {
+            "type": "string",
+            "nullable": true,
+            "description": "País del origen"
+          },
+          "themes": {
+            "type": "array",
+            "nullable": true,
+            "items": { "type": "string" },
+            "description": "Temáticas del paquete"
+          },
+          "tc_idea_url": {
+            "type": "string",
+            "nullable": true,
+            "description": "URL de la idea en TravelCompositor"
+          },
+          "last_requote_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Última recotización"
+          },
+          "requote_status": {
+            "type": "string",
+            "nullable": true,
+            "description": "Estado de recotización"
+          },
+          "available_dates": {
+            "type": "array",
+            "nullable": true,
+            "items": { "type": "string" },
+            "description": "Fechas disponibles"
+          },
+          "package_type": {
+            "type": "string",
+            "nullable": true,
+            "description": "Tipo de paquete"
+          },
+          "min_nights": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Noches mínimas"
+          },
+          "max_nights": {
+            "type": "integer",
+            "nullable": true,
+            "description": "Noches máximas"
+          },
+          "is_refundable": {
+            "type": "boolean",
+            "description": "Si es reembolsable"
+          },
+          "tc_username": {
+            "type": "string",
+            "nullable": true,
+            "description": "Usuario de TravelCompositor"
+          },
+          "cancellation_policy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Política de cancelación"
           },
           "ads_created_count": {
             "type": "integer",
             "description": "Cantidad de anuncios creados",
             "example": 3
           },
-          "image_url": {
-            "type": "string",
-            "nullable": true,
-            "description": "URL de la imagen principal",
-            "example": "https://cdn.siviajo.com/images/package-123.jpg"
-          },
-          "created_at": {
+          "imported_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Fecha de creación en el Hub",
-            "example": "2025-01-15T10:30:00Z"
+            "description": "Fecha de importación"
           },
           "last_sync_at": {
             "type": "string",
@@ -358,71 +552,521 @@
             "description": "Última sincronización con TC",
             "example": "2025-01-20T08:00:00Z"
           },
-          "send_to_design": {
-            "type": "boolean",
-            "description": "Marcado para diseño",
-            "example": true
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha de creación en el Hub",
+            "example": "2025-01-15T10:30:00Z"
           },
-          "design_completed": {
-            "type": "boolean",
-            "description": "Diseño completado",
-            "example": true
-          },
-          "send_to_marketing": {
-            "type": "boolean",
-            "description": "Marcado para marketing",
-            "example": true
-          },
-          "marketing_completed": {
-            "type": "boolean",
-            "description": "Marketing completado",
-            "example": false
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Fecha de última actualización"
           }
+        }
+      },
+      "PackageDestination": {
+        "type": "object",
+        "description": "Destino del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "destination_code": { "type": "string", "example": "CUN" },
+          "destination_name": { "type": "string", "example": "Cancún" },
+          "country": { "type": "string", "nullable": true, "example": "México" },
+          "country_code": { "type": "string", "nullable": true, "example": "MX" },
+          "from_day": { "type": "integer", "nullable": true, "description": "Día de inicio en el destino" },
+          "to_day": { "type": "integer", "nullable": true, "description": "Día de fin en el destino" },
+          "nights": { "type": "integer", "nullable": true, "description": "Noches en el destino" },
+          "latitude": { "type": "number", "nullable": true },
+          "longitude": { "type": "number", "nullable": true },
+          "recommended_airport_code": { "type": "string", "nullable": true },
+          "recommended_airport_name": { "type": "string", "nullable": true },
+          "description": { "type": "string", "nullable": true },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageTransportSegment": {
+        "type": "object",
+        "description": "Segmento de vuelo (escala o conexión)",
+        "properties": {
+          "id": { "type": "integer" },
+          "transport_id": { "type": "integer" },
+          "departure_airport": { "type": "string", "nullable": true, "example": "EZE" },
+          "departure_airport_name": { "type": "string", "nullable": true, "example": "Ezeiza International" },
+          "arrival_airport": { "type": "string", "nullable": true, "example": "MIA" },
+          "arrival_airport_name": { "type": "string", "nullable": true, "example": "Miami International" },
+          "departure_datetime": { "type": "string", "format": "date-time", "nullable": true },
+          "arrival_datetime": { "type": "string", "format": "date-time", "nullable": true },
+          "flight_number": { "type": "string", "nullable": true, "example": "AA1234" },
+          "marketing_airline": { "type": "string", "nullable": true },
+          "operating_airline": { "type": "string", "nullable": true },
+          "booking_class": { "type": "string", "nullable": true },
+          "cabin_class": { "type": "string", "nullable": true, "example": "Economy" },
+          "baggage_info": { "type": "string", "nullable": true },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageTransport": {
+        "type": "object",
+        "description": "Transporte del paquete (vuelo, bus, etc.)",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_transport_id": { "type": "string", "nullable": true },
+          "tc_provider_code": { "type": "string", "nullable": true },
+          "supplier_name": { "type": "string", "nullable": true },
+          "day": { "type": "integer", "nullable": true, "description": "Día del itinerario" },
+          "transport_type": { "type": "string", "nullable": true, "example": "FLIGHT" },
+          "direction": { "type": "string", "nullable": true, "example": "outbound" },
+          "origin_code": { "type": "string", "nullable": true, "example": "EZE" },
+          "origin_name": { "type": "string", "nullable": true, "example": "Buenos Aires" },
+          "destination_code": { "type": "string", "nullable": true, "example": "CUN" },
+          "destination_name": { "type": "string", "nullable": true, "example": "Cancún" },
+          "company": { "type": "string", "nullable": true, "example": "American Airlines" },
+          "transport_number": { "type": "string", "nullable": true, "example": "AA1234" },
+          "marketing_airline_code": { "type": "string", "nullable": true },
+          "operating_airline_code": { "type": "string", "nullable": true },
+          "operating_airline_name": { "type": "string", "nullable": true },
+          "departure_date": { "type": "string", "format": "date", "nullable": true },
+          "departure_time": { "type": "string", "nullable": true, "example": "10:30" },
+          "arrival_date": { "type": "string", "format": "date", "nullable": true },
+          "arrival_time": { "type": "string", "nullable": true, "example": "18:45" },
+          "duration": { "type": "string", "nullable": true, "example": "8h 15m" },
+          "day_difference": { "type": "integer", "description": "Diferencia de días llegada vs salida" },
+          "fare": { "type": "string", "nullable": true },
+          "fare_class": { "type": "string", "nullable": true },
+          "fare_basis": { "type": "string", "nullable": true },
+          "cabin_class": { "type": "string", "nullable": true, "example": "Economy" },
+          "baggage_info": { "type": "string", "nullable": true },
+          "checked_baggage": { "type": "string", "nullable": true },
+          "cabin_baggage": { "type": "string", "nullable": true },
+          "aircraft_type": { "type": "string", "nullable": true },
+          "terminal_departure": { "type": "string", "nullable": true },
+          "terminal_arrival": { "type": "string", "nullable": true },
+          "num_segments": { "type": "integer", "description": "Cantidad de segmentos/escalas" },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "mandatory": { "type": "boolean" },
+          "is_refundable": { "type": "boolean" },
+          "adults_count": { "type": "integer" },
+          "children_count": { "type": "integer" },
+          "infants_count": { "type": "integer" },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "package_transport_segments": {
+            "type": "array",
+            "description": "Segmentos del vuelo (solo con include=full)",
+            "items": { "$ref": "#/components/schemas/PackageTransportSegment" }
+          }
+        }
+      },
+      "PackageHotelImage": {
+        "type": "object",
+        "description": "Imagen del hotel",
+        "properties": {
+          "id": { "type": "integer" },
+          "hotel_id": { "type": "integer" },
+          "image_url": { "type": "string" },
+          "alt_text": { "type": "string", "nullable": true },
+          "width": { "type": "integer", "nullable": true },
+          "height": { "type": "integer", "nullable": true },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageHotelRoom": {
+        "type": "object",
+        "description": "Habitación del hotel con régimen de comidas",
+        "properties": {
+          "id": { "type": "integer" },
+          "hotel_id": { "type": "integer" },
+          "room_code": { "type": "string", "nullable": true },
+          "room_name": { "type": "string", "example": "Suite Deluxe" },
+          "room_description": { "type": "string", "nullable": true },
+          "board_code": { "type": "string", "nullable": true, "example": "AI", "description": "RO, BB, HB, FB, AI" },
+          "board_name": { "type": "string", "nullable": true, "example": "All Inclusive" },
+          "board_description": { "type": "string", "nullable": true },
+          "adults_capacity": { "type": "integer" },
+          "children_capacity": { "type": "integer" },
+          "infants_capacity": { "type": "integer" },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "is_refundable": { "type": "boolean" },
+          "cancellation_deadline": { "type": "string", "format": "date-time", "nullable": true },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageHotel": {
+        "type": "object",
+        "description": "Hotel del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_hotel_id": { "type": "string", "nullable": true },
+          "tc_provider_code": { "type": "string", "nullable": true },
+          "tc_datasheet_id": { "type": "string", "nullable": true },
+          "supplier_name": { "type": "string", "nullable": true },
+          "day": { "type": "integer", "nullable": true, "description": "Día del itinerario" },
+          "hotel_name": { "type": "string", "nullable": true, "example": "Grand Oasis Cancun" },
+          "hotel_category": { "type": "string", "nullable": true },
+          "destination_code": { "type": "string", "nullable": true },
+          "destination_name": { "type": "string", "nullable": true },
+          "check_in_date": { "type": "string", "format": "date", "nullable": true },
+          "check_out_date": { "type": "string", "format": "date", "nullable": true },
+          "nights": { "type": "integer", "nullable": true },
+          "room_type": { "type": "string", "nullable": true },
+          "room_name": { "type": "string", "nullable": true },
+          "board_type": { "type": "string", "nullable": true, "example": "AI" },
+          "board_name": { "type": "string", "nullable": true, "example": "All Inclusive" },
+          "description": { "type": "string", "nullable": true },
+          "image_url": { "type": "string", "nullable": true },
+          "phone": { "type": "string", "nullable": true },
+          "email": { "type": "string", "nullable": true },
+          "web_url": { "type": "string", "nullable": true },
+          "stars": { "type": "integer", "nullable": true, "example": 5 },
+          "overall_rating": { "type": "number", "nullable": true },
+          "facilities": { "type": "array", "nullable": true, "items": { "type": "string" } },
+          "cancellation_policy": { "type": "string", "nullable": true },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "latitude": { "type": "number", "nullable": true },
+          "longitude": { "type": "number", "nullable": true },
+          "address": { "type": "string", "nullable": true },
+          "mandatory": { "type": "boolean" },
+          "is_refundable": { "type": "boolean" },
+          "adults_count": { "type": "integer" },
+          "children_count": { "type": "integer" },
+          "infants_count": { "type": "integer" },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "package_hotel_images": {
+            "type": "array",
+            "description": "Imágenes del hotel (solo con include=full)",
+            "items": { "$ref": "#/components/schemas/PackageHotelImage" }
+          },
+          "package_hotel_rooms": {
+            "type": "array",
+            "description": "Habitaciones disponibles (solo con include=full)",
+            "items": { "$ref": "#/components/schemas/PackageHotelRoom" }
+          }
+        }
+      },
+      "PackageTransfer": {
+        "type": "object",
+        "description": "Transfer del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_transfer_id": { "type": "string", "nullable": true },
+          "tc_provider_code": { "type": "string", "nullable": true },
+          "supplier_name": { "type": "string", "nullable": true },
+          "day": { "type": "integer", "nullable": true },
+          "transfer_type": { "type": "string", "nullable": true, "example": "PRIVATE" },
+          "from_name": { "type": "string", "nullable": true, "example": "Aeropuerto Cancún" },
+          "from_latitude": { "type": "number", "nullable": true },
+          "from_longitude": { "type": "number", "nullable": true },
+          "to_name": { "type": "string", "nullable": true, "example": "Grand Oasis Cancun" },
+          "to_latitude": { "type": "number", "nullable": true },
+          "to_longitude": { "type": "number", "nullable": true },
+          "vehicle_type": { "type": "string", "nullable": true },
+          "service_type": { "type": "string", "nullable": true },
+          "product_type": { "type": "string", "nullable": true },
+          "datetime": { "type": "string", "format": "date-time", "nullable": true },
+          "duration_minutes": { "type": "integer", "nullable": true },
+          "description": { "type": "string", "nullable": true },
+          "image_url": { "type": "string", "nullable": true },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "mandatory": { "type": "boolean" },
+          "adults_count": { "type": "integer" },
+          "children_count": { "type": "integer" },
+          "infants_count": { "type": "integer" },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageClosedTour": {
+        "type": "object",
+        "description": "Tour cerrado del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_tour_id": { "type": "string", "nullable": true },
+          "provider_code": { "type": "string", "nullable": true },
+          "supplier_id": { "type": "integer", "nullable": true },
+          "supplier_name": { "type": "string", "nullable": true },
+          "day_from": { "type": "integer", "nullable": true },
+          "day_to": { "type": "integer", "nullable": true },
+          "start_date": { "type": "string", "format": "date", "nullable": true },
+          "end_date": { "type": "string", "format": "date", "nullable": true },
+          "name": { "type": "string", "nullable": true, "example": "Excursión a Chichén Itzá" },
+          "modality_name": { "type": "string", "nullable": true },
+          "included_services": { "type": "string", "nullable": true },
+          "non_included_services": { "type": "string", "nullable": true },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "mandatory": { "type": "boolean" },
+          "datasheet_id": { "type": "string", "nullable": true },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageCar": {
+        "type": "object",
+        "description": "Alquiler de auto del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_car_id": { "type": "string", "nullable": true },
+          "day_from": { "type": "integer", "nullable": true },
+          "day_to": { "type": "integer", "nullable": true },
+          "pickup_date": { "type": "string", "format": "date", "nullable": true },
+          "pickup_time": { "type": "string", "nullable": true },
+          "pickup_location": { "type": "string", "nullable": true },
+          "pickup_latitude": { "type": "number", "nullable": true },
+          "pickup_longitude": { "type": "number", "nullable": true },
+          "dropoff_date": { "type": "string", "format": "date", "nullable": true },
+          "dropoff_time": { "type": "string", "nullable": true },
+          "dropoff_location": { "type": "string", "nullable": true },
+          "dropoff_latitude": { "type": "number", "nullable": true },
+          "dropoff_longitude": { "type": "number", "nullable": true },
+          "company": { "type": "string", "nullable": true, "example": "Hertz" },
+          "category": { "type": "string", "nullable": true },
+          "vehicle_name": { "type": "string", "nullable": true },
+          "vehicle_type": { "type": "string", "nullable": true },
+          "transmission": { "type": "string", "nullable": true, "example": "Automático" },
+          "fuel_policy": { "type": "string", "nullable": true },
+          "doors": { "type": "integer", "nullable": true },
+          "seats": { "type": "integer", "nullable": true },
+          "bags": { "type": "integer", "nullable": true },
+          "air_conditioning": { "type": "boolean" },
+          "included_km": { "type": "string", "nullable": true },
+          "insurance_included": { "type": "boolean" },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "price_per_day": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "days_count": { "type": "integer", "nullable": true },
+          "mandatory": { "type": "boolean" },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageTicket": {
+        "type": "object",
+        "description": "Ticket o entrada del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_ticket_id": { "type": "string", "nullable": true },
+          "day": { "type": "integer", "nullable": true },
+          "name": { "type": "string", "nullable": true, "example": "Entrada a Xcaret" },
+          "description": { "type": "string", "nullable": true },
+          "category": { "type": "string", "nullable": true },
+          "destination_code": { "type": "string", "nullable": true },
+          "destination_name": { "type": "string", "nullable": true },
+          "location_name": { "type": "string", "nullable": true },
+          "latitude": { "type": "number", "nullable": true },
+          "longitude": { "type": "number", "nullable": true },
+          "ticket_date": { "type": "string", "format": "date", "nullable": true },
+          "start_time": { "type": "string", "nullable": true },
+          "end_time": { "type": "string", "nullable": true },
+          "duration": { "type": "string", "nullable": true },
+          "supplier_name": { "type": "string", "nullable": true },
+          "modality_name": { "type": "string", "nullable": true },
+          "includes": { "type": "string", "nullable": true },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "mandatory": { "type": "boolean" },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageImage": {
+        "type": "object",
+        "description": "Imagen del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "image_type": { "type": "string", "nullable": true, "example": "cover" },
+          "source": { "type": "string", "nullable": true },
+          "original_url": { "type": "string", "nullable": true },
+          "google_drive_id": { "type": "string", "nullable": true },
+          "google_drive_url": { "type": "string", "nullable": true },
+          "cdn_url": { "type": "string", "nullable": true },
+          "alt_text": { "type": "string", "nullable": true },
+          "width": { "type": "integer", "nullable": true },
+          "height": { "type": "integer", "nullable": true },
+          "file_size": { "type": "integer", "nullable": true },
+          "designed_by": { "type": "string", "nullable": true },
+          "design_approved": { "type": "boolean" },
+          "design_approved_at": { "type": "string", "format": "date-time", "nullable": true },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "updated_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageInsurance": {
+        "type": "object",
+        "description": "Seguro del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "tc_insurance_id": { "type": "string", "nullable": true },
+          "day_from": { "type": "integer", "nullable": true },
+          "day_to": { "type": "integer", "nullable": true },
+          "provider_code": { "type": "string", "nullable": true },
+          "supplier_name": { "type": "string", "nullable": true, "example": "Assist Card" },
+          "name": { "type": "string", "nullable": true },
+          "description": { "type": "string", "nullable": true },
+          "coverage": { "type": "string", "nullable": true },
+          "net_price": { "type": "number", "nullable": true },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "mandatory": { "type": "boolean" },
+          "adults_count": { "type": "integer" },
+          "children_count": { "type": "integer" },
+          "sort_order": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageServicePrice": {
+        "type": "object",
+        "description": "Desglose de precio por servicio",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "service_type": { "type": "string", "enum": ["hotel", "transport", "transfer", "ticket", "tour", "car", "insurance"] },
+          "service_id": { "type": "integer", "nullable": true },
+          "net_provider": { "type": "number", "description": "Precio neto del proveedor" },
+          "operator_fee": { "type": "number", "description": "Comisión del operador" },
+          "agency_fee": { "type": "number", "description": "Comisión de la agencia" },
+          "commission": { "type": "number", "description": "Comisión total" },
+          "taxes": { "type": "number", "description": "Impuestos" },
+          "final_price": { "type": "number", "description": "Precio final" },
+          "adult_price": { "type": "number", "nullable": true },
+          "child_price": { "type": "number", "nullable": true },
+          "infant_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackageCostBreakdown": {
+        "type": "object",
+        "description": "Desglose de costos del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "sync_date": { "type": "string", "format": "date-time" },
+          "air_cost": { "type": "number", "description": "Costo de aéreo" },
+          "hotel_cost": { "type": "number", "description": "Costo de hotel" },
+          "transfer_cost": { "type": "number", "description": "Costo de transfers" },
+          "car_cost": { "type": "number", "description": "Costo de auto" },
+          "tour_cost": { "type": "number", "description": "Costo de tours" },
+          "ticket_cost": { "type": "number", "description": "Costo de tickets" },
+          "insurance_cost": { "type": "number", "description": "Costo de seguro" },
+          "other_cost": { "type": "number", "description": "Otros costos" },
+          "operator_fee": { "type": "number", "description": "Comisión del operador" },
+          "agency_fee": { "type": "number", "description": "Comisión de la agencia" },
+          "payment_fee": { "type": "number", "description": "Comisión de pago" },
+          "total_net_cost": { "type": "number", "description": "Costo neto total" },
+          "total_fees": { "type": "number", "description": "Total de comisiones" },
+          "final_price_per_pax": { "type": "number", "description": "Precio final por persona" },
+          "currency": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
+        }
+      },
+      "PackagePriceHistory": {
+        "type": "object",
+        "description": "Historial de precios del paquete",
+        "properties": {
+          "id": { "type": "integer" },
+          "package_id": { "type": "integer" },
+          "price_per_pax": { "type": "number" },
+          "total_price": { "type": "number", "nullable": true },
+          "currency": { "type": "string" },
+          "previous_price": { "type": "number", "nullable": true },
+          "variance_amount": { "type": "number", "nullable": true },
+          "variance_pct": { "type": "number", "nullable": true },
+          "recorded_at": { "type": "string", "format": "date-time" }
         }
       },
       "PackageWithRelations": {
         "allOf": [
-          {
-            "$ref": "#/components/schemas/Package"
-          },
+          { "$ref": "#/components/schemas/Package" },
           {
             "type": "object",
+            "description": "Paquete completo con itinerario (con include=full)",
             "properties": {
               "package_destinations": {
                 "type": "array",
-                "description": "Destinos del paquete (solo con include=full)",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": { "type": "integer" },
-                    "destination_name": { "type": "string" },
-                    "country": { "type": "string" }
-                  }
-                }
+                "description": "Destinos del paquete",
+                "items": { "$ref": "#/components/schemas/PackageDestination" }
               },
               "package_transports": {
                 "type": "array",
-                "description": "Transportes del paquete (solo con include=full)",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": { "type": "integer" },
-                    "type": { "type": "string" },
-                    "company": { "type": "string" }
-                  }
-                }
+                "description": "Transportes del paquete con segmentos de vuelo",
+                "items": { "$ref": "#/components/schemas/PackageTransport" }
               },
               "package_hotels": {
                 "type": "array",
-                "description": "Hoteles del paquete (solo con include=full)",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": { "type": "integer" },
-                    "hotel_name": { "type": "string" },
-                    "stars": { "type": "integer" }
-                  }
-                }
+                "description": "Hoteles con habitaciones e imágenes",
+                "items": { "$ref": "#/components/schemas/PackageHotel" }
+              },
+              "package_transfers": {
+                "type": "array",
+                "description": "Transfers del paquete",
+                "items": { "$ref": "#/components/schemas/PackageTransfer" }
+              },
+              "package_closed_tours": {
+                "type": "array",
+                "description": "Tours cerrados",
+                "items": { "$ref": "#/components/schemas/PackageClosedTour" }
+              },
+              "package_cars": {
+                "type": "array",
+                "description": "Alquiler de autos",
+                "items": { "$ref": "#/components/schemas/PackageCar" }
+              },
+              "package_tickets": {
+                "type": "array",
+                "description": "Tickets y entradas",
+                "items": { "$ref": "#/components/schemas/PackageTicket" }
+              },
+              "package_images": {
+                "type": "array",
+                "description": "Imágenes del paquete",
+                "items": { "$ref": "#/components/schemas/PackageImage" }
+              },
+              "package_insurances": {
+                "type": "array",
+                "description": "Seguros del paquete",
+                "items": { "$ref": "#/components/schemas/PackageInsurance" }
+              },
+              "package_service_prices": {
+                "type": "array",
+                "description": "Desglose de precios por servicio",
+                "items": { "$ref": "#/components/schemas/PackageServicePrice" }
+              },
+              "package_cost_breakdown": {
+                "type": "array",
+                "description": "Desglose de costos totales",
+                "items": { "$ref": "#/components/schemas/PackageCostBreakdown" }
+              },
+              "package_price_history": {
+                "type": "array",
+                "description": "Historial de cambios de precio",
+                "items": { "$ref": "#/components/schemas/PackagePriceHistory" }
               }
             }
           }
@@ -458,8 +1102,9 @@
         "properties": {
           "packages": {
             "type": "array",
+            "description": "Sin include=full devuelve Package básico, con include=full devuelve PackageWithRelations",
             "items": {
-              "$ref": "#/components/schemas/Package"
+              "$ref": "#/components/schemas/PackageWithRelations"
             }
           },
           "pagination": {
@@ -553,7 +1198,7 @@
   "tags": [
     {
       "name": "Paquetes",
-      "description": "Operaciones para gestionar paquetes turísticos"
+      "description": "Operaciones para gestionar paquetes turísticos. Usa `include=full` para obtener el itinerario completo con todos los servicios del paquete."
     }
   ]
 }

@@ -70,8 +70,24 @@ export async function GET(request: NextRequest) {
       ? `
         *,
         package_destinations (*),
-        package_transports (*),
-        package_hotels (*)
+        package_transports (
+          *,
+          package_transport_segments (*)
+        ),
+        package_hotels (
+          *,
+          package_hotel_images (*),
+          package_hotel_rooms (*)
+        ),
+        package_transfers (*),
+        package_closed_tours (*),
+        package_cars (*),
+        package_tickets (*),
+        package_images (*),
+        package_insurances (*),
+        package_service_prices (*),
+        package_cost_breakdown (*),
+        package_price_history (*)
       `
       : `
         id, tc_package_id, title, large_title, current_price_per_pax, currency,
