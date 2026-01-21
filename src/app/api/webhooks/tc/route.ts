@@ -22,26 +22,50 @@ interface TCWebhookNotification {
   [key: string]: unknown
 }
 
+// Get list of supplier IDs we manage from the database
+async function getOurSupplierIds(db: ReturnType<typeof getSupabaseAdmin>): Promise<number[]> {
+  const { data: suppliers } = await db
+    .from('suppliers')
+    .select('id')
+
+  return (suppliers || []).map(s => s.id)
+}
+
 // Extract transport ID from TC service ID (e.g., "SIV-11-0" -> find matching tc_transport_id)
-async function findFlightByTCId(db: ReturnType<typeof getSupabaseAdmin>, tcServiceId: string) {
+// Also matches by supplier_id to ensure correct flight
+async function findFlightByTCId(
+  db: ReturnType<typeof getSupabaseAdmin>,
+  tcServiceId: string,
+  supplierId?: number
+) {
   // TC service ID might be the tc_transport_id or contain it
-  // First try exact match
-  const { data: flight } = await db
+  // First try exact match with supplier
+  let query = db
     .from('flights')
-    .select('id, tc_transport_id, name')
+    .select('id, tc_transport_id, name, supplier_id')
     .eq('tc_transport_id', tcServiceId)
-    .single()
+
+  if (supplierId) {
+    query = query.eq('supplier_id', supplierId)
+  }
+
+  const { data: flight } = await query.single()
 
   if (flight) return flight
 
   // Try partial match (TC might add suffixes)
   const baseId = tcServiceId.split('-').slice(0, -1).join('-')
   if (baseId) {
-    const { data: flights } = await db
+    let partialQuery = db
       .from('flights')
-      .select('id, tc_transport_id, name')
+      .select('id, tc_transport_id, name, supplier_id')
       .ilike('tc_transport_id', `${baseId}%`)
-      .limit(1)
+
+    if (supplierId) {
+      partialQuery = partialQuery.eq('supplier_id', supplierId)
+    }
+
+    const { data: flights } = await partialQuery.limit(1)
 
     if (flights && flights.length > 0) {
       return flights[0]
@@ -166,8 +190,8 @@ async function handleNewBooking(
     return { action: 'skipped', reason: 'Reservation already exists' }
   }
 
-  // Find the flight by TC transport ID
-  const flight = await findFlightByTCId(db, service.id)
+  // Find the flight by TC transport ID and supplier
+  const flight = await findFlightByTCId(db, service.id, service.providerConfigurationId)
 
   // Calculate passengers
   const adults = service.adults || 0
@@ -441,14 +465,14 @@ export async function POST(request: NextRequest) {
     })
 
     // Process transport services from the booking
-    // Filter to only process services from our supplier (cupos)
-    const TC_SUPPLIER_ID = parseInt(process.env.TC_SUPPLIER_ID || '0', 10)
+    // Filter to only process services from suppliers we manage (cupos)
+    const ourSupplierIds = await getOurSupplierIds(db)
     const allTransportServices = bookingDetails.transportservice || []
     const transportServices = allTransportServices.filter(
-      service => service.providerConfigurationId === TC_SUPPLIER_ID
+      service => ourSupplierIds.includes(service.providerConfigurationId)
     )
 
-    console.log(`[TC Webhook] Filtering services: ${allTransportServices.length} total, ${transportServices.length} from our supplier (${TC_SUPPLIER_ID})`)
+    console.log(`[TC Webhook] Filtering services: ${allTransportServices.length} total, ${transportServices.length} from our suppliers (${ourSupplierIds.join(', ')})`)
 
     const results: Array<{ service: string; result: unknown }> = []
     const eventType = getEventType(notification)
