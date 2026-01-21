@@ -4,29 +4,39 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
-export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño'
+export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
 
 // Role permissions configuration (must match server-side config)
 export const ROLE_PERMISSIONS = {
   admin: {
     label: 'Administrador',
     canAccessAdmin: true,
+    readOnly: false,
     sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
   },
   marketing: {
     label: 'Marketing',
     canAccessAdmin: true,
+    readOnly: false,
     sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
   },
   producto: {
     label: 'Producto',
     canAccessAdmin: false,
+    readOnly: false,
     sections: ['cupos', 'productos', 'comercial', 'rendimiento'],
   },
   diseño: {
     label: 'Diseño',
     canAccessAdmin: false,
+    readOnly: false,
     sections: ['productos', 'diseño'],
+  },
+  ventas: {
+    label: 'Ventas',
+    canAccessAdmin: false,
+    readOnly: true,
+    sections: ['productos', 'comercial'],
   },
 } as const
 
@@ -41,6 +51,7 @@ interface UseAuthReturn {
   user: AuthUser | null
   loading: boolean
   isAdmin: boolean
+  isReadOnly: boolean
   isAuthenticated: boolean
   canAccessSection: (section: string) => boolean
   refresh: () => Promise<void>
@@ -125,6 +136,9 @@ export function useAuth(): UseAuthReturn {
   // Check if user has admin-level access (admin or marketing)
   const isAdmin = user?.role === 'admin' || user?.role === 'marketing'
 
+  // Check if user has read-only access
+  const isReadOnly = user ? ROLE_PERMISSIONS[user.role]?.readOnly || false : false
+
   // Check if user can access a specific section
   const canAccessSection = useCallback((section: string): boolean => {
     if (!user) return false
@@ -136,6 +150,7 @@ export function useAuth(): UseAuthReturn {
     user,
     loading,
     isAdmin,
+    isReadOnly,
     isAuthenticated: !!user,
     canAccessSection,
     refresh,

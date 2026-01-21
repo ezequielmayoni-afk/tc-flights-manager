@@ -66,6 +66,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { DesignModal } from './DesignModal'
+import { useAuth } from '@/hooks/useAuth'
 
 type PackageWithDestinations = {
   id: number
@@ -378,6 +379,7 @@ const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50, 100]
 
 export function PackagesTable({ packages }: PackagesTableProps) {
   const router = useRouter()
+  const { isReadOnly } = useAuth()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [sortField, setSortField] = useState<SortField | null>('tc_creation_date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
@@ -904,8 +906,8 @@ export function PackagesTable({ packages }: PackagesTableProps) {
         </div>
       </div>
 
-      {/* Bulk Actions Bar */}
-      {selectedIds.size > 0 && (
+      {/* Bulk Actions Bar - Hidden for read-only users */}
+      {!isReadOnly && selectedIds.size > 0 && (
         <div className="p-3 bg-blue-50 border-b flex items-center gap-4">
           <span className="text-sm font-medium text-blue-700">
             {selectedIds.size} paquete{selectedIds.size > 1 ? 's' : ''} seleccionado{selectedIds.size > 1 ? 's' : ''}
@@ -1012,20 +1014,22 @@ export function PackagesTable({ packages }: PackagesTableProps) {
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <ResizableHeader
-                label=""
-                columnKey="checkbox"
-                width={columnWidths.checkbox}
-                onResize={handleColumnResize}
-                onResizeEnd={handleResizeEnd}
-              >
-                <input
-                  type="checkbox"
-                  checked={selectedIds.size === paginatedPackages.length && paginatedPackages.length > 0}
-                  onChange={toggleSelectAll}
-                  className="rounded border-gray-300"
-                />
-              </ResizableHeader>
+              {!isReadOnly && (
+                <ResizableHeader
+                  label=""
+                  columnKey="checkbox"
+                  width={columnWidths.checkbox}
+                  onResize={handleColumnResize}
+                  onResizeEnd={handleResizeEnd}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === paginatedPackages.length && paginatedPackages.length > 0}
+                    onChange={toggleSelectAll}
+                    className="rounded border-gray-300"
+                  />
+                </ResizableHeader>
+              )}
               <ResizableHeader label="Fecha" columnKey="fecha" width={columnWidths.fecha} field="tc_creation_date" currentSort={sortField} direction={sortDirection} onSort={handleSort} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
               <ResizableHeader label="ID" columnKey="id" width={columnWidths.id} field="tc_package_id" currentSort={sortField} direction={sortDirection} onSort={handleSort} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
               <ResizableHeader label="Nombre" columnKey="nombre" width={columnWidths.nombre} field="title" currentSort={sortField} direction={sortDirection} onSort={handleSort} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
@@ -1042,15 +1046,17 @@ export function PackagesTable({ packages }: PackagesTableProps) {
               <ResizableHeader label="Precio Obj." columnKey="precioObj" width={columnWidths.precioObj} field="target_price" currentSort={sortField} direction={sortDirection} onSort={handleSort} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
               <ResizableHeader label="Últ. Recot." columnKey="ultRecot" width={columnWidths.ultRecot} field="requote_price" currentSort={sortField} direction={sortDirection} onSort={handleSort} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
               <ResizableHeader label="Fecha Recot." columnKey="fechaRecot" width={columnWidths.fechaRecot} field="last_requote_at" currentSort={sortField} direction={sortDirection} onSort={handleSort} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
-              <ResizableHeader label="" columnKey="actions" width={columnWidths.actions} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
+              {!isReadOnly && (
+                <ResizableHeader label="" columnKey="actions" width={columnWidths.actions} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
             {paginatedPackages.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={18} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={isReadOnly ? 16 : 18} className="text-center py-12 text-muted-foreground">
                   {packages.length === 0
-                    ? 'No hay paquetes importados. Usa el botón "Importar desde TC" para comenzar.'
+                    ? 'No hay paquetes importados.'
                     : 'No se encontraron paquetes con los filtros aplicados.'}
                 </TableCell>
               </TableRow>
@@ -1068,14 +1074,16 @@ export function PackagesTable({ packages }: PackagesTableProps) {
 
                 return (
                   <TableRow key={pkg.id} className={!pkg.tc_active || expired ? 'opacity-60' : ''}>
-                    <TableCell style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox, maxWidth: columnWidths.checkbox }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.has(pkg.id)}
-                        onChange={() => toggleSelect(pkg.id)}
-                        className="rounded border-gray-300"
-                      />
-                    </TableCell>
+                    {!isReadOnly && (
+                      <TableCell style={{ width: columnWidths.checkbox, minWidth: columnWidths.checkbox, maxWidth: columnWidths.checkbox }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(pkg.id)}
+                          onChange={() => toggleSelect(pkg.id)}
+                          className="rounded border-gray-300"
+                        />
+                      </TableCell>
+                    )}
 
                     <TableCell className="text-xs text-muted-foreground whitespace-nowrap" style={{ width: columnWidths.fecha, minWidth: columnWidths.fecha, maxWidth: columnWidths.fecha }}>
                       {formatDate(pkg.tc_creation_date)}
@@ -1292,32 +1300,34 @@ export function PackagesTable({ packages }: PackagesTableProps) {
                       {pkg.last_requote_at ? formatDate(pkg.last_requote_at) : '-'}
                     </TableCell>
 
-                    <TableCell style={{ width: columnWidths.actions, minWidth: columnWidths.actions, maxWidth: columnWidths.actions }}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleRefreshPackage(pkg.id)}
-                            disabled={refreshingId === pkg.id}
-                            className="flex items-center gap-2"
-                          >
-                            <RefreshCw className={`h-4 w-4 ${refreshingId === pkg.id ? 'animate-spin' : ''}`} />
-                            {refreshingId === pkg.id ? 'Actualizando...' : 'Actualizar desde TC'}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => setDesignModalPackage({ id: pkg.id, title: pkg.title })}
-                            className="flex items-center gap-2"
-                          >
-                            <Palette className="h-4 w-4" />
-                            Gestionar Creativos
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+                    {!isReadOnly && (
+                      <TableCell style={{ width: columnWidths.actions, minWidth: columnWidths.actions, maxWidth: columnWidths.actions }}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleRefreshPackage(pkg.id)}
+                              disabled={refreshingId === pkg.id}
+                              className="flex items-center gap-2"
+                            >
+                              <RefreshCw className={`h-4 w-4 ${refreshingId === pkg.id ? 'animate-spin' : ''}`} />
+                              {refreshingId === pkg.id ? 'Actualizando...' : 'Actualizar desde TC'}
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDesignModalPackage({ id: pkg.id, title: pkg.title })}
+                              className="flex items-center gap-2"
+                            >
+                              <Palette className="h-4 w-4" />
+                              Gestionar Creativos
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    )}
                   </TableRow>
                 )
               })

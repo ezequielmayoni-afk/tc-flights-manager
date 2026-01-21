@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { RefreshCw, Download, CheckCircle, XCircle, Loader2, Plus } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@/hooks/useAuth'
 
 interface ImportStats {
   total: number
@@ -33,11 +34,17 @@ interface ImportResult {
 
 export function PackageImportButton() {
   const router = useRouter()
+  const { isReadOnly } = useAuth()
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
   const [singlePackageId, setSinglePackageId] = useState('')
   const [isLoadingSingle, setIsLoadingSingle] = useState(false)
+
+  // Hide the import button for read-only users
+  if (isReadOnly) {
+    return null
+  }
 
   const handleImport = async (forceUpdate: boolean = false) => {
     setIsLoading(true)

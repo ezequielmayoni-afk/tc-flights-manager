@@ -40,11 +40,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { Users, Loader2, Pencil, Trash2, Shield, User, Plus, Palette, Package, Megaphone } from 'lucide-react'
+import { Users, Loader2, Pencil, Trash2, Shield, User, Plus, Palette, Package, Megaphone, DollarSign } from 'lucide-react'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño'
+type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
 
 interface UserProfile {
   id: string
@@ -60,6 +60,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; description: string }[] = 
   { value: 'marketing', label: 'Marketing', description: 'Acceso admin (todo el sistema)' },
   { value: 'producto', label: 'Producto', description: 'Todo excepto Diseño y Marketing' },
   { value: 'diseño', label: 'Diseño', description: 'Paquetes, SEO y control de Diseño' },
+  { value: 'ventas', label: 'Ventas', description: 'Solo lectura: Paquetes y Comercial' },
 ]
 
 export function UsersClient() {
@@ -236,6 +237,13 @@ export function UsersClient() {
           <Badge className="bg-orange-100 text-orange-700 hover:bg-orange-100">
             <Palette className="h-3 w-3 mr-1" />
             Diseño
+          </Badge>
+        )
+      case 'ventas':
+        return (
+          <Badge className="bg-cyan-100 text-cyan-700 hover:bg-cyan-100">
+            <DollarSign className="h-3 w-3 mr-1" />
+            Ventas
           </Badge>
         )
       default:

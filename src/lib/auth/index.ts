@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
 // Available roles in the system
-export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño'
+export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
 
 // Role permissions configuration
 export const ROLE_PERMISSIONS = {
@@ -10,27 +10,45 @@ export const ROLE_PERMISSIONS = {
     label: 'Administrador',
     description: 'Acceso total al sistema',
     canAccessAdmin: true,
+    readOnly: false,
     sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
   },
   marketing: {
     label: 'Marketing',
     description: 'Acceso admin (todo el sistema)',
     canAccessAdmin: true,
+    readOnly: false,
     sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
   },
   producto: {
     label: 'Producto',
     description: 'Todo excepto Diseño y Marketing',
     canAccessAdmin: false,
+    readOnly: false,
     sections: ['cupos', 'productos', 'comercial', 'rendimiento'],
   },
   diseño: {
     label: 'Diseño',
     description: 'Paquetes, SEO y Diseño',
     canAccessAdmin: false,
+    readOnly: false,
     sections: ['productos', 'diseño'],
   },
+  ventas: {
+    label: 'Ventas',
+    description: 'Solo lectura: Paquetes y Comercial',
+    canAccessAdmin: false,
+    readOnly: true,
+    sections: ['productos', 'comercial'],
+  },
 } as const
+
+/**
+ * Check if a role has read-only access
+ */
+export function isReadOnlyRole(role: UserRole): boolean {
+  return ROLE_PERMISSIONS[role]?.readOnly || false
+}
 
 export interface UserWithRole {
   id: string

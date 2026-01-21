@@ -56,6 +56,7 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
   marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
   producto: ['cupos', 'productos', 'comercial', 'rendimiento'],
   diseño: ['productos', 'diseño'],
+  ventas: ['productos', 'comercial'],
 }
 
 // Static shell component - no hooks, no state, just static JSX
