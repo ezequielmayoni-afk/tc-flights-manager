@@ -326,9 +326,10 @@ class TCClient {
    */
   async getBooking(bookingReference: string): Promise<TCBookingResponse | null> {
     try {
+      const micrositeId = process.env.TC_MICROSITE_ID || 'siviajo'
       console.log(`[TC] Fetching booking: ${bookingReference}`)
       const result = await this.request<TCBookingResponse>(
-        `/booking/${bookingReference}`,
+        `/booking/getBookings/${micrositeId}/${bookingReference}`,
         { method: 'GET' }
       )
       console.log(`[TC] Booking fetched successfully: ${bookingReference}`)

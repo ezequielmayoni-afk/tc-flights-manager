@@ -136,16 +136,26 @@ export interface TCSyncResult {
 
 // Transport service within a booking
 export interface TCBookingTransportService {
-  id: string                          // "SIV-11-0"
-  bookingReference: string            // "SIV-TRANSPORT-185447"
+  id: string                          // "SIV-945-0"
+  bookingReference: string            // "SIV-TRANSPORT-368156"
   provider: string                    // "CONTRACT_TRANSPORT"
   providerDescription: string         // "Contract Transport Sí, viajo"
-  providerConfigurationId: number
-  status?: string                     // "CONFIRMED", "CANCELLED", etc.
-  departureDate?: string              // "YYYY-MM-DD"
+  providerConfigurationId: number     // Provider config ID (not supplier)
+  supplierId: number                  // Supplier ID (matches our suppliers table)
+  supplierName?: string               // "Sí, viajo"
+  status?: string                     // "BOOKED", "CANCELLED", etc.
+  startDate?: string                  // "2026-04-30T12:00:00"
+  endDate?: string                    // "2026-04-30T23:00:00"
+  departureDate?: string              // Alternative field name
   arrivalDate?: string
   departureTime?: string
   arrivalTime?: string
+  departureAirport?: string           // "EZE"
+  arrivalAirport?: string             // "PUJ"
+  returnDepartureAirport?: string     // "PUJ"
+  returnArrivalAirport?: string       // "EZE"
+  returnDepartureDate?: string
+  returnArrivalDate?: string
   origin?: string
   destination?: string
   // Passenger counts
@@ -160,6 +170,15 @@ export interface TCBookingTransportService {
   transportId?: string                // TC transport ID
   modalityCode?: string
   cabinClass?: string
+  onewayPrice?: boolean
+  segment?: Array<{
+    departureAirport: string
+    arrivalAirport: string
+    departureDate: string
+    arrivalDate: string
+    flightNumber: string
+    bookingClass: string
+  }>
 }
 
 // Full booking response from TC

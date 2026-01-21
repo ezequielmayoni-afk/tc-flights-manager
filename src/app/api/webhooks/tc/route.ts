@@ -191,7 +191,7 @@ async function handleNewBooking(
   }
 
   // Find the flight by TC transport ID and supplier
-  const flight = await findFlightByTCId(db, service.id, service.providerConfigurationId)
+  const flight = await findFlightByTCId(db, service.id, service.supplierId)
 
   // Calculate passengers
   const adults = service.adults || 0
@@ -469,7 +469,7 @@ export async function POST(request: NextRequest) {
     const ourSupplierIds = await getOurSupplierIds(db)
     const allTransportServices = bookingDetails.transportservice || []
     const transportServices = allTransportServices.filter(
-      service => ourSupplierIds.includes(service.providerConfigurationId)
+      service => ourSupplierIds.includes(service.supplierId)
     )
 
     console.log(`[TC Webhook] Filtering services: ${allTransportServices.length} total, ${transportServices.length} from our suppliers (${ourSupplierIds.join(', ')})`)
