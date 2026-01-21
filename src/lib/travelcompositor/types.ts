@@ -178,6 +178,9 @@ export interface TCBookingTransportService {
     arrivalDate: string
     flightNumber: string
     bookingClass: string
+    marketingAirlineCode: string
+    operatingAirlineCode?: string
+    cabinClass?: string
   }>
 }
 

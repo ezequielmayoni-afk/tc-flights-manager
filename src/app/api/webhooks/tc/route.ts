@@ -556,8 +556,16 @@ export async function POST(request: NextRequest) {
         })
 
         // Log if flight was sold out and deactivated
-        if (result.inventory?.soldOut) {
+        // Check both inventory (modify/cancel) and inventoryResults (create)
+        if ('inventory' in result && result.inventory?.soldOut) {
           console.log(`[TC Webhook] Flight SOLD OUT after booking: ${result.inventory.tcTransportId}`)
+        }
+        if ('inventoryResults' in result && result.inventoryResults) {
+          for (const inv of result.inventoryResults) {
+            if (inv.result.soldOut) {
+              console.log(`[TC Webhook] Flight SOLD OUT after booking: ${inv.tcTransportId}`)
+            }
+          }
         }
       } catch (serviceError) {
         const errorMessage = serviceError instanceof Error ? serviceError.message : 'Unknown error'
