@@ -194,14 +194,14 @@ async function updateInventory(
 async function handleNewBooking(
   db: ReturnType<typeof getSupabaseAdmin>,
   service: TCBookingTransportService,
-  bookingReference: string,
+  bookingReference: string,  // Main booking reference (e.g., "SIV-948")
   bookingPayload: Record<string, unknown>
 ) {
-  // Check if reservation already exists
+  // Check if reservation already exists by tc_service_id (unique per transport service)
   const { data: existing } = await db
     .from('reservations')
     .select('id')
-    .eq('booking_reference', service.bookingReference)
+    .eq('tc_service_id', service.id)
     .single()
 
   if (existing) {
@@ -235,44 +235,53 @@ async function handleNewBooking(
     console.log(`[TC Webhook] Found ${matchedFlights.length} matching flights for booking ${service.bookingReference}`)
   }
 
-  // Calculate passengers - try multiple field names since TC may use different ones
-  // Also cast service to unknown first then to Record to check alternative field names
+  // Calculate passengers - TC sends counts at BOOKING level, not service level
+  // TC uses: adultCount, childCount, infantCount
   const svc = service as unknown as Record<string, unknown>
-
-  // Try different field names for passengers
-  const adults = (service.adults || svc.numAdults || svc.paxAdults || svc.adultos || 0) as number
-  const children = (service.children || svc.numChildren || svc.paxChildren || svc.ninos || 0) as number
-  const infants = (service.infants || svc.numInfants || svc.paxInfants || svc.bebes || 0) as number
-
-  // Also check if passengers are in a nested object or at booking level
   const bookingData = bookingPayload as Record<string, unknown>
-  const bookingAdults = (bookingData.adults || bookingData.numAdults || 0) as number
-  const bookingChildren = (bookingData.children || bookingData.numChildren || 0) as number
-  const bookingInfants = (bookingData.infants || bookingData.numInfants || 0) as number
 
-  // Use service-level passengers first, fallback to booking-level
-  const finalAdults = adults > 0 ? adults : bookingAdults
-  const finalChildren = children > 0 ? children : bookingChildren
-  const finalInfants = infants > 0 ? infants : bookingInfants
-  const totalPassengers = finalAdults + finalChildren + finalInfants
+  // Primary: TC booking level fields (adultCount, childCount, infantCount)
+  let adults = (bookingData.adultCount || 0) as number
+  let children = (bookingData.childCount || 0) as number
+  let infants = (bookingData.infantCount || 0) as number
 
-  console.log(`[TC Webhook] Passenger counts - service: adults=${adults}, children=${children}, infants=${infants}`)
-  console.log(`[TC Webhook] Passenger counts - booking: adults=${bookingAdults}, children=${bookingChildren}, infants=${bookingInfants}`)
-  console.log(`[TC Webhook] Final passengers: ${totalPassengers} (adults=${finalAdults}, children=${finalChildren}, infants=${finalInfants})`)
+  console.log(`[TC Webhook] Booking level counts: adults=${adults}, children=${children}, infants=${infants}`)
 
-  // Debug: log all service fields to find where passengers really are
-  console.log(`[TC Webhook] Service fields:`, Object.keys(svc).join(', '))
+  // Fallback: try distribution array (for multi-room bookings)
+  if (adults === 0 && children === 0 && infants === 0) {
+    const distribution = bookingData.distribution as Array<Record<string, unknown>> | undefined
+    if (Array.isArray(distribution) && distribution.length > 0) {
+      for (const dist of distribution) {
+        adults += (dist.adults || dist.adultCount || 0) as number
+        children += (dist.children || dist.childCount || 0) as number
+        infants += (dist.infants || dist.infantCount || 0) as number
+      }
+      console.log(`[TC Webhook] From distribution: adults=${adults}, children=${children}, infants=${infants}`)
+    }
+  }
+
+  // Fallback: service level
+  if (adults === 0 && children === 0 && infants === 0) {
+    adults = (service.adults || svc.adultCount || 0) as number
+    children = (service.children || svc.childCount || 0) as number
+    infants = (service.infants || svc.infantCount || 0) as number
+  }
+
+  const totalPassengers = adults + children + infants
+
+  console.log(`[TC Webhook] Final passengers: ${totalPassengers} (adults=${adults}, children=${children}, infants=${infants})`)
 
   // Validate price against TC transport prices
   let priceValidation = null
   const transportId = flight?.tc_transport_id || service.transportId || service.id
-  if (transportId && service.totalAmount) {
+  const amountToValidate = service.totalAmount || service.netAmount
+  if (transportId && amountToValidate) {
     priceValidation = await validateTransportPrice(
       transportId,
-      finalAdults,
-      finalChildren,
-      finalInfants,
-      service.totalAmount,
+      adults,
+      children,
+      infants,
+      amountToValidate,
       false, // Assume one-way by default
       10 // 10% tolerance
     )
@@ -287,11 +296,38 @@ async function handleNewBooking(
     }
   }
 
-  // Insert reservation
+  // Extract total amount - TC uses pricebreakdown.totalPrice.microsite.amount
+  const pricebreakdown = svc.pricebreakdown as Record<string, unknown> | undefined
+  const totalPrice = pricebreakdown?.totalPrice as Record<string, unknown> | undefined
+  const micrositePrice = totalPrice?.microsite as Record<string, unknown> | undefined
+  let totalAmount = (micrositePrice?.amount as number) || null
+
+  // Fallback: try other price fields
+  if (!totalAmount) {
+    totalAmount = service.totalAmount || service.netAmount ||
+      (svc.totalAmount as number) || (svc.netAmount as number) || null
+  }
+
+  // Extract travel date - TC uses startDate at service level
+  let travelDate = (svc.startDate as string) || service.startDate || service.departureDate || null
+
+  // Fallback: try first segment's departureDate
+  if (!travelDate && segments.length > 0) {
+    travelDate = segments[0].departureDate || null
+  }
+
+  // Format date to YYYY-MM-DD if it's a datetime string
+  if (travelDate && travelDate.includes('T')) {
+    travelDate = travelDate.split('T')[0]
+  }
+
+  console.log(`[TC Webhook] Amount: ${totalAmount}, Travel date: ${travelDate}`)
+
+  // Insert reservation - use main booking reference (e.g., "SIV-948")
   const { data: reservation, error } = await db
     .from('reservations')
     .insert({
-      booking_reference: service.bookingReference,
+      booking_reference: bookingReference,  // Main booking ref (SIV-948), not service ref
       tc_service_id: service.id,
       tc_transport_id: flight?.tc_transport_id || service.transportId || service.id,
       provider: service.provider,
@@ -299,12 +335,12 @@ async function handleNewBooking(
       provider_configuration_id: service.providerConfigurationId,
       flight_id: flight?.id || null,
       status: 'confirmed',
-      adults: finalAdults,
-      children: finalChildren,
-      infants: finalInfants,
-      total_amount: service.totalAmount,
-      currency: service.currency || 'USD',
-      travel_date: service.departureDate,
+      adults,
+      children,
+      infants,
+      total_amount: totalAmount,
+      currency: service.currency || (svc.currency as string) || 'USD',
+      travel_date: travelDate,
       webhook_payload: bookingPayload,
     })
     .select()
@@ -356,11 +392,11 @@ async function handleModifyBooking(
   bookingReference: string,
   bookingPayload: Record<string, unknown>
 ) {
-  // Find existing reservation
+  // Find existing reservation by tc_service_id
   const { data: existing } = await db
     .from('reservations')
     .select('*')
-    .eq('booking_reference', service.bookingReference)
+    .eq('tc_service_id', service.id)
     .single()
 
   if (!existing) {
@@ -368,13 +404,45 @@ async function handleModifyBooking(
     return handleNewBooking(db, service, bookingReference, bookingPayload)
   }
 
-  // Calculate passenger difference for inventory update
-  const newAdults = service.adults || 0
-  const newChildren = service.children || 0
-  const newInfants = service.infants || 0
+  // Extract passengers - TC uses adultCount, childCount, infantCount at booking level
+  const svc = service as unknown as Record<string, unknown>
+  const bookingData = bookingPayload as Record<string, unknown>
+
+  let newAdults = (bookingData.adultCount || 0) as number
+  let newChildren = (bookingData.childCount || 0) as number
+  let newInfants = (bookingData.infantCount || 0) as number
+
+  // Fallback: try distribution array
+  if (newAdults === 0 && newChildren === 0 && newInfants === 0) {
+    const distribution = bookingData.distribution as Array<Record<string, unknown>> | undefined
+    if (Array.isArray(distribution) && distribution.length > 0) {
+      for (const dist of distribution) {
+        newAdults += (dist.adults || dist.adultCount || 0) as number
+        newChildren += (dist.children || dist.childCount || 0) as number
+        newInfants += (dist.infants || dist.infantCount || 0) as number
+      }
+    }
+  }
+
   const oldTotal = (existing.adults || 0) + (existing.children || 0) + (existing.infants || 0)
   const newTotal = newAdults + newChildren + newInfants
   const passengersDelta = newTotal - oldTotal
+
+  // Extract amount - TC uses pricebreakdown.totalPrice.microsite.amount
+  const pricebreakdown = svc.pricebreakdown as Record<string, unknown> | undefined
+  const totalPriceObj = pricebreakdown?.totalPrice as Record<string, unknown> | undefined
+  const micrositePrice = totalPriceObj?.microsite as Record<string, unknown> | undefined
+  let totalAmount = (micrositePrice?.amount as number) || service.totalAmount || service.netAmount || null
+
+  // Extract travel date - TC uses startDate at service level
+  const segments = service.segment || []
+  let travelDate = (svc.startDate as string) || service.startDate || service.departureDate || null
+  if (!travelDate && segments.length > 0) {
+    travelDate = segments[0].departureDate || null
+  }
+  if (travelDate && travelDate.includes('T')) {
+    travelDate = travelDate.split('T')[0]
+  }
 
   // Update reservation
   const { data: reservation, error } = await db
@@ -384,12 +452,12 @@ async function handleModifyBooking(
       adults: newAdults,
       children: newChildren,
       infants: newInfants,
-      total_amount: service.totalAmount,
-      travel_date: service.departureDate,
+      total_amount: totalAmount,
+      travel_date: travelDate,
       modification_date: new Date().toISOString(),
       webhook_payload: bookingPayload,
     })
-    .eq('booking_reference', service.bookingReference)
+    .eq('tc_service_id', service.id)
     .select()
     .single()
 
@@ -417,11 +485,11 @@ async function handleCancelBooking(
   service: TCBookingTransportService,
   bookingPayload: Record<string, unknown>
 ) {
-  // Find existing reservation
+  // Find existing reservation by tc_service_id
   const { data: existing } = await db
     .from('reservations')
     .select('*')
-    .eq('booking_reference', service.bookingReference)
+    .eq('tc_service_id', service.id)
     .single()
 
   if (!existing) {
@@ -435,7 +503,7 @@ async function handleCancelBooking(
   // Calculate passengers to return to inventory (negative delta)
   const passengersToReturn = -((existing.adults || 0) + (existing.children || 0) + (existing.infants || 0))
 
-  // Update reservation
+  // Update reservation by tc_service_id
   const { data: reservation, error } = await db
     .from('reservations')
     .update({
@@ -443,7 +511,7 @@ async function handleCancelBooking(
       cancellation_date: new Date().toISOString(),
       webhook_payload: bookingPayload,
     })
-    .eq('booking_reference', service.bookingReference)
+    .eq('tc_service_id', service.id)
     .select()
     .single()
 
