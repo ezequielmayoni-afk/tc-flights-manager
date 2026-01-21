@@ -45,6 +45,13 @@ interface DesignModalProps {
 }
 
 const VARIANTS = [1, 2, 3, 4, 5]
+const VARIANT_LABELS: Record<number, string> = {
+  1: 'Precio/Oferta',
+  2: 'Experiencia',
+  3: 'Destino',
+  4: 'Conveniencia',
+  5: 'Escasez',
+}
 const ASPECT_RATIOS: { key: AspectRatio; label: string }[] = [
   { key: '4x5', label: '4:5' },
   { key: '9x16', label: '9:16' },
@@ -438,7 +445,10 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
           <div className="flex gap-4 justify-center">
             {VARIANTS.map((variant) => (
               <div key={variant} className="flex flex-col items-center gap-2">
-                <span className="text-sm font-medium text-muted-foreground">V{variant}</span>
+                <div className="text-center">
+                  <span className="text-sm font-medium text-muted-foreground">V{variant}</span>
+                  <p className="text-[10px] text-muted-foreground/70">{VARIANT_LABELS[variant]}</p>
+                </div>
                 <div className="flex flex-col gap-3">
                   {ASPECT_RATIOS.map((ar) => (
                     <div key={ar.key}>

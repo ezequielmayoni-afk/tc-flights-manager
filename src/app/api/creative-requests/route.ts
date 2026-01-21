@@ -3,7 +3,7 @@ import { NextRequest } from 'next/server'
 import {
   sendSlackMessage,
   buildCreativeRequestMessage,
-  buildCreativeCompletedMessage,
+  // buildCreativeCompletedMessage, // Disabled - see PATCH handler
 } from '@/lib/slack/client'
 
 function getSupabaseClient() {
@@ -303,7 +303,9 @@ export async function PATCH(request: NextRequest) {
       throw updateError
     }
 
-    // Send Slack notification for completion
+    // NOTE: Creative completed notifications disabled
+    // If you need to re-enable, uncomment the block below
+    /*
     if (status === 'completed') {
       const { data: settings } = await db
         .from('notification_settings')
@@ -340,6 +342,7 @@ export async function PATCH(request: NextRequest) {
         })
       }
     }
+    */
 
     return new Response(JSON.stringify(updatedRequest), {
       headers: { 'Content-Type': 'application/json' },

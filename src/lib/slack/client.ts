@@ -46,7 +46,7 @@ export interface SlackResponse {
 }
 
 export interface NotificationPayload {
-  type: 'price_change' | 'creative_request' | 'creative_completed' | 'ad_underperforming' | 'needs_manual_quote'
+  type: 'price_change' | 'creative_request' | 'creative_completed' | 'ad_underperforming' | 'needs_manual_quote' | 'new_package_imported'
   channel: 'design' | 'marketing'
   packageId: number
   tcPackageId: number
@@ -528,6 +528,175 @@ export function buildNeedsManualQuoteMessage(data: {
       },
     ],
     attachments: [{ color }],
+  }
+}
+
+/**
+ * Build Slack message for new package imported (requires SEO)
+ */
+export function buildNewPackageImportedMessage(data: {
+  packageId: number
+  tcPackageId: number
+  packageTitle: string
+  price: number
+  currency: string
+  destinationsCount: number
+  nightsCount: number
+  importedBy: string
+  systemUrl: string
+}): SlackMessage {
+  return {
+    blocks: [
+      {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: '📦 Nuevo Paquete Importado - Requiere Carga SEO',
+          emoji: true,
+        },
+      },
+      {
+        type: 'section',
+        fields: [
+          {
+            type: 'mrkdwn',
+            text: `*Paquete:*\n<${data.systemUrl}/packages/${data.packageId}|${data.tcPackageId} - ${data.packageTitle}>`,
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Precio:*\n${data.currency} ${data.price.toLocaleString()} por persona`,
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Destinos:*\n${data.destinationsCount} destino(s)`,
+          },
+          {
+            type: 'mrkdwn',
+            text: `*Noches:*\n${data.nightsCount} noche(s)`,
+          },
+        ],
+      },
+      {
+        type: 'context',
+        elements: [
+          {
+            type: 'mrkdwn',
+            text: `✏️ Se requiere revisión y carga de contenido SEO. Importado por: ${data.importedBy}`,
+          },
+        ],
+      },
+      { type: 'divider' },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: 'Ver Paquete' },
+            url: `${data.systemUrl}/packages/${data.packageId}`,
+          },
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: 'Editar SEO' },
+            url: `${data.systemUrl}/packages/${data.packageId}?tab=seo`,
+          },
+        ],
+      },
+    ],
+    attachments: [{ color: '#3498db' }], // Blue for info
+  }
+}
+
+/**
+ * Build Slack message for manual quote summary (consolidated notification)
+ */
+export function buildManualQuoteSummaryMessage(data: {
+  packages: Array<{
+    packageId: number
+    tcPackageId: number
+    packageTitle: string
+    oldPrice: number
+    newPrice: number
+    currency: string
+    variancePct: number
+  }>
+  systemUrl: string
+  mentionUser?: string // e.g., "@marcelo" or Slack user ID like "<@U12345>"
+}): SlackMessage {
+  const packageCount = data.packages.length
+
+  // Build the list of packages
+  const packagesList = data.packages
+    .map(pkg => {
+      const direction = pkg.newPrice > pkg.oldPrice ? '↑' : '↓'
+      return `• <${data.systemUrl}/packages/${pkg.packageId}|${pkg.tcPackageId}> - ${pkg.packageTitle}\n   ${pkg.currency} ${pkg.oldPrice.toLocaleString()} → ${pkg.currency} ${pkg.newPrice.toLocaleString()} (${pkg.variancePct > 0 ? '+' : ''}${pkg.variancePct.toFixed(1)}% ${direction})`
+    })
+    .join('\n')
+
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: {
+        type: 'plain_text',
+        text: `🔔 ${packageCount} Paquete${packageCount > 1 ? 's' : ''} Requiere${packageCount > 1 ? 'n' : ''} Cotización Manual`,
+        emoji: true,
+      },
+    },
+  ]
+
+  // Add mention if provided
+  if (data.mentionUser) {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `${data.mentionUser} - Se detectaron variaciones de precio significativas en los siguientes paquetes:`,
+      },
+    })
+  } else {
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: 'Se detectaron variaciones de precio significativas en los siguientes paquetes:',
+      },
+    })
+  }
+
+  // Add packages list
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: packagesList,
+    },
+  })
+
+  blocks.push(
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: `⚠️ Estos paquetes tienen variaciones mayores al umbral configurado y requieren revisión manual.`,
+        },
+      ],
+    },
+    { type: 'divider' },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Ir a Recotización' },
+          url: `${data.systemUrl}/packages/requote`,
+        },
+      ],
+    }
+  )
+
+  return {
+    blocks,
+    attachments: [{ color: '#e74c3c' }], // Red for urgent
   }
 }
 

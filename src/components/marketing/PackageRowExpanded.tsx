@@ -142,6 +142,10 @@ export function PackageRowExpanded({
   const [updatingAdVariant, setUpdatingAdVariant] = useState<number | null>(null)
   const [updatingSelectedAds, setUpdatingSelectedAds] = useState(false)
 
+  // Drive loading state
+  const [loadingDriveCreatives, setLoadingDriveCreatives] = useState(false)
+  const [driveChecked, setDriveChecked] = useState(false)
+
   useEffect(() => {
     loadData()
   }, [pkg.id])
@@ -172,8 +176,7 @@ export function PackageRowExpanded({
         const data = await res.json()
         if (data.ads && data.ads.length > 0) {
           setExistingAds(data.ads)
-          // Sync with Meta to get real statuses
-          syncAdsWithMeta()
+          // Don't auto-sync with Meta - user can click "Sincronizar" button if needed
           return
         }
       }
@@ -183,10 +186,7 @@ export function PackageRowExpanded({
       if (res.ok) {
         const data = await res.json()
         setExistingAds(data.ads || [])
-        if (data.ads && data.ads.length > 0) {
-          // Sync with Meta to get real statuses
-          syncAdsWithMeta()
-        }
+        // Don't auto-sync with Meta - user can click "Sincronizar" button if needed
       }
     } catch (error) {
       console.error('Error loading existing ads:', error)
@@ -250,6 +250,8 @@ export function PackageRowExpanded({
   }
 
   const loadCreatives = async () => {
+    setLoadingDriveCreatives(true)
+    setDriveChecked(false)
     try {
       // Load from both endpoints - Drive creatives (always has fileId) and Meta creatives (has upload status)
       const [driveRes, metaRes] = await Promise.all([
@@ -261,7 +263,13 @@ export function PackageRowExpanded({
       if (driveRes.ok) {
         const driveData = await driveRes.json()
         setDriveCreatives(driveData.creatives || [])
+        console.log(`[Drive] Loaded ${driveData.creatives?.length || 0} creatives for package ${pkg.id}`)
+      } else {
+        console.warn(`[Drive] Failed to load creatives for package ${pkg.id}:`, driveRes.status)
+        setDriveCreatives([])
       }
+      setDriveChecked(true)
+      setLoadingDriveCreatives(false)
 
       // Get meta creatives (has upload status)
       if (metaRes.ok) {
@@ -302,6 +310,8 @@ export function PackageRowExpanded({
       }
     } catch (error) {
       console.error('Error loading creatives:', error)
+      setLoadingDriveCreatives(false)
+      setDriveChecked(true)
     }
   }
 
@@ -531,6 +541,7 @@ export function PackageRowExpanded({
             variant: variant,
             update_creative: true,
             update_copy: true,
+            force_reupload: true, // Always get fresh creative from Drive
           }],
         }),
       })
@@ -680,6 +691,7 @@ export function PackageRowExpanded({
             variant: ad.variant,
             update_creative: true,
             update_copy: true,
+            force_reupload: true, // Always get fresh creative from Drive
           })),
         }),
       })
@@ -1004,8 +1016,18 @@ export function PackageRowExpanded({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <h3 className="font-medium flex items-center gap-2">
-            <ImageIcon className="h-4 w-4" />
-            Creativos ({creatives.length})
+            <ImageIcon className="h-4 w-4 text-blue-600" />
+            <span className="text-blue-600">Meta ({creatives.length})</span>
+          </h3>
+          <h3 className="font-medium flex items-center gap-2">
+            <ImageIcon className="h-4 w-4 text-orange-600" />
+            <span className="text-orange-600">
+              Drive {loadingDriveCreatives ? (
+                <Loader2 className="h-3 w-3 inline animate-spin ml-1" />
+              ) : (
+                `(${driveCreatives.length})`
+              )}
+            </span>
           </h3>
           <h3 className="font-medium flex items-center gap-2">
             <Wand2 className="h-4 w-4" />
@@ -1169,9 +1191,9 @@ export function PackageRowExpanded({
           const copy = copies.find(c => c.variant === variant)
           const existingAd = existingAds.find(a => a.variant === variant)
           const isUploaded = variantCreatives.some(c => c.upload_status === 'uploaded')
-          // Use driveCreatives fileId if available, fallback to meta creatives drive_file_id
-          const fileId4x5 = drive4x5?.fileId || creative4x5?.drive_file_id
-          const fileId9x16 = drive9x16?.fileId || creative9x16?.drive_file_id
+          // Only use driveCreatives fileId - don't fallback to stale meta_creatives data
+          const fileId4x5 = drive4x5?.fileId
+          const fileId9x16 = drive9x16?.fileId
           // Local previews from manual uploads (takes priority over Drive)
           const localPreview4x5 = localPreviews[`${variant}-4x5`]
           const localPreview9x16 = localPreviews[`${variant}-9x16`]
@@ -1388,13 +1410,24 @@ export function PackageRowExpanded({
                 <div className="flex-shrink-0 w-[200px]">
                   <div className="flex items-center gap-1 mb-3">
                     <span className="text-[10px] font-medium text-orange-600">DRIVE</span>
-                    {(fileId4x5 || fileId9x16) && <ImageIcon className="h-3 w-3 text-orange-400" />}
+                    {loadingDriveCreatives ? (
+                      <Loader2 className="h-3 w-3 text-orange-400 animate-spin" />
+                    ) : (fileId4x5 || fileId9x16) ? (
+                      <ImageIcon className="h-3 w-3 text-orange-400" />
+                    ) : driveChecked ? (
+                      <span className="text-[9px] text-orange-400">(vacío)</span>
+                    ) : null}
                   </div>
                   <div className="flex gap-3">
                     {/* DRIVE 4x5 */}
                     <div className="flex flex-col items-center">
                       <span className="text-[10px] text-muted-foreground mb-1">4x5</span>
-                      {fileId4x5 ? (
+                      {loadingDriveCreatives ? (
+                        <div className="w-24 h-[116px] rounded-lg border-2 border-dashed border-orange-200 flex flex-col items-center justify-center bg-orange-50/30">
+                          <Loader2 className="h-5 w-5 text-orange-300 animate-spin" />
+                          <span className="text-[8px] text-orange-300 mt-1">Cargando...</span>
+                        </div>
+                      ) : fileId4x5 ? (
                         <div className="relative w-24 h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -1421,7 +1454,12 @@ export function PackageRowExpanded({
                     {/* DRIVE 9x16 */}
                     <div className="flex flex-col items-center">
                       <span className="text-[10px] text-muted-foreground mb-1">9x16</span>
-                      {fileId9x16 ? (
+                      {loadingDriveCreatives ? (
+                        <div className="w-[68px] h-[116px] rounded-lg border-2 border-dashed border-orange-200 flex flex-col items-center justify-center bg-orange-50/30">
+                          <Loader2 className="h-4 w-4 text-orange-300 animate-spin" />
+                          <span className="text-[8px] text-orange-300 mt-1">Cargando...</span>
+                        </div>
+                      ) : fileId9x16 ? (
                         <div className="relative w-[68px] h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
@@ -1449,6 +1487,15 @@ export function PackageRowExpanded({
 
                 {/* Copy Column */}
                 <div className="flex-1 min-w-0">
+                  {/* Variant Label Header */}
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-semibold text-foreground">
+                      {VARIANT_LABELS[variant]?.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {VARIANT_LABELS[variant]?.focus}
+                    </span>
+                  </div>
                   {copy ? (
                     editingCopy === variant ? (
                       <div className="space-y-3">

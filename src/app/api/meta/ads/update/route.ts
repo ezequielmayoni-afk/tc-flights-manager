@@ -27,6 +27,7 @@ interface UpdateAdRequest {
   variant: number
   update_creative: boolean  // Whether to re-upload creative from Drive
   update_copy: boolean      // Whether to use latest copies
+  force_reupload?: boolean  // Force re-upload from Drive even if already uploaded in DB
 }
 
 /**
@@ -64,6 +65,8 @@ export async function POST(request: NextRequest) {
         })
       }
 
+      // force_reupload defaults to true in package_id mode to always get fresh creatives
+      const forceReupload = body.force_reupload !== false
       ads = existingAds.map(ad => ({
         ad_id: ad.id,
         meta_ad_id: ad.meta_ad_id,
@@ -71,6 +74,7 @@ export async function POST(request: NextRequest) {
         variant: ad.variant,
         update_creative: true,
         update_copy: true,
+        force_reupload: forceReupload,
       }))
     } else {
       ads = body.ads as UpdateAdRequest[]
@@ -172,6 +176,7 @@ export async function POST(request: NextRequest) {
                 let isVideo = false
 
                 // FIRST: Check database for already-uploaded creatives (from manual upload or previous uploads)
+                // Skip if force_reupload is true - always get fresh from Drive
                 const { data: existingCreatives } = await db
                   .from('meta_creatives')
                   .select('*')
@@ -182,8 +187,8 @@ export async function POST(request: NextRequest) {
                 const existing4x5 = existingCreatives?.find(c => c.aspect_ratio === '4x5')
                 const existing9x16 = existingCreatives?.find(c => c.aspect_ratio === '9x16')
 
-                // If we have uploaded creatives in database, use them directly
-                if (existing4x5 && (existing4x5.meta_image_hash || existing4x5.meta_video_id)) {
+                // If we have uploaded creatives in database AND not forcing reupload, use them directly
+                if (!ad.force_reupload && existing4x5 && (existing4x5.meta_image_hash || existing4x5.meta_video_id)) {
                   sendEvent('updating', {
                     package_id,
                     variant: ad.variant,

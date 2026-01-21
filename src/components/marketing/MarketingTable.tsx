@@ -43,6 +43,14 @@ import { es } from 'date-fns/locale'
 import { PackageRowExpanded } from './PackageRowExpanded'
 import { CreativeRequestModal } from './CreativeRequestModal'
 
+// Normalize string by removing accents/diacritics
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 // Column configuration for resizable columns
 type ColumnKey = 'id' | 'paquete' | 'rango' | 'vencimiento' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
 
@@ -373,100 +381,97 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }, [reloadPackageData])
 
-  // Load copies and creatives count for all packages
+  // Load copies and creatives count for all packages - BATCHED for performance
   useEffect(() => {
-    const loadPackageData = async () => {
+    const loadPackageDataBatched = async () => {
       const supabase = createClient()
+      const packageIds = packages.map(p => p.id)
 
-      for (const pkg of packages) {
-        if (packageData[pkg.id]) continue // Already loaded
+      // Skip if no packages or already loaded
+      if (packageIds.length === 0) return
+      const unloadedIds = packageIds.filter(id => !packageData[id])
+      if (unloadedIds.length === 0) return
 
-        setLoadingPackages(prev => new Set(prev).add(pkg.id))
+      // Mark all as loading
+      setLoadingPackages(new Set(unloadedIds))
 
-        try {
-          // Load copies count
-          const { count: copiesCount } = await supabase
-            .from('meta_ad_copies')
-            .select('*', { count: 'exact', head: true })
-            .eq('package_id', pkg.id)
+      try {
+        // Batch query 1: Get all copies counts
+        const { data: allCopies } = await supabase
+          .from('meta_ad_copies')
+          .select('package_id')
+          .in('package_id', unloadedIds)
 
-          // Load creatives count
-          const { data: creatives } = await supabase
-            .from('meta_creatives')
-            .select('upload_status')
-            .eq('package_id', pkg.id)
+        // Batch query 2: Get all creatives with upload status
+        const { data: allCreatives } = await supabase
+          .from('meta_creatives')
+          .select('package_id, upload_status')
+          .in('package_id', unloadedIds)
 
-          const creativesCount = creatives?.length || 0
-          const uploadedCreativesCount = creatives?.filter((c: { upload_status: string }) => c.upload_status === 'uploaded').length || 0
+        // Batch query 3: Get all ads with status and adset info
+        const { data: allAds } = await supabase
+          .from('meta_ads')
+          .select('package_id, status, meta_adset_id')
+          .in('package_id', unloadedIds)
 
-          // Load ads status and adset info
-          const { data: ads } = await supabase
-            .from('meta_ads')
-            .select('status, meta_adset_id')
-            .eq('package_id', pkg.id)
+        // Process results into counts per package
+        const copiesByPackage: Record<number, number> = {}
+        ;(allCopies as Array<{ package_id: number }> | null)?.forEach(c => {
+          copiesByPackage[c.package_id] = (copiesByPackage[c.package_id] || 0) + 1
+        })
 
-          const hasActiveAds = ads?.some((ad: { status: string }) => ad.status === 'ACTIVE') || false
-
-          // Get adset_id from existing ads (use the first one found)
-          const existingAdSetId = (ads as Array<{ status: string; meta_adset_id?: string }> | null)?.find(ad => ad.meta_adset_id)?.meta_adset_id || ''
-
-          // If we have an adset_id, look up the campaign_id and names from Meta
-          let existingCampaignId = ''
-          let existingCampaignName: string | null = null
-          let existingAdSetName: string | null = null
-
-          if (existingAdSetId) {
-            try {
-              const lookupRes = await fetch(`/api/meta/lookup?type=adset&id=${existingAdSetId}`)
-              const lookupData = await lookupRes.json()
-              if (lookupData.found) {
-                existingAdSetName = lookupData.name || null
-                if (lookupData.campaign_id) {
-                  existingCampaignId = lookupData.campaign_id
-                  // Also lookup campaign name
-                  try {
-                    const campaignRes = await fetch(`/api/meta/lookup?type=campaign&id=${lookupData.campaign_id}`)
-                    const campaignData = await campaignRes.json()
-                    if (campaignData.found) {
-                      existingCampaignName = campaignData.name || null
-                    }
-                  } catch {
-                    // Ignore campaign lookup errors
-                  }
-                }
-              }
-            } catch {
-              // Ignore lookup errors
-            }
+        const creativesByPackage: Record<number, { total: number; uploaded: number }> = {}
+        ;(allCreatives as Array<{ package_id: number; upload_status: string }> | null)?.forEach(c => {
+          if (!creativesByPackage[c.package_id]) {
+            creativesByPackage[c.package_id] = { total: 0, uploaded: 0 }
           }
+          creativesByPackage[c.package_id].total++
+          if (c.upload_status === 'uploaded') {
+            creativesByPackage[c.package_id].uploaded++
+          }
+        })
 
-          setPackageData(prev => ({
-            ...prev,
-            [pkg.id]: {
-              copiesCount: copiesCount || 0,
-              creativesCount,
-              uploadedCreativesCount,
-              campaignId: prev[pkg.id]?.campaignId || existingCampaignId,
-              adSetId: prev[pkg.id]?.adSetId || existingAdSetId,
-              campaignName: prev[pkg.id]?.campaignName || existingCampaignName,
-              adSetName: prev[pkg.id]?.adSetName || existingAdSetName,
-              adsActive: hasActiveAds,
-              togglingAds: false,
-            }
-          }))
-        } catch (error) {
-          console.error(`Error loading data for package ${pkg.id}:`, error)
-        } finally {
-          setLoadingPackages(prev => {
-            const newSet = new Set(prev)
-            newSet.delete(pkg.id)
-            return newSet
-          })
+        const adsByPackage: Record<number, { hasActive: boolean; adSetId: string }> = {}
+        ;(allAds as Array<{ package_id: number; status: string; meta_adset_id?: string }> | null)?.forEach(ad => {
+          if (!adsByPackage[ad.package_id]) {
+            adsByPackage[ad.package_id] = { hasActive: false, adSetId: '' }
+          }
+          if (ad.status === 'ACTIVE') {
+            adsByPackage[ad.package_id].hasActive = true
+          }
+          if (ad.meta_adset_id && !adsByPackage[ad.package_id].adSetId) {
+            adsByPackage[ad.package_id].adSetId = ad.meta_adset_id
+          }
+        })
+
+        // Update state with all package data at once
+        const newPackageData: Record<number, PackageRowData> = {}
+        for (const pkgId of unloadedIds) {
+          const creatives = creativesByPackage[pkgId] || { total: 0, uploaded: 0 }
+          const ads = adsByPackage[pkgId] || { hasActive: false, adSetId: '' }
+
+          newPackageData[pkgId] = {
+            copiesCount: copiesByPackage[pkgId] || 0,
+            creativesCount: creatives.total,
+            uploadedCreativesCount: creatives.uploaded,
+            campaignId: '', // Don't lookup on initial load - defer to user interaction
+            adSetId: ads.adSetId,
+            campaignName: null,
+            adSetName: null, // Don't lookup on initial load - defer to user interaction
+            adsActive: ads.hasActive,
+            togglingAds: false,
+          }
         }
+
+        setPackageData(prev => ({ ...prev, ...newPackageData }))
+      } catch (error) {
+        console.error('Error loading batched package data:', error)
+      } finally {
+        setLoadingPackages(new Set())
       }
     }
 
-    loadPackageData()
+    loadPackageDataBatched()
   }, [packages])
 
   // Lookup campaign/adset names
@@ -519,6 +524,21 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }
 
+  // Lazy lookup - only fetch Meta names when user focuses the field (if not already loaded)
+  const handleFieldFocus = (packageId: number, field: 'campaignId' | 'adSetId') => {
+    const data = packageData[packageId]
+    if (!data) return
+
+    const type = field === 'campaignId' ? 'campaign' : 'adset'
+    const nameField = field === 'campaignId' ? 'campaignName' : 'adSetName'
+    const idValue = data[field]
+
+    // Only lookup if we have an ID but no name yet
+    if (idValue && !data[nameField]) {
+      lookupMeta(packageId, type, idValue)
+    }
+  }
+
   const filteredPackages = packages.filter((pkg) => {
     // Handle needs_update filter separately
     if (statusFilter === 'needs_update') {
@@ -527,10 +547,10 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       return false
     }
     if (searchQuery) {
-      const query = searchQuery.toLowerCase()
+      const query = normalizeText(searchQuery)
       return (
-        pkg.title.toLowerCase().includes(query) ||
-        pkg.tc_package_id.toString().includes(query)
+        normalizeText(pkg.title).includes(query) ||
+        pkg.tc_package_id.toString().includes(searchQuery)
       )
     }
     return true
@@ -910,6 +930,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           placeholder="Campaign ID"
                           value={data.campaignId ?? ''}
                           onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
+                          onFocus={() => handleFieldFocus(pkg.id, 'campaignId')}
                           className={`w-full h-9 text-xs text-center font-mono ${
                             data.campaignName ? 'border-green-500' :
                             data.campaignId ? 'border-red-400' : ''
@@ -930,6 +951,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           placeholder="AdSet ID *"
                           value={data.adSetId ?? ''}
                           onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
+                          onFocus={() => handleFieldFocus(pkg.id, 'adSetId')}
                           className={`w-full h-9 text-xs text-center font-mono ${
                             data.adSetName ? 'border-green-500' :
                             data.adSetId ? 'border-red-400' : ''
