@@ -235,11 +235,33 @@ async function handleNewBooking(
     console.log(`[TC Webhook] Found ${matchedFlights.length} matching flights for booking ${service.bookingReference}`)
   }
 
-  // Calculate passengers
-  const adults = service.adults || 0
-  const children = service.children || 0
-  const infants = service.infants || 0
-  const totalPassengers = adults + children + infants
+  // Calculate passengers - try multiple field names since TC may use different ones
+  // Also cast service to any to check alternative field names
+  const svc = service as Record<string, unknown>
+
+  // Try different field names for passengers
+  const adults = (service.adults || svc.numAdults || svc.paxAdults || svc.adultos || 0) as number
+  const children = (service.children || svc.numChildren || svc.paxChildren || svc.ninos || 0) as number
+  const infants = (service.infants || svc.numInfants || svc.paxInfants || svc.bebes || 0) as number
+
+  // Also check if passengers are in a nested object or at booking level
+  const bookingData = bookingPayload as Record<string, unknown>
+  const bookingAdults = (bookingData.adults || bookingData.numAdults || 0) as number
+  const bookingChildren = (bookingData.children || bookingData.numChildren || 0) as number
+  const bookingInfants = (bookingData.infants || bookingData.numInfants || 0) as number
+
+  // Use service-level passengers first, fallback to booking-level
+  const finalAdults = adults > 0 ? adults : bookingAdults
+  const finalChildren = children > 0 ? children : bookingChildren
+  const finalInfants = infants > 0 ? infants : bookingInfants
+  const totalPassengers = finalAdults + finalChildren + finalInfants
+
+  console.log(`[TC Webhook] Passenger counts - service: adults=${adults}, children=${children}, infants=${infants}`)
+  console.log(`[TC Webhook] Passenger counts - booking: adults=${bookingAdults}, children=${bookingChildren}, infants=${bookingInfants}`)
+  console.log(`[TC Webhook] Final passengers: ${totalPassengers} (adults=${finalAdults}, children=${finalChildren}, infants=${finalInfants})`)
+
+  // Debug: log all service fields to find where passengers really are
+  console.log(`[TC Webhook] Service fields:`, Object.keys(svc).join(', '))
 
   // Validate price against TC transport prices
   let priceValidation = null
@@ -247,9 +269,9 @@ async function handleNewBooking(
   if (transportId && service.totalAmount) {
     priceValidation = await validateTransportPrice(
       transportId,
-      adults,
-      children,
-      infants,
+      finalAdults,
+      finalChildren,
+      finalInfants,
       service.totalAmount,
       false, // Assume one-way by default
       10 // 10% tolerance
@@ -277,9 +299,9 @@ async function handleNewBooking(
       provider_configuration_id: service.providerConfigurationId,
       flight_id: flight?.id || null,
       status: 'confirmed',
-      adults,
-      children,
-      infants,
+      adults: finalAdults,
+      children: finalChildren,
+      infants: finalInfants,
       total_amount: service.totalAmount,
       currency: service.currency || 'USD',
       travel_date: service.departureDate,
