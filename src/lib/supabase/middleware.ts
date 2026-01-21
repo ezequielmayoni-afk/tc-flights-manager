@@ -1,13 +1,14 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño'
+type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
 
 // Routes that require admin role (admin or marketing)
 const ADMIN_ROUTES = ['/users']
 
 // Role-based route protection configuration
 // Maps route prefixes to the section they require
+// More specific routes must come before less specific ones in checks
 const SECTION_ROUTES: Record<string, string> = {
   '/dashboard': 'cupos',
   '/flights': 'cupos',
@@ -16,16 +17,19 @@ const SECTION_ROUTES: Record<string, string> = {
   '/packages/design': 'diseño',
   '/packages/marketing': 'marketing',
   '/packages/comercial': 'comercial',
+  '/packages/requote': 'requote',
+  '/packages/seo': 'seo',
   '/packages': 'productos',
   '/rendimiento': 'rendimiento',
 }
 
 // Role permissions (must match client-side config)
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento'],
-  diseño: ['productos', 'diseño'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote'],
+  diseño: ['productos', 'diseño', 'seo'],
+  ventas: ['productos', 'comercial'],
 }
 
 function isAdminRole(role: UserRole): boolean {
@@ -35,6 +39,12 @@ function isAdminRole(role: UserRole): boolean {
 function canAccessSection(role: UserRole, section: string): boolean {
   const sections = ROLE_PERMISSIONS[role]
   return sections?.includes(section) || false
+}
+
+// Get the default home page for all users
+function getHomePageForRole(_role: UserRole): string {
+  // All users go to /packages
+  return '/packages'
 }
 
 export async function updateSession(request: NextRequest) {
@@ -82,14 +92,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Redirect logged-in users away from auth pages
-  if (user && isAuthRoute) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/'
-    return NextResponse.redirect(url)
-  }
-
-  // For protected routes, check role-based access
+  // For logged-in users, get their role for redirects
   if (user && !isApiRoute) {
     // Get user's role from profile
     const { data: profile } = await supabase
@@ -99,6 +102,21 @@ export async function updateSession(request: NextRequest) {
       .single()
 
     const userRole = (profile?.role || 'producto') as UserRole
+    const homePage = getHomePageForRole(userRole)
+
+    // Redirect logged-in users away from auth pages to their home
+    if (isAuthRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = homePage
+      return NextResponse.redirect(url)
+    }
+
+    // Redirect root path to role-appropriate home page
+    if (request.nextUrl.pathname === '/') {
+      const url = request.nextUrl.clone()
+      url.pathname = homePage
+      return NextResponse.redirect(url)
+    }
 
     // Check admin routes
     const isAdminRoute = ADMIN_ROUTES.some(route =>
@@ -106,9 +124,9 @@ export async function updateSession(request: NextRequest) {
     )
 
     if (isAdminRoute && !isAdminRole(userRole)) {
-      // Not admin - redirect to dashboard with error
+      // Not admin - redirect to home with error
       const url = request.nextUrl.clone()
-      url.pathname = '/'
+      url.pathname = homePage
       url.searchParams.set('error', 'unauthorized')
       return NextResponse.redirect(url)
     }
@@ -124,9 +142,9 @@ export async function updateSession(request: NextRequest) {
       if (matchedRoute) {
         const requiredSection = SECTION_ROUTES[matchedRoute]
         if (!canAccessSection(userRole, requiredSection)) {
-          // User doesn't have access to this section
+          // User doesn't have access to this section - redirect to their home
           const url = request.nextUrl.clone()
-          url.pathname = '/'
+          url.pathname = homePage
           url.searchParams.set('error', 'unauthorized')
           return NextResponse.redirect(url)
         }

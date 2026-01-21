@@ -35,25 +35,8 @@ export default function LoginPage() {
         return
       }
 
-      // Get user role to determine redirect
-      let redirectPath = '/dashboard'
-
-      if (authData.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', authData.user.id)
-          .single() as { data: { role: string } | null }
-
-        // Ventas users should go to comercial, others to dashboard
-        if (profile?.role === 'ventas') {
-          redirectPath = '/packages/comercial'
-        } else if (profile?.role === 'diseño') {
-          redirectPath = '/packages'
-        }
-      }
-
-      router.push(redirectPath)
+      // All users go to /packages after login
+      router.push('/packages')
       router.refresh()
     } catch {
       setError('Ocurrió un error inesperado')
