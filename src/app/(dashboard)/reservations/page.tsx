@@ -416,18 +416,7 @@ export default function ReservationsPage() {
                       })()}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      {(() => {
-                        // Extract service bookingReference from webhook_payload
-                        const payload = reservation.webhook_payload as Record<string, unknown> | null
-                        const transportServices = payload?.transportservice as Array<Record<string, unknown>> | undefined
-                        const serviceRef = transportServices?.[0]?.bookingReference as string
-                        // If booking_reference has TRANSPORT, use it as fallback
-                        if (serviceRef) return serviceRef
-                        if (reservation.booking_reference.includes('TRANSPORT')) {
-                          return reservation.booking_reference
-                        }
-                        return reservation.tc_service_id
-                      })()}
+                      {reservation.tc_service_id}
                     </TableCell>
                     <TableCell className="text-sm">
                       {getSupplierName(reservation.flights?.supplier_id)}
