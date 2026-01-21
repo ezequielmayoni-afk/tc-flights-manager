@@ -44,6 +44,14 @@ interface SupplierStats {
   occupancy_rate: number
 }
 
+interface ReservationRow {
+  flight_id: number | null
+  adults: number | null
+  children: number | null
+  infants: number | null
+  status: string
+}
+
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient()
@@ -90,7 +98,8 @@ export async function GET(request: NextRequest) {
       console.log('[Dashboard API] Reservations in date range:', reservations?.length || 0)
 
       // Calculate sold by flight from reservations in the date range
-      reservations?.forEach(r => {
+      const typedReservations = reservations as ReservationRow[] | null
+      typedReservations?.forEach(r => {
         if (r.flight_id) {
           const passengers = (r.adults || 0) + (r.children || 0) + (r.infants || 0)
           soldByFlight.set(r.flight_id, (soldByFlight.get(r.flight_id) || 0) + passengers)
