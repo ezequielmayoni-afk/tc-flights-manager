@@ -400,14 +400,33 @@ export default function ReservationsPage() {
                     onClick={() => setSelectedReservation(reservation)}
                   >
                     <TableCell className="font-mono text-sm font-medium">
-                      {reservation.booking_reference}
+                      {(() => {
+                        // Extract main bookingReference from webhook_payload root
+                        const payload = reservation.webhook_payload as Record<string, unknown> | null
+                        const mainRef = payload?.bookingReference as string
+                        // If main ref exists and is different from transport ref, use it
+                        if (mainRef && !mainRef.includes('TRANSPORT')) {
+                          return mainRef
+                        }
+                        // Fallback: use booking_reference if it looks like main ref
+                        if (!reservation.booking_reference.includes('TRANSPORT')) {
+                          return reservation.booking_reference
+                        }
+                        return mainRef || reservation.booking_reference
+                      })()}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {(() => {
                         // Extract service bookingReference from webhook_payload
                         const payload = reservation.webhook_payload as Record<string, unknown> | null
                         const transportServices = payload?.transportservice as Array<Record<string, unknown>> | undefined
-                        return transportServices?.[0]?.bookingReference as string || reservation.tc_service_id
+                        const serviceRef = transportServices?.[0]?.bookingReference as string
+                        // If booking_reference has TRANSPORT, use it as fallback
+                        if (serviceRef) return serviceRef
+                        if (reservation.booking_reference.includes('TRANSPORT')) {
+                          return reservation.booking_reference
+                        }
+                        return reservation.tc_service_id
                       })()}
                     </TableCell>
                     <TableCell className="text-sm">
