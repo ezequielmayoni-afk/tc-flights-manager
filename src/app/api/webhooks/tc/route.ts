@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { logSyncOperation } from '@/lib/logger'
 import { getBooking, deleteTransport, validateTransportPrice } from '@/lib/travelcompositor/client'
-import type { TCBookingTransportService } from '@/lib/travelcompositor/types'
+import type { TCBookingTransportService, TCBookingResponse } from '@/lib/travelcompositor/types'
 
 // Use service role for webhook (no user auth)
 function getSupabaseAdmin() {
@@ -621,10 +621,13 @@ export async function POST(request: NextRequest) {
       console.log('[TC Webhook] TEST MODE: Booking data:', JSON.stringify(bookingDetails, null, 2))
     }
 
+    // Cast to expected type for consistent access
+    const booking = bookingDetails as unknown as TCBookingResponse
+
     console.log('[TC Webhook] Booking details received:', {
-      id: bookingDetails.id,
-      status: bookingDetails.status,
-      transportServices: bookingDetails.transportservice?.length || 0,
+      id: booking.id,
+      status: booking.status,
+      transportServices: booking.transportservice?.length || 0,
     })
 
     // Get list of supplier IDs we manage (cupos providers)
@@ -634,7 +637,7 @@ export async function POST(request: NextRequest) {
     // Filter to only process transport services from our suppliers
     // NOTE: Since we sync transports with the correct supplier_id in the URL,
     // TC's supplierId now correctly represents the real cupos provider
-    const allTransportServices = bookingDetails.transportservice || []
+    const allTransportServices = booking.transportservice || []
     const transportServices = allTransportServices.filter(
       service => ourSupplierIds.includes(service.supplierId)
     )
