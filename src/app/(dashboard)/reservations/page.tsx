@@ -74,6 +74,7 @@ interface Reservation {
     airline_code: string
     start_date: string
     end_date: string
+    supplier_id: number
   } | null
 }
 
@@ -96,6 +97,17 @@ const statusLabels = {
   confirmed: 'Confirmada',
   modified: 'Modificada',
   cancelled: 'Cancelada',
+}
+
+// Supplier ID to name mapping
+const supplierNames: Record<number, string> = {
+  19657: 'TopDest',
+  18259: 'Sí Viajo',
+}
+
+function getSupplierName(supplierId: number | undefined): string {
+  if (!supplierId) return '-'
+  return supplierNames[supplierId] || `Supplier ${supplierId}`
 }
 
 export default function ReservationsPage() {
@@ -389,7 +401,7 @@ export default function ReservationsPage() {
                       {reservation.booking_reference}
                     </TableCell>
                     <TableCell className="text-sm">
-                      {reservation.provider_description || reservation.provider || '-'}
+                      {getSupplierName(reservation.flights?.supplier_id)}
                     </TableCell>
                     <TableCell>
                       {reservation.flights ? (
@@ -507,7 +519,7 @@ export default function ReservationsPage() {
                 </div>
                 <div>
                   <h4 className="text-sm font-medium text-muted-foreground">Proveedor</h4>
-                  <p className="text-sm">{selectedReservation.provider_description}</p>
+                  <p className="text-sm">{getSupplierName(selectedReservation.flights?.supplier_id)}</p>
                 </div>
                 <div>
                   <h4 className="text-sm font-medium text-muted-foreground">Vuelo</h4>

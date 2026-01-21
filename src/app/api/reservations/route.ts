@@ -31,7 +31,8 @@ export async function GET(request: NextRequest) {
         name,
         airline_code,
         start_date,
-        end_date
+        end_date,
+        supplier_id
       )
     `, { count: 'exact' })
     .order('reservation_date', { ascending: false })
