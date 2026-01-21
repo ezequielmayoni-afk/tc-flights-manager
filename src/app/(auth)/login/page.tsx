@@ -25,7 +25,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data: authData, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
@@ -35,7 +35,25 @@ export default function LoginPage() {
         return
       }
 
-      router.push('/')
+      // Get user role to determine redirect
+      let redirectPath = '/dashboard'
+
+      if (authData.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', authData.user.id)
+          .single() as { data: { role: string } | null }
+
+        // Ventas users should go to comercial, others to dashboard
+        if (profile?.role === 'ventas') {
+          redirectPath = '/packages/comercial'
+        } else if (profile?.role === 'diseño') {
+          redirectPath = '/packages'
+        }
+      }
+
+      router.push(redirectPath)
       router.refresh()
     } catch {
       setError('Ocurrió un error inesperado')
