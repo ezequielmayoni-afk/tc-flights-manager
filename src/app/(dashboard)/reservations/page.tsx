@@ -68,6 +68,7 @@ interface Reservation {
   reservation_date: string
   modification_date: string | null
   cancellation_date: string | null
+  webhook_payload: Record<string, unknown> | null
   flights: {
     id: number
     name: string
@@ -402,7 +403,12 @@ export default function ReservationsPage() {
                       {reservation.booking_reference}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
-                      {reservation.tc_service_id}
+                      {(() => {
+                        // Extract service bookingReference from webhook_payload
+                        const payload = reservation.webhook_payload as Record<string, unknown> | null
+                        const transportServices = payload?.transportservice as Array<Record<string, unknown>> | undefined
+                        return transportServices?.[0]?.bookingReference as string || reservation.tc_service_id
+                      })()}
                     </TableCell>
                     <TableCell className="text-sm">
                       {getSupplierName(reservation.flights?.supplier_id)}
