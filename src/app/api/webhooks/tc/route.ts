@@ -18,6 +18,8 @@ interface TCWebhookNotification {
   action?: string               // Alternative: "create", "modify", "cancel"
   bookingId?: string
   bookingReference?: string     // "SIV-800"
+  // TEST MODE: If booking object is provided, use it directly (bypass getBooking API call)
+  booking?: Record<string, unknown>
   // Full payload for storage
   [key: string]: unknown
 }
@@ -584,9 +586,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Fetch full booking details from TC
-    console.log(`[TC Webhook] Fetching booking details for: ${bookingReference}`)
-    const bookingDetails = await getBooking(bookingReference)
+    // Check for TEST MODE: if booking object is provided in notification, use it directly
+    // This allows testing the webhook processing logic without calling TC API
+    let bookingDetails
+    const isTestMode = !!notification.booking
+
+    if (isTestMode) {
+      console.log(`[TC Webhook] TEST MODE: Using booking data from notification (bypassing TC API)`)
+      bookingDetails = notification.booking
+    } else {
+      // Fetch full booking details from TC
+      console.log(`[TC Webhook] Fetching booking details for: ${bookingReference}`)
+      bookingDetails = await getBooking(bookingReference)
+    }
 
     if (!bookingDetails) {
       console.error(`[TC Webhook] Could not fetch booking: ${bookingReference}`)
@@ -603,6 +615,10 @@ export async function POST(request: NextRequest) {
         { success: false, error: `Failed to fetch booking: ${bookingReference}` },
         { status: 500 }
       )
+    }
+
+    if (isTestMode) {
+      console.log('[TC Webhook] TEST MODE: Booking data:', JSON.stringify(bookingDetails, null, 2))
     }
 
     console.log('[TC Webhook] Booking details received:', {
