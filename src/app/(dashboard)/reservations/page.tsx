@@ -43,11 +43,11 @@ import {
   ChevronRight,
   Users,
   DollarSign,
-  Calendar,
   Ticket,
   XCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { DatePicker } from '@/components/ui/date-picker'
 
 interface Reservation {
   id: number
@@ -337,19 +337,18 @@ export default function ReservationsPage() {
             </Select>
 
             <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-muted-foreground" />
-              <Input
-                type="date"
+              <DatePicker
                 value={startDate}
-                onChange={(e) => { setStartDate(e.target.value); setPage(0) }}
-                className="w-[150px]"
+                onChange={(date) => { setStartDate(date); setPage(0) }}
+                placeholder="Desde"
+                className="w-[160px]"
               />
               <span className="text-muted-foreground">-</span>
-              <Input
-                type="date"
+              <DatePicker
                 value={endDate}
-                onChange={(e) => { setEndDate(e.target.value); setPage(0) }}
-                className="w-[150px]"
+                onChange={(date) => { setEndDate(date); setPage(0) }}
+                placeholder="Hasta"
+                className="w-[160px]"
               />
             </div>
           </div>

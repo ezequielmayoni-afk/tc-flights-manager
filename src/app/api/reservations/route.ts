@@ -48,11 +48,16 @@ export async function GET(request: NextRequest) {
   }
 
   if (startDate) {
-    query = query.gte('reservation_date', startDate)
+    // Argentina is UTC-3, so 00:00 local = 03:00 UTC
+    query = query.gte('reservation_date', `${startDate}T03:00:00Z`)
   }
 
   if (endDate) {
-    query = query.lte('reservation_date', `${endDate}T23:59:59`)
+    // End of day in Argentina (23:59:59 local) = 02:59:59 UTC next day
+    const nextDay = new Date(endDate)
+    nextDay.setDate(nextDay.getDate() + 1)
+    const nextDayStr = nextDay.toISOString().split('T')[0]
+    query = query.lte('reservation_date', `${nextDayStr}T02:59:59.999Z`)
   }
 
   if (search) {

@@ -54,11 +54,14 @@ interface DashboardData {
     id: number
     name: string
     base_id: string
-    end_date: string
+    tc_transport_id: string
+    start_date: string
+    release_date: string
+    release_contract: number
     quantity: number
     sold: number
     remaining: number
-    daysUntilExpiry: number
+    daysUntilRelease: number
     supplier_id: number | null
     supplier_name: string
   }>
@@ -331,7 +334,7 @@ export function DashboardStats() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-orange-500" />
-                Cupos por vencer (próximos 7 días)
+                Cupos por vencer (próximos 10 días)
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -341,7 +344,8 @@ export function DashboardStats() {
                     <TableRow>
                       <TableHead>Vuelo</TableHead>
                       <TableHead>Proveedor</TableHead>
-                      <TableHead>ID Base</TableHead>
+                      <TableHead>TC ID</TableHead>
+                      <TableHead>Salida</TableHead>
                       <TableHead>Vencimiento</TableHead>
                       <TableHead className="text-right">Totales</TableHead>
                       <TableHead className="text-right">Vendidos</TableHead>
@@ -363,11 +367,14 @@ export function DashboardStats() {
                         <TableCell className="text-muted-foreground">
                           {flight.supplier_name}
                         </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {flight.base_id}
+                        <TableCell className="text-muted-foreground font-mono text-xs">
+                          {flight.tc_transport_id || flight.base_id}
                         </TableCell>
                         <TableCell>
-                          {format(new Date(flight.end_date), 'dd MMM yyyy', { locale: es })}
+                          {format(new Date(flight.start_date), 'dd MMM', { locale: es })}
+                        </TableCell>
+                        <TableCell className="text-orange-600 font-medium">
+                          {format(new Date(flight.release_date), 'dd MMM', { locale: es })}
                         </TableCell>
                         <TableCell className="text-right">{flight.quantity}</TableCell>
                         <TableCell className="text-right">{flight.sold}</TableCell>
@@ -375,7 +382,7 @@ export function DashboardStats() {
                           {flight.remaining}
                         </TableCell>
                         <TableCell className="text-center">
-                          {getDaysUntilExpiryBadge(flight.daysUntilExpiry)}
+                          {getDaysUntilExpiryBadge(flight.daysUntilRelease)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -383,7 +390,7 @@ export function DashboardStats() {
                 </Table>
               ) : (
                 <p className="text-muted-foreground text-center py-8">
-                  No hay cupos por vencer en los próximos 7 días
+                  No hay cupos por vencer en los próximos 10 días
                 </p>
               )}
             </CardContent>
