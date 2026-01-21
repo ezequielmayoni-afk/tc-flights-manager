@@ -13,6 +13,7 @@ function getUntypedClient() {
 }
 
 // Helper to sync a single flight (transport + modality)
+// Uses flight.supplier_id to sync to the correct supplier in TC
 async function syncSingleFlight(
   db: ReturnType<typeof getUntypedClient>,
   flight: DBFlight,
@@ -27,8 +28,13 @@ async function syncSingleFlight(
   // Map to TC format
   const tcTransport = mapFlightToTransport(flightWithCombinables)
 
-  // Sync transport to TC
-  const result = await tcClient.syncTransport(tcTransport)
+  // Use flight's supplier_id for TC API URL
+  const supplierId = flight.supplier_id
+
+  console.log(`[SYNC] Syncing flight ${flight.id} to supplier ${supplierId}`)
+
+  // Sync transport to TC with the correct supplier_id
+  const result = await tcClient.syncTransport(tcTransport, supplierId)
 
   if (!result.success) {
     await db
@@ -61,13 +67,13 @@ async function syncSingleFlight(
   if (modalities.length > 0) {
     const dbModality = modalities[0]
     const tcModality = mapModalityToTC(dbModality, flight.start_date, flight.end_date)
-    const modalityResult = await tcClient.syncModality(transportId, tcModality, isModalityUpdate)
+    const modalityResult = await tcClient.syncModality(transportId, tcModality, isModalityUpdate, supplierId)
     if (!modalityResult.success) {
       modalitySyncError = modalityResult.error || 'Modality sync failed'
     }
   } else {
     const defaultModality = createDefaultModality(flight)
-    const modalityResult = await tcClient.syncModality(transportId, defaultModality, isModalityUpdate)
+    const modalityResult = await tcClient.syncModality(transportId, defaultModality, isModalityUpdate, supplierId)
     if (!modalityResult.success) {
       modalitySyncError = modalityResult.error || 'Default modality sync failed'
     }
@@ -93,8 +99,8 @@ async function syncSingleFlight(
     direction: 'push',
     status: modalitySyncError ? 'error' : 'success',
     error_message: modalitySyncError || null,
-    request_payload: tcTransport,
-    response_payload: { transportId, name: flight.name, base_id: flight.base_id },
+    request_payload: { ...tcTransport, _supplierId: supplierId },
+    response_payload: { transportId, name: flight.name, base_id: flight.base_id, supplier_id: supplierId },
   })
 
   return {
@@ -150,6 +156,7 @@ export async function POST(request: Request) {
     console.log('[SYNC API] Flight data:', {
       id: flight.id,
       name: flight.name,
+      supplier_id: flight.supplier_id,
       leg_type: flight.leg_type,
       paired_flight_id: flight.paired_flight_id,
       tc_transport_id: flight.tc_transport_id

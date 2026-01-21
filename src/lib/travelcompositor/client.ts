@@ -199,9 +199,12 @@ class TCClient {
 
   /**
    * Create a new transport (flight) in TravelCompositor
+   * @param transport - Transport data to create
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async createTransport(transport: TCTransport): Promise<TCTransportResponse> {
-    return this.request<TCTransportResponse>(`/transport/${this.supplierId}`, {
+  async createTransport(transport: TCTransport, supplierId?: number): Promise<TCTransportResponse> {
+    const supplierIdToUse = supplierId || this.supplierId
+    return this.request<TCTransportResponse>(`/transport/${supplierIdToUse}`, {
       method: 'POST',
       body: JSON.stringify(transport),
     })
@@ -209,13 +212,16 @@ class TCClient {
 
   /**
    * Update an existing transport (flight) in TravelCompositor
+   * @param transport - Transport data to update (must include id)
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async updateTransport(transport: TCTransport): Promise<TCTransportResponse> {
+  async updateTransport(transport: TCTransport, supplierId?: number): Promise<TCTransportResponse> {
     if (!transport.id) {
       throw new Error('Transport ID is required for update')
     }
 
-    return this.request<TCTransportResponse>(`/transport/${this.supplierId}`, {
+    const supplierIdToUse = supplierId || this.supplierId
+    return this.request<TCTransportResponse>(`/transport/${supplierIdToUse}`, {
       method: 'PUT',
       body: JSON.stringify(transport),
     })
@@ -223,9 +229,11 @@ class TCClient {
 
   /**
    * Create a modality for an existing transport
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async createModality(transportId: string, modality: TCModality): Promise<void> {
-    await this.request(`/transport/${this.supplierId}/${transportId}`, {
+  async createModality(transportId: string, modality: TCModality, supplierId?: number): Promise<void> {
+    const supplierIdToUse = supplierId || this.supplierId
+    await this.request(`/transport/${supplierIdToUse}/${transportId}`, {
       method: 'POST',
       body: JSON.stringify(modality),
     })
@@ -233,9 +241,11 @@ class TCClient {
 
   /**
    * Update an existing modality for a transport
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async updateModality(transportId: string, modality: TCModality): Promise<void> {
-    await this.request(`/transport/${this.supplierId}/${transportId}`, {
+  async updateModality(transportId: string, modality: TCModality, supplierId?: number): Promise<void> {
+    const supplierIdToUse = supplierId || this.supplierId
+    await this.request(`/transport/${supplierIdToUse}/${transportId}`, {
       method: 'PUT',
       body: JSON.stringify(modality),
     })
@@ -243,21 +253,23 @@ class TCClient {
 
   /**
    * Sync a flight to TravelCompositor (create or update)
+   * @param transport - Transport data to sync
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async syncTransport(transport: TCTransport): Promise<TCSyncResult> {
+  async syncTransport(transport: TCTransport, supplierId?: number): Promise<TCSyncResult> {
     try {
       let result: TCTransportResponse
 
       if (transport.id) {
         // Update existing transport
-        result = await this.updateTransport(transport)
+        result = await this.updateTransport(transport, supplierId)
       } else {
         // Create new transport
-        result = await this.createTransport(transport)
+        result = await this.createTransport(transport, supplierId)
       }
 
       // Success logging happens in sync route
-      console.log(`[TC] Transport ${transport.id ? 'updated' : 'created'}: ${result.id}`)
+      console.log(`[TC] Transport ${transport.id ? 'updated' : 'created'}: ${result.id} (supplier: ${supplierId || this.supplierId})`)
 
       return {
         success: true,
@@ -276,31 +288,32 @@ class TCClient {
   /**
    * Sync a modality to TravelCompositor (create or update)
    * @param isUpdate - if true, tries PUT first; if it fails with "does not exist", falls back to POST
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async syncModality(transportId: string, modality: TCModality, isUpdate: boolean = false): Promise<TCSyncResult> {
+  async syncModality(transportId: string, modality: TCModality, isUpdate: boolean = false, supplierId?: number): Promise<TCSyncResult> {
     try {
       if (isUpdate) {
         try {
-          await this.updateModality(transportId, modality)
+          await this.updateModality(transportId, modality, supplierId)
         } catch (updateError) {
           // If update fails because modality doesn't exist, try creating it
           const errorMessage = updateError instanceof Error ? updateError.message : ''
           if (errorMessage.includes('does not exist') || errorMessage.includes('use the create operation')) {
             console.log(`[TC Client] Modality update failed (doesn't exist), falling back to create for transport: ${transportId}`)
-            await this.createModality(transportId, modality)
+            await this.createModality(transportId, modality, supplierId)
           } else {
             throw updateError
           }
         }
       } else {
         try {
-          await this.createModality(transportId, modality)
+          await this.createModality(transportId, modality, supplierId)
         } catch (createError) {
           // If create fails because modality already exists, try updating it
           const errorMessage = createError instanceof Error ? createError.message : ''
           if (errorMessage.includes('already exists') || errorMessage.includes('use the update operation')) {
             console.log(`[TC Client] Modality create failed (already exists), falling back to update for transport: ${transportId}`)
-            await this.updateModality(transportId, modality)
+            await this.updateModality(transportId, modality, supplierId)
           } else {
             throw createError
           }
@@ -343,12 +356,14 @@ class TCClient {
   /**
    * Delete (deactivate) a transport from TravelCompositor
    * TC API doesn't support DELETE, so we set active=false instead
+   * @param supplierId - Supplier ID to use in URL (defaults to TC_SUPPLIER_ID env var)
    */
-  async deleteTransport(transportId: string): Promise<TCSyncResult> {
+  async deleteTransport(transportId: string, supplierId?: number): Promise<TCSyncResult> {
     try {
+      const supplierIdToUse = supplierId || this.supplierId
       // TC doesn't have a DELETE endpoint - we deactivate by setting active=false
       await this.request<TCTransportResponse>(
-        `/transport/${this.supplierId}`,
+        `/transport/${supplierIdToUse}`,
         {
           method: 'PUT',
           body: JSON.stringify({
@@ -360,7 +375,7 @@ class TCClient {
       )
 
       // Success logging happens in sync route
-      console.log(`[TC] Transport deactivated: ${transportId}`)
+      console.log(`[TC] Transport deactivated: ${transportId} (supplier: ${supplierIdToUse})`)
 
       return {
         success: true,
@@ -535,14 +550,18 @@ export const listTransports = (options?: Parameters<typeof tcClient.listTranspor
 export const getAllTransports = (options?: { active?: boolean }) =>
   tcClient.getAllTransports(options)
 export const getTransport = (transportId: string) => tcClient.getTransport(transportId)
-export const createTransport = (transport: TCTransport) => tcClient.createTransport(transport)
-export const updateTransport = (transport: TCTransport) => tcClient.updateTransport(transport)
-export const createModality = (transportId: string, modality: TCModality) =>
-  tcClient.createModality(transportId, modality)
-export const syncTransport = (transport: TCTransport) => tcClient.syncTransport(transport)
-export const syncModality = (transportId: string, modality: TCModality, isUpdate: boolean = false) =>
-  tcClient.syncModality(transportId, modality, isUpdate)
-export const deleteTransport = (transportId: string) => tcClient.deleteTransport(transportId)
+export const createTransport = (transport: TCTransport, supplierId?: number) =>
+  tcClient.createTransport(transport, supplierId)
+export const updateTransport = (transport: TCTransport, supplierId?: number) =>
+  tcClient.updateTransport(transport, supplierId)
+export const createModality = (transportId: string, modality: TCModality, supplierId?: number) =>
+  tcClient.createModality(transportId, modality, supplierId)
+export const syncTransport = (transport: TCTransport, supplierId?: number) =>
+  tcClient.syncTransport(transport, supplierId)
+export const syncModality = (transportId: string, modality: TCModality, isUpdate: boolean = false, supplierId?: number) =>
+  tcClient.syncModality(transportId, modality, isUpdate, supplierId)
+export const deleteTransport = (transportId: string, supplierId?: number) =>
+  tcClient.deleteTransport(transportId, supplierId)
 export const getBooking = (bookingReference: string) => tcClient.getBooking(bookingReference)
 
 // Package exports

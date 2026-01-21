@@ -23,8 +23,7 @@ interface TCWebhookNotification {
 }
 
 // Find flight by matching segment data from TC booking with our database
-// Matches by: airline_code + airports + date + leg type (IDA/VUELTA)
-// Returns flight with our supplier_id (real provider), not TC's supplierId (microsite)
+// Matches by: supplier_id + airline_code + date + leg type (IDA/VUELTA)
 interface TCSegment {
   departureAirport: string
   arrivalAirport: string
@@ -36,6 +35,7 @@ interface TCSegment {
 async function findFlightBySegment(
   db: ReturnType<typeof getSupabaseAdmin>,
   segment: TCSegment,
+  supplierId: number,
   isReturn: boolean = false
 ) {
   // Extract date in YYYYMMDD format from departureDate (e.g., "2026-04-30T12:00:00" -> "20260430")
@@ -43,40 +43,39 @@ async function findFlightBySegment(
   const legType = isReturn ? 'VUELTA' : 'IDA'
 
   // Build base_id pattern: AR-EZE-PUJ-20260430-IDA
-  // Note: base_id uses origin-destination from the OUTBOUND flight for both legs
   const baseIdPattern = `${segment.marketingAirlineCode}-%-${dateStr}-${legType}`
 
-  console.log(`[Webhook] Finding flight by segment: ${segment.departureAirport} → ${segment.arrivalAirport}, date: ${dateStr}, leg: ${legType}`)
+  console.log(`[Webhook] Finding flight: supplier=${supplierId}, ${segment.departureAirport} → ${segment.arrivalAirport}, date: ${dateStr}, leg: ${legType}`)
   console.log(`[Webhook] Searching base_id pattern: ${baseIdPattern}`)
 
-  // Search by base_id pattern and start_date
+  // Search by supplier_id + base_id pattern + start_date
   const { data: flights } = await db
     .from('flights')
     .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code')
+    .eq('supplier_id', supplierId)
     .eq('start_date', segment.departureDate.split('T')[0])
     .eq('airline_code', segment.marketingAirlineCode)
     .ilike('base_id', baseIdPattern)
 
   if (flights && flights.length > 0) {
-    console.log(`[Webhook] Found ${flights.length} flights matching pattern`)
-    // Return the first match
+    console.log(`[Webhook] Found ${flights.length} flights matching pattern for supplier ${supplierId}`)
     return flights[0]
   }
 
-  // Fallback: try matching by start_date and name containing airports
-  const airportPattern = `${segment.departureAirport}%${segment.arrivalAirport}`
+  // Fallback: try matching by supplier_id + start_date + airports
   const { data: fallbackFlights } = await db
     .from('flights')
     .select('id, tc_transport_id, name, supplier_id, base_id, start_date')
+    .eq('supplier_id', supplierId)
     .eq('start_date', segment.departureDate.split('T')[0])
     .or(`name.ilike.%${segment.departureAirport}%,base_id.ilike.%${segment.departureAirport}%`)
 
   if (fallbackFlights && fallbackFlights.length > 0) {
-    console.log(`[Webhook] Fallback found ${fallbackFlights.length} flights`)
+    console.log(`[Webhook] Fallback found ${fallbackFlights.length} flights for supplier ${supplierId}`)
     return fallbackFlights[0]
   }
 
-  console.log(`[Webhook] No flight found for segment`)
+  console.log(`[Webhook] No flight found for segment (supplier: ${supplierId})`)
   return null
 }
 
@@ -196,15 +195,17 @@ async function handleNewBooking(
   }
 
   // Find flights by matching segments from TC with our database
-  // TC's supplierId is the microsite, not the real provider - we ignore it
-  // Instead, we match by segment data (airports, dates, airline) and get OUR supplier_id
+  // Use service.supplierId to filter by the correct supplier (cupos provider)
   const segments = service.segment || []
+  const supplierId = service.supplierId
   const matchedFlights: Array<{ flight: Awaited<ReturnType<typeof findFlightBySegment>>; isReturn: boolean }> = []
+
+  console.log(`[TC Webhook] Matching segments for supplier ${supplierId} (${service.supplierName || 'unknown'})`)
 
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i]
     const isReturn = i > 0 // First segment is outbound, rest are return
-    const flight = await findFlightBySegment(db, segment, isReturn)
+    const flight = await findFlightBySegment(db, segment, supplierId, isReturn)
     if (flight) {
       matchedFlights.push({ flight, isReturn })
       console.log(`[TC Webhook] Matched segment ${i + 1}: ${flight.tc_transport_id} (supplier_id: ${flight.supplier_id})`)
@@ -506,13 +507,19 @@ export async function POST(request: NextRequest) {
       transportServices: bookingDetails.transportservice?.length || 0,
     })
 
-    // Process ALL transport services from the booking
-    // NOTE: We do NOT filter by TC's supplierId because it represents the microsite (not the real supplier)
-    // Instead, handleNewBooking uses segment matching to find flights in OUR database
-    // and gets our real supplier_id from matched flights
-    const transportServices = bookingDetails.transportservice || []
+    // Get list of supplier IDs we manage (cupos providers)
+    const { data: suppliers } = await db.from('suppliers').select('id')
+    const ourSupplierIds = (suppliers || []).map(s => s.id)
 
-    console.log(`[TC Webhook] Processing ${transportServices.length} transport services (segment matching will determine matches)`)
+    // Filter to only process transport services from our suppliers
+    // NOTE: Since we sync transports with the correct supplier_id in the URL,
+    // TC's supplierId now correctly represents the real cupos provider
+    const allTransportServices = bookingDetails.transportservice || []
+    const transportServices = allTransportServices.filter(
+      service => ourSupplierIds.includes(service.supplierId)
+    )
+
+    console.log(`[TC Webhook] Filtering: ${allTransportServices.length} total services, ${transportServices.length} from our suppliers (${ourSupplierIds.join(', ')})`)
 
     const results: Array<{ service: string; result: unknown }> = []
     const eventType = getEventType(notification)

@@ -7,6 +7,7 @@ export interface DBFlight {
   id: number
   base_id: string
   tc_transport_id?: string | null
+  supplier_id: number
   name: string
   airline_code: string
   transport_type: string
