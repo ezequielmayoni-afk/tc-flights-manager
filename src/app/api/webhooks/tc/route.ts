@@ -62,17 +62,31 @@ async function findFlightBySegment(
     return flights[0]
   }
 
-  // Fallback: try matching by supplier_id + start_date + airports
+  // Fallback 1: try matching by supplier_id + start_date + airports in name/base_id
   const { data: fallbackFlights } = await db
     .from('flights')
-    .select('id, tc_transport_id, name, supplier_id, base_id, start_date')
+    .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code')
     .eq('supplier_id', supplierId)
     .eq('start_date', segment.departureDate.split('T')[0])
     .or(`name.ilike.%${segment.departureAirport}%,base_id.ilike.%${segment.departureAirport}%`)
 
   if (fallbackFlights && fallbackFlights.length > 0) {
-    console.log(`[Webhook] Fallback found ${fallbackFlights.length} flights for supplier ${supplierId}`)
+    console.log(`[Webhook] Fallback 1 found ${fallbackFlights.length} flights for supplier ${supplierId}`)
     return fallbackFlights[0]
+  }
+
+  // Fallback 2: try matching by just supplier_id + start_date + airline_code
+  // This is the simplest match - useful when base_id doesn't follow standard pattern
+  const { data: simpleFlights } = await db
+    .from('flights')
+    .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code')
+    .eq('supplier_id', supplierId)
+    .eq('start_date', segment.departureDate.split('T')[0])
+    .eq('airline_code', segment.marketingAirlineCode)
+
+  if (simpleFlights && simpleFlights.length > 0) {
+    console.log(`[Webhook] Fallback 2 (simple match) found ${simpleFlights.length} flights for supplier ${supplierId}, airline ${segment.marketingAirlineCode}`)
+    return simpleFlights[0]
   }
 
   console.log(`[Webhook] No flight found for segment (supplier: ${supplierId})`)
