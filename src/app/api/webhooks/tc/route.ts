@@ -236,8 +236,8 @@ async function handleNewBooking(
   }
 
   // Calculate passengers - try multiple field names since TC may use different ones
-  // Also cast service to any to check alternative field names
-  const svc = service as Record<string, unknown>
+  // Also cast service to unknown first then to Record to check alternative field names
+  const svc = service as unknown as Record<string, unknown>
 
   // Try different field names for passengers
   const adults = (service.adults || svc.numAdults || svc.paxAdults || svc.adultos || 0) as number

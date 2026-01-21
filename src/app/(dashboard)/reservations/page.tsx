@@ -355,6 +355,7 @@ export default function ReservationsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Referencia</TableHead>
+                <TableHead>Proveedor</TableHead>
                 <TableHead>Vuelo</TableHead>
                 <TableHead>Estado</TableHead>
                 <TableHead className="text-center">Pasajeros</TableHead>
@@ -367,13 +368,13 @@ export default function ReservationsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8">
+                  <TableCell colSpan={9} className="text-center py-8">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : reservations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No hay reservas para mostrar
                   </TableCell>
                 </TableRow>
@@ -386,6 +387,9 @@ export default function ReservationsPage() {
                   >
                     <TableCell className="font-mono text-sm">
                       {reservation.booking_reference}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {reservation.provider_description || reservation.provider || '-'}
                     </TableCell>
                     <TableCell>
                       {reservation.flights ? (
@@ -405,9 +409,11 @@ export default function ReservationsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-center">
-                      <span className="font-medium">{reservation.total_passengers}</span>
+                      <span className="font-medium">
+                        {reservation.total_passengers || (reservation.adults + reservation.children + reservation.infants)}
+                      </span>
                       <span className="text-muted-foreground text-xs block">
-                        {reservation.adults}A {reservation.children}N {reservation.infants}B
+                        {reservation.adults || 0}A {reservation.children || 0}N {reservation.infants || 0}B
                       </span>
                     </TableCell>
                     <TableCell>
@@ -527,7 +533,9 @@ export default function ReservationsPage() {
                     <p className="text-xs text-muted-foreground">Bebés</p>
                   </div>
                   <div className="bg-primary/10 p-3 rounded-lg">
-                    <p className="text-2xl font-bold">{selectedReservation.total_passengers}</p>
+                    <p className="text-2xl font-bold">
+                      {selectedReservation.total_passengers || (selectedReservation.adults + selectedReservation.children + selectedReservation.infants)}
+                    </p>
                     <p className="text-xs text-muted-foreground">Total</p>
                   </div>
                 </div>
