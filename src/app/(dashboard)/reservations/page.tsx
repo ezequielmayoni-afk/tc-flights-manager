@@ -368,7 +368,6 @@ export default function ReservationsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>N° Reserva</TableHead>
-                <TableHead>Referencia</TableHead>
                 <TableHead>Proveedor</TableHead>
                 <TableHead>Vuelo</TableHead>
                 <TableHead>Estado</TableHead>
@@ -382,13 +381,13 @@ export default function ReservationsPage() {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8">
+                  <TableCell colSpan={9} className="text-center py-8">
                     <RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : reservations.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
                     No hay reservas para mostrar
                   </TableCell>
                 </TableRow>
@@ -414,9 +413,6 @@ export default function ReservationsPage() {
                         }
                         return mainRef || reservation.booking_reference
                       })()}
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
-                      {reservation.tc_service_id}
                     </TableCell>
                     <TableCell className="text-sm">
                       {getSupplierName(reservation.flights?.supplier_id)}
