@@ -43,8 +43,8 @@ const cuposItems: NavItem[] = [
 
 const productosItems: NavItem[] = [
   { name: 'Paquetes', href: '/packages', icon: Briefcase, section: 'productos' },
-  { name: 'Cotización manual', href: '/packages/requote', icon: RefreshCw, section: 'productos' },
-  { name: 'SEO', href: '/packages/seo', icon: Search, section: 'productos' },
+  { name: 'Cotización manual', href: '/packages/requote', icon: RefreshCw, section: 'requote' },
+  { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
   { name: 'Diseño', href: '/packages/design', icon: Palette, section: 'diseño' },
   { name: 'Marketing', href: '/packages/marketing', icon: Megaphone, section: 'marketing' },
   { name: 'Comercial', href: '/packages/comercial', icon: ShoppingCart, section: 'comercial' },
@@ -52,10 +52,10 @@ const productosItems: NavItem[] = [
 
 // Role permissions - must match middleware
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento'],
-  diseño: ['productos', 'diseño'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote'],
+  diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial'],
 }
 
