@@ -191,7 +191,7 @@ export async function generateCreativesWithGemini(
         temperature: 0.7,
         topP: 0.95,
         topK: 40,
-        maxOutputTokens: 16384,
+        maxOutputTokens: 8192,
         responseMimeType: 'application/json',
       },
       safetySettings: [
