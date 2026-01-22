@@ -229,9 +229,22 @@ export async function generateCreativesWithGemini(
     throw new Error('No content in Gemini response')
   }
 
-  // Parse the JSON response
+  // Parse the JSON response (clean up markdown code blocks if present)
   try {
-    const output = JSON.parse(content) as AICreativeOutput
+    let cleanContent = content.trim()
+
+    // Remove markdown code blocks if present
+    if (cleanContent.startsWith('```json')) {
+      cleanContent = cleanContent.slice(7)
+    } else if (cleanContent.startsWith('```')) {
+      cleanContent = cleanContent.slice(3)
+    }
+    if (cleanContent.endsWith('```')) {
+      cleanContent = cleanContent.slice(0, -3)
+    }
+    cleanContent = cleanContent.trim()
+
+    const output = JSON.parse(cleanContent) as AICreativeOutput
     return output
   } catch (parseError) {
     console.error('[Vertex AI] Failed to parse Gemini response:', content)
