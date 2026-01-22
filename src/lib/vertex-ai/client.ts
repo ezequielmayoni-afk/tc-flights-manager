@@ -4,6 +4,7 @@
  */
 
 import { google } from 'googleapis'
+import { createClient } from '@supabase/supabase-js'
 import type {
   AICreativeOutput,
   AICreativeVariant,
@@ -42,9 +43,43 @@ async function getAccessToken(): Promise<string> {
 }
 
 /**
- * The Master Prompt V2 for generating creatives
+ * Get the master prompt from database, falling back to default if not set
  */
-const MASTER_PROMPT = `PROMPT MAESTRO: AUTOMATIZACIÓN DE ADS "SÍ, VIAJO" (V2 - Con Contexto de Destino)
+async function getMasterPrompt(): Promise<string> {
+  try {
+    const db = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    const { data, error } = await db
+      .from('ai_settings')
+      .select('value')
+      .eq('key', 'master_prompt')
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[Vertex AI] Error fetching prompt from DB, using default:', error.message)
+    }
+
+    if (data?.value) {
+      console.log('[Vertex AI] Using custom prompt from database')
+      return data.value
+    }
+
+    console.log('[Vertex AI] Using default prompt')
+    return DEFAULT_MASTER_PROMPT
+  } catch (error) {
+    console.warn('[Vertex AI] Error fetching prompt, using default:', error)
+    return DEFAULT_MASTER_PROMPT
+  }
+}
+
+/**
+ * Default Master Prompt V2 for generating creatives
+ * This can be overridden by saving a custom prompt in the database
+ */
+const DEFAULT_MASTER_PROMPT = `PROMPT MAESTRO: AUTOMATIZACIÓN DE ADS "SÍ, VIAJO" (V2 - Con Contexto de Destino)
 
 ROL: Eres el Director de Arte y Diseñador Senior de la marca de turismo "Sí, Viajo". Tu objetivo es crear anuncios de alto rendimiento (Performance Ads) interpretando datos estructurados (JSON) y aplicando rigurosamente el Manual de Identidad Visual de la marca.
 
@@ -127,8 +162,11 @@ export async function generateCreativesWithGemini(
   const token = await getAccessToken()
   const endpoint = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${GEMINI_MODEL}:generateContent`
 
+  // Get the master prompt (from database or default)
+  const masterPrompt = await getMasterPrompt()
+
   // Build the prompt with package data
-  const prompt = MASTER_PROMPT.replace(
+  const prompt = masterPrompt.replace(
     '{{PACKAGE_JSON}}',
     JSON.stringify(packageData, null, 2)
   )

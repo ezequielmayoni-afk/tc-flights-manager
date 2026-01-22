@@ -1,8 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { Header } from '@/components/layout/Header'
-import { Palette, AlertCircle } from 'lucide-react'
 import { DesignTable } from '@/components/packages/DesignTable'
 import { CreativeRequestsPanel } from '@/components/design/CreativeRequestsPanel'
+import { DesignPageHeader } from '@/components/design/DesignPageHeader'
 import { listPackageCreatives } from '@/lib/google-drive/client'
 
 export type PackageForDesign = {
@@ -172,24 +172,7 @@ export default async function DesignPage() {
       <Header title="Diseño de Paquetes" />
 
       <div className="flex-1 p-6 space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Palette className="h-5 w-5 text-muted-foreground" />
-              <span className="text-muted-foreground">
-                {stats.total} paquetes en diseño
-              </span>
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <span className="text-amber-600 font-medium">
-                {stats.pending} pendientes
-              </span>
-              <span className="text-green-600 font-medium">
-                {stats.completed} completados
-              </span>
-            </div>
-          </div>
-        </div>
+        <DesignPageHeader stats={stats} />
 
         {/* Creative Requests Panel */}
         {creativeRequests.length > 0 && (
