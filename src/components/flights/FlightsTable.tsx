@@ -58,6 +58,14 @@ function parseLocalDate(dateStr: string): Date {
   return new Date(year, month - 1, day)
 }
 
+// Normalize string by removing accents/diacritics
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 const syncStatusStyles = {
   pending: 'bg-yellow-100 text-yellow-800',
   synced: 'bg-green-100 text-green-800',
@@ -662,7 +670,7 @@ export function FlightsTable({ flights }: FlightsTableProps) {
       const allSegments = paired
         ? [...(flight.leg_type === 'outbound' ? flight : paired).flight_segments, ...(flight.leg_type === 'return' ? flight : paired).flight_segments]
         : flight.flight_segments
-      const route = formatRoute(allSegments).toLowerCase()
+      const route = formatRoute(allSegments)
       const dates = `${formatDate(outboundDate)} - ${formatDate(returnDate)}`
       const nights = getHotelNights(outboundDate, returnDate, outboundSegments)
       const inventory = flight.modalities?.[0]?.modality_inventories?.[0]
@@ -671,26 +679,26 @@ export function FlightsTable({ flights }: FlightsTableProps) {
       const remaining = inventory?.remaining_seats ?? quantity
       const expInfo = getExpirationInfo(outboundDate, flight.release_contract || 0)
 
-      const supplierName = flight.suppliers?.name?.toLowerCase() || ''
+      const supplierName = normalizeText(flight.suppliers?.name || '')
 
       return (
-        supplierName.includes(filters.supplier.toLowerCase()) &&
-        flight.base_id.toLowerCase().includes(filters.base_id.toLowerCase()) &&
+        supplierName.includes(normalizeText(filters.supplier)) &&
+        normalizeText(flight.base_id).includes(normalizeText(filters.base_id)) &&
         formatDateTime(flight.created_at).includes(filters.created_at) &&
-        flight.name.toLowerCase().includes(filters.name.toLowerCase()) &&
-        route.includes(filters.route.toLowerCase()) &&
-        flight.airline_code.toLowerCase().includes(filters.airline_code.toLowerCase()) &&
-        dates.toLowerCase().includes(filters.dates.toLowerCase()) &&
+        normalizeText(flight.name).includes(normalizeText(filters.name)) &&
+        normalizeText(route).includes(normalizeText(filters.route)) &&
+        normalizeText(flight.airline_code).includes(normalizeText(filters.airline_code)) &&
+        normalizeText(dates).includes(normalizeText(filters.dates)) &&
         nights.toString().includes(filters.nights) &&
         quantity.toString().includes(filters.quantity) &&
         sold.toString().includes(filters.sold) &&
         remaining.toString().includes(filters.remaining) &&
         expInfo.dateStr.includes(filters.expiration) &&
-        (syncStatusLabels[flight.sync_status as keyof typeof syncStatusLabels] || flight.sync_status)
-          .toLowerCase().includes(filters.sync_status.toLowerCase()) &&
+        normalizeText(syncStatusLabels[flight.sync_status as keyof typeof syncStatusLabels] || flight.sync_status)
+          .includes(normalizeText(filters.sync_status)) &&
         (flight.last_sync_at
           ? formatDateTime(flight.last_sync_at).includes(filters.last_sync_at)
-          : filters.last_sync_at === '' || 'nunca'.includes(filters.last_sync_at.toLowerCase())
+          : filters.last_sync_at === '' || 'nunca'.includes(normalizeText(filters.last_sync_at))
         )
       )
     })

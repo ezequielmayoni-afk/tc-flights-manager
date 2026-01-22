@@ -683,6 +683,7 @@ export class MetaAdsClient {
    * Create an ad creative with placement asset customization
    * - Different images/videos for different placements (4x5 for feed, 9x16 for stories/reels)
    * - Multiple bodies and titles (up to 5 each)
+   * - CTA: "Más información" (directs to WhatsApp)
    * - WhatsApp message template (page_welcome_message)
    * - Supports both images (hash) and videos (id)
    */
@@ -770,7 +771,7 @@ export class MetaAdsClient {
       })
     }
 
-    // Build link URL with adlabel
+    // Build link URL with adlabel (WhatsApp destination)
     const linkLabel = generateLabel('link', 0)
     const linkUrls = [{
       website_url: 'https://api.whatsapp.com/send',
@@ -845,9 +846,9 @@ export class MetaAdsClient {
       bodies,
       titles,
       link_urls: linkUrls,
-      call_to_action_types: ['WHATSAPP_MESSAGE'],
+      call_to_action_types: ['LEARN_MORE'],
       call_to_actions: [{
-        type: 'WHATSAPP_MESSAGE',
+        type: 'LEARN_MORE',
         value: { app_destination: 'WHATSAPP' }
       }],
       ad_formats: ['AUTOMATIC_FORMAT'],
@@ -888,7 +889,7 @@ export class MetaAdsClient {
     }
 
     const mediaType = videos.length > 0 && images.length > 0 ? 'MIXED' : (videos.length > 0 ? 'VIDEO' : 'IMAGE')
-    console.log(`[Meta API] Creating WhatsApp ad creative (${mediaType}):`)
+    console.log(`[Meta API] Creating WhatsApp ad creative (${mediaType}) - CTA: LEARN_MORE (Más información):`)
     console.log('[Meta API] Params:', JSON.stringify(params, null, 2))
 
     try {

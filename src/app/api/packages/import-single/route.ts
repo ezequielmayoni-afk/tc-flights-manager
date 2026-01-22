@@ -339,6 +339,30 @@ export async function POST(request: NextRequest) {
       })
 
       console.log(`[Import Single] Inserted new package ${packageId} (ID: ${newPackage.id})`)
+
+      // Send notification for new package imported (requires SEO)
+      try {
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+        await fetch(`${appUrl}/api/notifications/send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'new_package_imported',
+            package_id: newPackage.id,
+            data: {
+              price: pricePerPax,
+              currency: currency,
+              destinations_count: packageData.destinations_count,
+              nights_count: packageData.nights_count,
+              imported_by: 'Import Manual',
+            },
+          }),
+        })
+        console.log(`[Import Single] New package notification sent for ${packageId}`)
+      } catch (notifyError) {
+        // Don't fail the import if notification fails
+        console.warn(`[Import Single] Failed to send notification for ${packageId}:`, notifyError)
+      }
     }
 
     // Import destinations if available

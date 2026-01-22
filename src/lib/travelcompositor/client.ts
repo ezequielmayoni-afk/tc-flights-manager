@@ -520,6 +520,42 @@ class TCClient {
     }
   }
 
+  /**
+   * Update a package's date range (availRange) in TravelCompositor
+   * @param packageId - The TC package ID
+   * @param startDate - Start date in YYYY-MM-DD format
+   * @param endDate - End date in YYYY-MM-DD format
+   */
+  async updatePackageDateRange(
+    packageId: number,
+    startDate: string,
+    endDate: string
+  ): Promise<{ success: boolean; error?: string; response?: unknown }> {
+    try {
+      console.log(`[TC] Updating package ${packageId} date range: ${startDate} to ${endDate}`)
+      const response = await this.request<unknown>(
+        `/package/${TC_MICROSITE_ID}/${packageId}`,
+        {
+          method: 'PUT',
+          body: JSON.stringify({
+            dateSettings: {
+              availRange: {
+                start: startDate,
+                end: endDate,
+              },
+            },
+          }),
+        }
+      )
+      console.log(`[TC] Package date range updated: ${packageId}`)
+      return { success: true, response }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`[TC] Failed to update package ${packageId} date range:`, errorMessage)
+      return { success: false, error: errorMessage }
+    }
+  }
+
   // ============================================
   // SUPPLIER METHODS
   // ============================================
@@ -572,6 +608,8 @@ export const getAllPackagesExcludingUsers = (excludeUsers: string[], options?: {
 export const getPackageDetail = (packageId: number) => tcClient.getPackageDetail(packageId)
 export const getPackageInfo = (packageId: number) => tcClient.getPackageInfo(packageId)
 export const deactivatePackage = (packageId: number) => tcClient.deactivatePackage(packageId)
+export const updatePackageDateRange = (packageId: number, startDate: string, endDate: string) =>
+  tcClient.updatePackageDateRange(packageId, startDate, endDate)
 
 // Supplier exports
 export const listSuppliers = () => tcClient.listSuppliers()

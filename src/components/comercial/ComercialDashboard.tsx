@@ -21,6 +21,14 @@ const MONTH_NAMES = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ]
 
+// Normalize string by removing accents/diacritics
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 interface Supplier {
   id: number
   name: string
@@ -70,13 +78,13 @@ export function ComercialDashboard({
   // Filtered packages
   const filteredPackages = useMemo(() => {
     return packages.filter((pkg) => {
-      // Search filter
+      // Search filter (accent-insensitive)
       if (search) {
-        const searchLower = search.toLowerCase()
-        const matchesTitle = pkg.title?.toLowerCase().includes(searchLower)
+        const searchNormalized = normalizeText(search)
+        const matchesTitle = pkg.title ? normalizeText(pkg.title).includes(searchNormalized) : false
         const matchesId = pkg.tc_package_id?.toString().includes(search)
         const matchesDestination = pkg.package_destinations?.some((d) =>
-          d.destination_name?.toLowerCase().includes(searchLower)
+          d.destination_name ? normalizeText(d.destination_name).includes(searchNormalized) : false
         )
         if (!matchesTitle && !matchesId && !matchesDestination) return false
       }

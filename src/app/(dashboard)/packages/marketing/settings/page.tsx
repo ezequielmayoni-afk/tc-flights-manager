@@ -18,6 +18,7 @@ interface NotificationSettings {
   notify_creative_completed: boolean
   notify_ad_underperforming: boolean
   notify_needs_manual_quote: boolean
+  notify_new_package_imported: boolean
   price_change_threshold_pct: number
   ctr_threshold_pct: number
   cpl_threshold: number
@@ -295,6 +296,21 @@ export default function NotificationSettingsPage() {
               type="checkbox"
               checked={settings.notify_needs_manual_quote}
               onChange={(e) => updateSetting('notify_needs_manual_quote', e.target.checked)}
+              className="h-5 w-5 rounded border-gray-300"
+            />
+          </label>
+
+          <label className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+            <div>
+              <p className="font-medium">Nuevo Paquete Importado</p>
+              <p className="text-sm text-muted-foreground">
+                Notificar cuando se importe un nuevo paquete (requiere carga SEO)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.notify_new_package_imported}
+              onChange={(e) => updateSetting('notify_new_package_imported', e.target.checked)}
               className="h-5 w-5 rounded border-gray-300"
             />
           </label>

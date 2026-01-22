@@ -68,6 +68,14 @@ import { toast } from 'sonner'
 import { DesignModal } from './DesignModal'
 import { useAuth } from '@/hooks/useAuth'
 
+// Normalize string by removing accents/diacritics
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
 type PackageWithDestinations = {
   id: number
   tc_package_id: number
@@ -478,13 +486,13 @@ export function PackagesTable({ packages }: PackagesTableProps) {
   const filteredAndSortedPackages = useMemo(() => {
     let result = [...packages]
 
-    // Filter by search text
+    // Filter by search text (accent-insensitive)
     if (searchText) {
-      const search = searchText.toLowerCase()
+      const search = normalizeText(searchText)
       result = result.filter(pkg =>
-        pkg.title.toLowerCase().includes(search) ||
-        pkg.tc_package_id.toString().includes(search) ||
-        pkg.package_destinations?.some(d => d.destination_name.toLowerCase().includes(search))
+        normalizeText(pkg.title).includes(search) ||
+        pkg.tc_package_id.toString().includes(searchText) ||
+        pkg.package_destinations?.some(d => normalizeText(d.destination_name).includes(search))
       )
     }
 

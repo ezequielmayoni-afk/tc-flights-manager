@@ -5,6 +5,7 @@ import {
   buildPriceChangeMessage,
   buildAdUnderperformingMessage,
   buildNeedsManualQuoteMessage,
+  buildNewPackageImportedMessage,
 } from '@/lib/slack/client'
 
 function getSupabaseClient() {
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
     const { type, package_id, data } = body as {
-      type: 'price_change' | 'ad_underperforming' | 'needs_manual_quote'
+      type: 'price_change' | 'ad_underperforming' | 'needs_manual_quote' | 'new_package_imported'
       package_id: number
       data: Record<string, unknown>
     }
@@ -199,6 +200,39 @@ export async function POST(request: NextRequest) {
         shouldSend = true
         break
 
+      case 'new_package_imported':
+        // Check setting (default to true if column doesn't exist yet)
+        if (settings.notify_new_package_imported === false) {
+          return new Response(
+            JSON.stringify({ success: false, reason: 'New package imported notifications disabled' }),
+            { headers: { 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const importData = data as {
+          price: number
+          currency: string
+          destinations_count: number
+          nights_count: number
+          imported_by: string
+        }
+
+        message = buildNewPackageImportedMessage({
+          packageId: pkg.id,
+          tcPackageId: pkg.tc_package_id,
+          packageTitle: pkg.title,
+          price: importData.price,
+          currency: importData.currency || pkg.currency || 'USD',
+          destinationsCount: importData.destinations_count || 0,
+          nightsCount: importData.nights_count || 0,
+          importedBy: importData.imported_by || 'Sistema',
+          systemUrl: SYSTEM_URL,
+        })
+
+        channel = settings.slack_channel_marketing || '#marketing'
+        shouldSend = true
+        break
+
       default:
         return new Response(
           JSON.stringify({ error: 'Invalid notification type' }),
@@ -225,6 +259,8 @@ export async function POST(request: NextRequest) {
           return `Anuncio con bajo rendimiento - ${pkg.tc_package_id}`
         case 'needs_manual_quote':
           return `Cotización manual requerida - ${pkg.tc_package_id}`
+        case 'new_package_imported':
+          return `Nuevo paquete importado - ${pkg.tc_package_id} (Requiere SEO)`
         default:
           return `Notificación - ${pkg.tc_package_id}`
       }
