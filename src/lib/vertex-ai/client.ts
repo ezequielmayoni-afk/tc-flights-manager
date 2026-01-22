@@ -190,7 +190,7 @@ export async function generateCreativesWithGemini(
         temperature: 0.7,
         topP: 0.95,
         topK: 40,
-        maxOutputTokens: 4096,
+        maxOutputTokens: 16384,
         responseMimeType: 'application/json',
       },
       safetySettings: [
@@ -247,7 +247,18 @@ export async function generateCreativesWithGemini(
     const output = JSON.parse(cleanContent) as AICreativeOutput
     return output
   } catch (parseError) {
-    console.error('[Vertex AI] Failed to parse Gemini response:', content)
+    // Check if the JSON is truncated (incomplete)
+    const lastChars = content.slice(-50)
+    const isTruncated = !content.trim().endsWith('}')
+
+    console.error('[Vertex AI] Failed to parse Gemini response.')
+    console.error('[Vertex AI] Content length:', content.length)
+    console.error('[Vertex AI] Last 50 chars:', lastChars)
+    console.error('[Vertex AI] Appears truncated:', isTruncated)
+
+    if (isTruncated) {
+      throw new Error('Gemini response truncated - JSON incomplete. Try simplifying the prompt or reducing output size.')
+    }
     throw new Error('Failed to parse Gemini response as JSON')
   }
 }
