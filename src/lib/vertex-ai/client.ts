@@ -76,67 +76,66 @@ async function getMasterPrompt(): Promise<string> {
 }
 
 /**
- * Default Master Prompt V3 for generating creatives
- * This can be overridden by saving a custom prompt in the database
+ * Variant configurations for per-variant generation
  */
-const DEFAULT_MASTER_PROMPT = `PROMPT MAESTRO: AUTOMATIZACIÓN DE ADS "SÍ, VIAJO" (V3)
+export const VARIANT_CONFIGS = {
+  1: { key: 'variante_1_precio', name: 'Precio / Oferta', description: 'Urgencia, oferta, "aprovechá ahora"' },
+  2: { key: 'variante_2_experiencia', name: 'Experiencia', description: 'Emocional, aspiracional, escaparse' },
+  3: { key: 'variante_3_destino', name: 'Destino', description: 'El lugar es protagonista, paisaje icónico' },
+  4: { key: 'variante_4_conveniencia', name: 'Conveniencia', description: 'Todo resuelto, cero estrés' },
+  5: { key: 'variante_5_escasez', name: 'Escasez', description: 'Últimos lugares, decisión inmediata' },
+} as const
+
+/**
+ * Single variant prompt template
+ */
+const SINGLE_VARIANT_PROMPT = `PROMPT: GENERACIÓN DE CREATIVE PARA ADS "SÍ, VIAJO"
 
 ROL: Eres el Director de Arte de "Sí, Viajo". Creas anuncios de alto rendimiento donde TODO EL TEXTO VA SOBRE LA IMAGEN.
 
-1. ENTRADA (JSON):
+DATOS DEL PAQUETE:
 {{PACKAGE_JSON}}
 
-2. REGLAS VISUALES:
+REGLAS VISUALES:
 - Colores: Azul #1A237E (fondo), Verde #1DE9B6 (precio/CTA)
 - Tipografía: Montserrat Bold Italic
 - Fotos: Luminosas, con sol, personas disfrutando
 - El precio debe ser el elemento más visible
 
-3. CONTEXTO DEL DESTINO:
-La imagen debe representar fielmente el destino del JSON (playas caribeñas, montañas, ciudades europeas, etc.)
+CONTEXTO DEL DESTINO:
+La imagen debe representar fielmente el destino (playas caribeñas, montañas, ciudades europeas, etc.)
 
-4. DATOS OBLIGATORIOS:
+DATOS OBLIGATORIOS:
 - Precio: usar current_price_per_pax redondeado hacia abajo con moneda
 - Fecha: formatear como "Mes Año"
 - Si es ALL INCLUSIVE o incluye vuelo, destacarlo
 
-5. VARIANTES (5 enfoques):
-- variante_1_precio: Urgencia, oferta, "aprovechá ahora"
-- variante_2_experiencia: Emocional, aspiracional, escaparse
-- variante_3_destino: El lugar es protagonista, paisaje icónico
-- variante_4_conveniencia: Todo resuelto, cero estrés
-- variante_5_escasez: Últimos lugares, decisión inmediata
+GENERA LA VARIANTE: {{VARIANT_NAME}}
+Enfoque: {{VARIANT_DESCRIPTION}}
 
-6. FORMATOS POR VARIANTE:
-Cada variante tiene DOS formatos:
+FORMATOS REQUERIDOS:
 - formato_1080: Imagen 1080x1080 (1:1) para Feed
 - formato_1920: Imagen 1920x1080 (16:9) para Stories/Reels
 
 RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
 {
-  "variante_1_precio": {
-    "concepto": "Precio / Oferta",
-    "formato_1080": {
-      "titulo_principal": "string",
-      "subtitulo": "string",
-      "precio_texto": "string (ej: USD 1234)",
-      "cta": "string",
-      "descripcion_imagen": "string EN INGLÉS (50-100 palabras)",
-      "estilo": "string"
-    },
-    "formato_1920": {
-      "titulo_principal": "string",
-      "subtitulo": "string",
-      "precio_texto": "string",
-      "cta": "string",
-      "descripcion_imagen": "string EN INGLÉS (50-100 palabras)",
-      "estilo": "string"
-    }
+  "concepto": "{{VARIANT_NAME}}",
+  "formato_1080": {
+    "titulo_principal": "string",
+    "subtitulo": "string",
+    "precio_texto": "string (ej: USD 1234)",
+    "cta": "string",
+    "descripcion_imagen": "string EN INGLÉS (50-100 palabras para Imagen 3)",
+    "estilo": "string"
   },
-  "variante_2_experiencia": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
-  "variante_3_destino": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
-  "variante_4_conveniencia": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
-  "variante_5_escasez": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
+  "formato_1920": {
+    "titulo_principal": "string",
+    "subtitulo": "string",
+    "precio_texto": "string",
+    "cta": "string",
+    "descripcion_imagen": "string EN INGLÉS (50-100 palabras para Imagen 3)",
+    "estilo": "string"
+  },
   "metadata": {
     "destino": "string",
     "fecha_salida": "string",
@@ -148,31 +147,62 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
 }
 
 IMPORTANTE para descripcion_imagen:
-- Escribir EN INGLÉS para Imagen 3
+- Escribir EN INGLÉS para generación con IA
 - 50-100 palabras, estilo técnico publicitario
 - Incluir: tipo de foto, composición, personas, luz, colores, mood
-- Ejemplo: "Professional advertising photograph of a happy couple relaxing in an infinity pool overlooking turquoise Caribbean waters. Palm trees frame the shot. Golden hour lighting, warm tones. Shot with professional DSLR. The mood is aspirational and luxurious."
 `
 
 /**
- * Call Gemini API to generate creative content
+ * Single variant response from Gemini
  */
-export async function generateCreativesWithGemini(
-  packageData: PackageDataForAI
-): Promise<AICreativeOutput> {
+export interface SingleVariantOutput {
+  concepto: string
+  formato_1080: {
+    titulo_principal: string
+    subtitulo: string
+    precio_texto: string
+    cta: string
+    descripcion_imagen: string
+    estilo: string
+  }
+  formato_1920: {
+    titulo_principal: string
+    subtitulo: string
+    precio_texto: string
+    cta: string
+    descripcion_imagen: string
+    estilo: string
+  }
+  metadata: {
+    destino: string
+    fecha_salida: string
+    precio_base: number
+    currency: string
+    noches: number
+    regimen: string | null
+  }
+}
+
+/**
+ * Call Gemini API to generate a SINGLE variant
+ * This allows sequential processing: generate → images → upload → next variant
+ */
+export async function generateSingleVariantWithGemini(
+  packageData: PackageDataForAI,
+  variantNumber: 1 | 2 | 3 | 4 | 5
+): Promise<SingleVariantOutput> {
   const token = await getAccessToken()
   const endpoint = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${GEMINI_MODEL}:generateContent`
 
-  // Get the master prompt (from database or default)
-  const masterPrompt = await getMasterPrompt()
+  const config = VARIANT_CONFIGS[variantNumber]
 
-  // Build the prompt with package data
-  const prompt = masterPrompt.replace(
-    '{{PACKAGE_JSON}}',
-    JSON.stringify(packageData, null, 2)
-  )
+  // Build prompt for single variant
+  const prompt = SINGLE_VARIANT_PROMPT
+    .replace('{{PACKAGE_JSON}}', JSON.stringify(packageData, null, 2))
+    .replace(/{{VARIANT_NAME}}/g, config.name)
+    .replace('{{VARIANT_DESCRIPTION}}', config.description)
 
-  console.log('[Vertex AI] Calling Gemini with package:', packageData.tc_package_id)
+  console.log(`[Vertex AI] Generating variant ${variantNumber} (${config.name}) for package ${packageData.tc_package_id}`)
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -191,77 +221,75 @@ export async function generateCreativesWithGemini(
         temperature: 0.7,
         topP: 0.95,
         topK: 40,
-        maxOutputTokens: 8192,
+        maxOutputTokens: 4096,
         responseMimeType: 'application/json',
       },
       safetySettings: [
-        {
-          category: 'HARM_CATEGORY_HARASSMENT',
-          threshold: 'BLOCK_ONLY_HIGH',
-        },
-        {
-          category: 'HARM_CATEGORY_HATE_SPEECH',
-          threshold: 'BLOCK_ONLY_HIGH',
-        },
-        {
-          category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',
-          threshold: 'BLOCK_ONLY_HIGH',
-        },
-        {
-          category: 'HARM_CATEGORY_DANGEROUS_CONTENT',
-          threshold: 'BLOCK_ONLY_HIGH',
-        },
+        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
       ],
     }),
   })
 
   if (!response.ok) {
     const errorText = await response.text()
-    console.error('[Vertex AI] Gemini error:', errorText)
+    console.error(`[Vertex AI] Gemini error for variant ${variantNumber}:`, errorText)
     throw new Error(`Gemini API error: ${response.status} - ${errorText}`)
   }
 
   const result = await response.json()
-  console.log('[Vertex AI] Gemini response received')
+  console.log(`[Vertex AI] Variant ${variantNumber} response received`)
 
-  // Extract the generated content
   const content = result.candidates?.[0]?.content?.parts?.[0]?.text
   if (!content) {
     throw new Error('No content in Gemini response')
   }
 
-  // Parse the JSON response (clean up markdown code blocks if present)
+  // Parse JSON response
   try {
     let cleanContent = content.trim()
-
-    // Remove markdown code blocks if present
-    if (cleanContent.startsWith('```json')) {
-      cleanContent = cleanContent.slice(7)
-    } else if (cleanContent.startsWith('```')) {
-      cleanContent = cleanContent.slice(3)
-    }
-    if (cleanContent.endsWith('```')) {
-      cleanContent = cleanContent.slice(0, -3)
-    }
+    if (cleanContent.startsWith('```json')) cleanContent = cleanContent.slice(7)
+    else if (cleanContent.startsWith('```')) cleanContent = cleanContent.slice(3)
+    if (cleanContent.endsWith('```')) cleanContent = cleanContent.slice(0, -3)
     cleanContent = cleanContent.trim()
 
-    const output = JSON.parse(cleanContent) as AICreativeOutput
-    return output
-  } catch (parseError) {
-    // Check if the JSON is truncated (incomplete)
-    const lastChars = content.slice(-50)
-    const isTruncated = !content.trim().endsWith('}')
-
-    console.error('[Vertex AI] Failed to parse Gemini response.')
-    console.error('[Vertex AI] Content length:', content.length)
-    console.error('[Vertex AI] Last 50 chars:', lastChars)
-    console.error('[Vertex AI] Appears truncated:', isTruncated)
-
-    if (isTruncated) {
-      throw new Error('Gemini response truncated - JSON incomplete. Try simplifying the prompt or reducing output size.')
-    }
-    throw new Error('Failed to parse Gemini response as JSON')
+    return JSON.parse(cleanContent) as SingleVariantOutput
+  } catch {
+    console.error(`[Vertex AI] Failed to parse variant ${variantNumber} response:`, content.slice(0, 200))
+    throw new Error(`Failed to parse Gemini response for variant ${variantNumber}`)
   }
+}
+
+/**
+ * Legacy: Generate all 5 variants at once (kept for backwards compatibility)
+ * @deprecated Use generateSingleVariantWithGemini for sequential processing
+ */
+export async function generateCreativesWithGemini(
+  packageData: PackageDataForAI
+): Promise<AICreativeOutput> {
+  // Generate all 5 variants sequentially and combine
+  const results: Partial<AICreativeOutput> = { metadata: undefined }
+
+  for (const num of [1, 2, 3, 4, 5] as const) {
+    const config = VARIANT_CONFIGS[num]
+    const variant = await generateSingleVariantWithGemini(packageData, num)
+
+    // Map to output structure
+    results[config.key as keyof AICreativeOutput] = {
+      concepto: variant.concepto,
+      formato_1080: variant.formato_1080,
+      formato_1920: variant.formato_1920,
+    } as AICreativeVariant
+
+    // Use metadata from first variant
+    if (!results.metadata && variant.metadata) {
+      results.metadata = variant.metadata
+    }
+  }
+
+  return results as AICreativeOutput
 }
 
 /**

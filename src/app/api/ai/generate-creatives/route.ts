@@ -1,20 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  generateCreativesWithGemini,
+  generateSingleVariantWithGemini,
   generateVariantImages,
   validateConfig,
+  VARIANT_CONFIGS,
 } from '@/lib/vertex-ai/client'
 import {
   uploadCreative,
   getOrCreatePackageFolder,
   getOrCreateVariantFolder,
 } from '@/lib/google-drive/client'
-import type {
-  PackageDataForAI,
-  AICreativeOutput,
-  GenerateCreativesResponse,
-} from '@/types/ai-creatives'
+import type { PackageDataForAI } from '@/types/ai-creatives'
 
 function getSupabaseClient() {
   return createClient(
@@ -26,6 +23,14 @@ function getSupabaseClient() {
 /**
  * POST /api/ai/generate-creatives
  * Generate AI creatives for a package using Gemini + Imagen 3
+ * Processes each variant SEQUENTIALLY: Gemini → Imagen → Drive upload → next variant
+ *
+ * Body:
+ * - packageId: number (tc_package_id)
+ * - variants: number[] (which variants to generate, e.g., [1, 2, 3])
+ * - generateImages: boolean (whether to generate images with Imagen 3)
+ *
+ * Returns SSE stream with progress updates
  */
 export async function POST(request: NextRequest) {
   const db = getSupabaseClient()
@@ -42,7 +47,11 @@ export async function POST(request: NextRequest) {
 
     // Parse request body
     const body = await request.json()
-    const { packageId, regenerateImages = false, generateImages = true } = body
+    const {
+      packageId,
+      variants = [1, 2, 3, 4, 5], // Default: all 5 variants
+      generateImages = true,
+    } = body
 
     if (!packageId) {
       return NextResponse.json(
@@ -51,9 +60,21 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log(`[AI Creatives] Starting generation for package ${packageId}`)
+    // Validate variants
+    const validVariants = variants.filter(
+      (v: number) => v >= 1 && v <= 5
+    ) as (1 | 2 | 3 | 4 | 5)[]
 
-    // Fetch full package data from database
+    if (validVariants.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one valid variant (1-5) is required' },
+        { status: 400 }
+      )
+    }
+
+    console.log(`[AI Creatives] Starting generation for package ${packageId}, variants: ${validVariants.join(', ')}`)
+
+    // Fetch package data
     const { data: pkg, error: fetchError } = await db
       .from('packages')
       .select(`
@@ -132,154 +153,199 @@ export async function POST(request: NextRequest) {
         : null,
     }
 
-    console.log('[AI Creatives] Calling Gemini...')
-
-    // Generate creatives with Gemini
-    const output = await generateCreativesWithGemini(packageData)
-
-    console.log('[AI Creatives] Gemini response received, saving to DB...')
-
-    // Save creatives to database (new structure with dual formats)
-    const variantKeys = [
-      'variante_1_precio',
-      'variante_2_experiencia',
-      'variante_3_destino',
-      'variante_4_conveniencia',
-      'variante_5_escasez',
-    ] as const
-    const savedCreatives = []
-
-    for (let i = 0; i < variantKeys.length; i++) {
-      const variantKey = variantKeys[i]
-      const variant = output[variantKey]
-      const variantNumber = i + 1
-
-      // Upsert creative record with dual format structure
-      const creativeData = {
-        package_id: pkg.id,
-        tc_package_id: pkg.tc_package_id,
-        variant: variantNumber,
-        concepto: variant.concepto,
-        // Format 1080 (1:1)
-        titulo_principal_1080: variant.formato_1080.titulo_principal,
-        subtitulo_1080: variant.formato_1080.subtitulo,
-        precio_texto_1080: variant.formato_1080.precio_texto,
-        cta_1080: variant.formato_1080.cta,
-        descripcion_imagen_1080: variant.formato_1080.descripcion_imagen,
-        estilo_1080: variant.formato_1080.estilo,
-        // Format 1920 (16:9)
-        titulo_principal_1920: variant.formato_1920.titulo_principal,
-        subtitulo_1920: variant.formato_1920.subtitulo,
-        precio_texto_1920: variant.formato_1920.precio_texto,
-        cta_1920: variant.formato_1920.cta,
-        descripcion_imagen_1920: variant.formato_1920.descripcion_imagen,
-        estilo_1920: variant.formato_1920.estilo,
-        // Metadata
-        model_used: 'gemini-2.0-flash',
-        prompt_version: 'v3',
-        destino: output.metadata?.destino || null,
-        fecha_salida: output.metadata?.fecha_salida || null,
-        precio_base: output.metadata?.precio_base || null,
-        currency: output.metadata?.currency || 'USD',
-        noches: output.metadata?.noches || null,
-        regimen: output.metadata?.regimen || null,
-      }
-
-      const { data: savedCreative, error: saveError } = await db
-        .from('package_ai_creatives')
-        .upsert(creativeData, {
-          onConflict: 'package_id,variant',
-        })
-        .select()
-        .single()
-
-      if (saveError) {
-        console.error(`[AI Creatives] Failed to save variant ${variantNumber}:`, saveError)
-      } else {
-        savedCreatives.push(savedCreative)
-      }
-    }
-
-    console.log(`[AI Creatives] Saved ${savedCreatives.length} creatives to DB`)
-
-    // Optionally generate images with Imagen 3
-    let generatedImages: { variant: number; aspectRatio: '1080' | '1920'; fileId?: string; imageUrl: string }[] = []
-
-    if (generateImages) {
-      console.log('[AI Creatives] Generating images with Imagen 3...')
-
-      // Create package folder in Google Drive
-      const packageFolderId = await getOrCreatePackageFolder(pkg.tc_package_id)
-
-      for (let i = 0; i < variantKeys.length; i++) {
-        const variantKey = variantKeys[i]
-        const variant = output[variantKey]
-        const variantNumber = i + 1
+    // Create SSE stream for progress updates
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const sendEvent = (type: string, data: Record<string, unknown>) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, data })}\n\n`))
+        }
 
         try {
-          // Generate images for this variant (dual format: 1080 and 1920)
-          const images = await generateVariantImages(variant, variantNumber)
+          // Create package folder in Drive (once, before variants)
+          let packageFolderId: string | null = null
+          if (generateImages) {
+            sendEvent('progress', { step: 'Creando carpeta en Drive...' })
+            packageFolderId = await getOrCreatePackageFolder(pkg.tc_package_id)
+          }
 
-          // Create variant folder and upload images
-          const variantFolderId = await getOrCreateVariantFolder(packageFolderId, variantNumber)
+          const results: {
+            variant: number
+            success: boolean
+            images?: { aspectRatio: string; url: string }[]
+            error?: string
+          }[] = []
 
-          for (const image of images) {
+          // Process each variant SEQUENTIALLY
+          for (const variantNumber of validVariants) {
+            const config = VARIANT_CONFIGS[variantNumber]
+
             try {
-              // Convert base64 to buffer
-              const buffer = Buffer.from(image.base64, 'base64')
+              // Step 1: Generate with Gemini
+              sendEvent('progress', {
+                variant: variantNumber,
+                step: `Generando V${variantNumber} (${config.name}) con Gemini...`,
+              })
 
-              // Upload to Google Drive
-              const uploaded = await uploadCreative(
-                variantFolderId,
-                image.aspectRatio,
-                buffer,
-                'image/png',
-                `ai_generated_${image.aspectRatio}.png`
-              )
+              const variantOutput = await generateSingleVariantWithGemini(packageData, variantNumber)
 
-              // Update database with image info
-              const updateField = image.aspectRatio === '1080'
-                ? { image_1080_file_id: uploaded.id, image_1080_url: uploaded.webViewLink }
-                : { image_1920_file_id: uploaded.id, image_1920_url: uploaded.webViewLink }
+              // Step 2: Save to database
+              sendEvent('progress', {
+                variant: variantNumber,
+                step: `Guardando V${variantNumber} en base de datos...`,
+              })
+
+              const creativeData = {
+                package_id: pkg.id,
+                tc_package_id: pkg.tc_package_id,
+                variant: variantNumber,
+                concepto: variantOutput.concepto,
+                // Format 1080
+                titulo_principal_1080: variantOutput.formato_1080.titulo_principal,
+                subtitulo_1080: variantOutput.formato_1080.subtitulo,
+                precio_texto_1080: variantOutput.formato_1080.precio_texto,
+                cta_1080: variantOutput.formato_1080.cta,
+                descripcion_imagen_1080: variantOutput.formato_1080.descripcion_imagen,
+                estilo_1080: variantOutput.formato_1080.estilo,
+                // Format 1920
+                titulo_principal_1920: variantOutput.formato_1920.titulo_principal,
+                subtitulo_1920: variantOutput.formato_1920.subtitulo,
+                precio_texto_1920: variantOutput.formato_1920.precio_texto,
+                cta_1920: variantOutput.formato_1920.cta,
+                descripcion_imagen_1920: variantOutput.formato_1920.descripcion_imagen,
+                estilo_1920: variantOutput.formato_1920.estilo,
+                // Metadata
+                model_used: 'gemini-2.0-flash',
+                prompt_version: 'v3',
+                destino: variantOutput.metadata?.destino || null,
+                fecha_salida: variantOutput.metadata?.fecha_salida || null,
+                precio_base: variantOutput.metadata?.precio_base || null,
+                currency: variantOutput.metadata?.currency || 'USD',
+                noches: variantOutput.metadata?.noches || null,
+                regimen: variantOutput.metadata?.regimen || null,
+              }
 
               await db
                 .from('package_ai_creatives')
-                .update({
-                  ...updateField,
-                  imagen_model_used: 'imagen-3.0-generate-001',
-                })
-                .eq('package_id', pkg.id)
-                .eq('variant', variantNumber)
+                .upsert(creativeData, { onConflict: 'package_id,variant' })
 
-              generatedImages.push({
+              // Step 3: Generate images with Imagen 3
+              const variantImages: { aspectRatio: string; url: string }[] = []
+
+              if (generateImages && packageFolderId) {
+                sendEvent('progress', {
+                  variant: variantNumber,
+                  step: `Generando imágenes V${variantNumber} con Imagen 3...`,
+                })
+
+                const images = await generateVariantImages(
+                  {
+                    concepto: variantOutput.concepto,
+                    formato_1080: variantOutput.formato_1080,
+                    formato_1920: variantOutput.formato_1920,
+                  },
+                  variantNumber
+                )
+
+                // Step 4: Upload to Google Drive
+                const variantFolderId = await getOrCreateVariantFolder(packageFolderId, variantNumber)
+
+                for (const image of images) {
+                  try {
+                    sendEvent('progress', {
+                      variant: variantNumber,
+                      step: `Subiendo ${image.aspectRatio} de V${variantNumber} a Drive...`,
+                    })
+
+                    const buffer = Buffer.from(image.base64, 'base64')
+                    const uploaded = await uploadCreative(
+                      variantFolderId,
+                      image.aspectRatio,
+                      buffer,
+                      'image/png',
+                      `ai_generated_${image.aspectRatio}.png`
+                    )
+
+                    // Update database with image URL
+                    const updateField = image.aspectRatio === '1080'
+                      ? { image_1080_file_id: uploaded.id, image_1080_url: uploaded.webViewLink }
+                      : { image_1920_file_id: uploaded.id, image_1920_url: uploaded.webViewLink }
+
+                    await db
+                      .from('package_ai_creatives')
+                      .update({
+                        ...updateField,
+                        imagen_model_used: 'imagen-3.0-generate-001',
+                      })
+                      .eq('package_id', pkg.id)
+                      .eq('variant', variantNumber)
+
+                    variantImages.push({
+                      aspectRatio: image.aspectRatio,
+                      url: uploaded.webViewLink,
+                    })
+                  } catch (uploadError) {
+                    console.error(`[AI Creatives] Upload error V${variantNumber}:`, uploadError)
+                  }
+                }
+              }
+
+              // Variant completed successfully
+              sendEvent('variant_complete', {
                 variant: variantNumber,
-                aspectRatio: image.aspectRatio,
-                fileId: uploaded.id,
-                imageUrl: uploaded.webViewLink,
+                name: config.name,
+                images: variantImages,
               })
 
-              console.log(`[AI Creatives] Uploaded ${image.aspectRatio} for variant ${variantNumber}`)
-            } catch (uploadError) {
-              console.error(`[AI Creatives] Failed to upload ${image.aspectRatio} for variant ${variantNumber}:`, uploadError)
+              results.push({
+                variant: variantNumber,
+                success: true,
+                images: variantImages,
+              })
+
+            } catch (variantError) {
+              console.error(`[AI Creatives] Error processing variant ${variantNumber}:`, variantError)
+
+              sendEvent('variant_error', {
+                variant: variantNumber,
+                error: variantError instanceof Error ? variantError.message : 'Unknown error',
+              })
+
+              results.push({
+                variant: variantNumber,
+                success: false,
+                error: variantError instanceof Error ? variantError.message : 'Unknown error',
+              })
             }
           }
-        } catch (imageError) {
-          console.error(`[AI Creatives] Failed to generate images for variant ${variantNumber}:`, imageError)
+
+          // All variants processed
+          sendEvent('complete', {
+            packageId: pkg.tc_package_id,
+            results,
+            successCount: results.filter(r => r.success).length,
+            errorCount: results.filter(r => !r.success).length,
+          })
+
+        } catch (error) {
+          console.error('[AI Creatives] Fatal error:', error)
+          sendEvent('error', {
+            error: error instanceof Error ? error.message : 'Unknown error',
+          })
         }
-      }
-    }
 
-    console.log('[AI Creatives] Generation complete!')
+        controller.close()
+      },
+    })
 
-    const response: GenerateCreativesResponse = {
-      success: true,
-      packageId: pkg.tc_package_id,
-      output,
-      images: generatedImages.length > 0 ? generatedImages : undefined,
-      savedToDb: savedCreatives.length > 0,
-    }
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
 
-    return NextResponse.json(response)
   } catch (error) {
     console.error('[AI Creatives] Error:', error)
     return NextResponse.json(
