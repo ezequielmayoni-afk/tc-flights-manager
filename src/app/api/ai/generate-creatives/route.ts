@@ -139,28 +139,44 @@ export async function POST(request: NextRequest) {
 
     console.log('[AI Creatives] Gemini response received, saving to DB...')
 
-    // Save creatives to database
-    const variants = ['v1', 'v2', 'v3', 'v4', 'v5'] as const
+    // Save creatives to database (new structure with dual formats)
+    const variantKeys = [
+      'variante_1_precio',
+      'variante_2_experiencia',
+      'variante_3_destino',
+      'variante_4_conveniencia',
+      'variante_5_escasez',
+    ] as const
     const savedCreatives = []
 
-    for (let i = 0; i < variants.length; i++) {
-      const variantKey = variants[i]
+    for (let i = 0; i < variantKeys.length; i++) {
+      const variantKey = variantKeys[i]
       const variant = output[variantKey]
       const variantNumber = i + 1
 
-      // Upsert creative record
+      // Upsert creative record with dual format structure
       const creativeData = {
         package_id: pkg.id,
         tc_package_id: pkg.tc_package_id,
         variant: variantNumber,
-        titulo_principal: variant.titulo_principal,
-        subtitulo: variant.subtitulo,
-        precio_texto: variant.precio_texto,
-        cta: variant.cta,
-        descripcion_imagen: variant.descripcion_imagen,
-        estilo: variant.estilo,
-        model_used: 'gemini-1.5-pro',
-        prompt_version: 'v2',
+        concepto: variant.concepto,
+        // Format 1080 (1:1)
+        titulo_principal_1080: variant.formato_1080.titulo_principal,
+        subtitulo_1080: variant.formato_1080.subtitulo,
+        precio_texto_1080: variant.formato_1080.precio_texto,
+        cta_1080: variant.formato_1080.cta,
+        descripcion_imagen_1080: variant.formato_1080.descripcion_imagen,
+        estilo_1080: variant.formato_1080.estilo,
+        // Format 1920 (16:9)
+        titulo_principal_1920: variant.formato_1920.titulo_principal,
+        subtitulo_1920: variant.formato_1920.subtitulo,
+        precio_texto_1920: variant.formato_1920.precio_texto,
+        cta_1920: variant.formato_1920.cta,
+        descripcion_imagen_1920: variant.formato_1920.descripcion_imagen,
+        estilo_1920: variant.formato_1920.estilo,
+        // Metadata
+        model_used: 'gemini-2.0-flash',
+        prompt_version: 'v3',
         destino: output.metadata?.destino || null,
         fecha_salida: output.metadata?.fecha_salida || null,
         precio_base: output.metadata?.precio_base || null,
@@ -187,7 +203,7 @@ export async function POST(request: NextRequest) {
     console.log(`[AI Creatives] Saved ${savedCreatives.length} creatives to DB`)
 
     // Optionally generate images with Imagen 3
-    let generatedImages: { variant: number; aspectRatio: '4x5' | '9x16'; fileId?: string; imageUrl: string }[] = []
+    let generatedImages: { variant: number; aspectRatio: '1080' | '1920'; fileId?: string; imageUrl: string }[] = []
 
     if (generateImages) {
       console.log('[AI Creatives] Generating images with Imagen 3...')
@@ -195,13 +211,13 @@ export async function POST(request: NextRequest) {
       // Create package folder in Google Drive
       const packageFolderId = await getOrCreatePackageFolder(pkg.tc_package_id)
 
-      for (let i = 0; i < variants.length; i++) {
-        const variantKey = variants[i]
+      for (let i = 0; i < variantKeys.length; i++) {
+        const variantKey = variantKeys[i]
         const variant = output[variantKey]
         const variantNumber = i + 1
 
         try {
-          // Generate images for this variant
+          // Generate images for this variant (dual format: 1080 and 1920)
           const images = await generateVariantImages(variant, variantNumber)
 
           // Create variant folder and upload images
@@ -222,9 +238,9 @@ export async function POST(request: NextRequest) {
               )
 
               // Update database with image info
-              const updateField = image.aspectRatio === '4x5'
-                ? { image_4x5_file_id: uploaded.id, image_4x5_url: uploaded.webViewLink }
-                : { image_9x16_file_id: uploaded.id, image_9x16_url: uploaded.webViewLink }
+              const updateField = image.aspectRatio === '1080'
+                ? { image_1080_file_id: uploaded.id, image_1080_url: uploaded.webViewLink }
+                : { image_1920_file_id: uploaded.id, image_1920_url: uploaded.webViewLink }
 
               await db
                 .from('package_ai_creatives')

@@ -2,8 +2,8 @@
  * Types for AI-generated creative content
  */
 
-// Single variant output from Gemini
-export interface AICreativeVariant {
+// Single format output (1080x1080 or 1920x1080)
+export interface AICreativeFormat {
   titulo_principal: string
   subtitulo: string
   precio_texto: string
@@ -12,13 +12,20 @@ export interface AICreativeVariant {
   estilo: string // Style notes for the variant
 }
 
+// Single variant output from Gemini with dual formats
+export interface AICreativeVariant {
+  concepto: string
+  formato_1080: AICreativeFormat // 1:1 (1080x1080) for Feed
+  formato_1920: AICreativeFormat // 16:9 (1920x1080) for Stories/Reels
+}
+
 // Full Gemini response with all 5 variants
 export interface AICreativeOutput {
-  v1: AICreativeVariant
-  v2: AICreativeVariant
-  v3: AICreativeVariant
-  v4: AICreativeVariant
-  v5: AICreativeVariant
+  variante_1_precio: AICreativeVariant
+  variante_2_experiencia: AICreativeVariant
+  variante_3_destino: AICreativeVariant
+  variante_4_conveniencia: AICreativeVariant
+  variante_5_escasez: AICreativeVariant
   metadata: {
     destino: string
     fecha_salida: string
@@ -32,7 +39,7 @@ export interface AICreativeOutput {
 // Generated image info
 export interface AIGeneratedImage {
   variant: number
-  aspectRatio: '4x5' | '9x16'
+  aspectRatio: '1080' | '1920' // 1080x1080 (1:1) or 1920x1080 (16:9)
   imageUrl: string // Google Drive URL or base64
   fileId?: string // Google Drive file ID if uploaded
 }
@@ -45,23 +52,32 @@ export interface PackageAICreative {
 
   // Generated content
   variant: number // 1-5
-  titulo_principal: string
-  subtitulo: string
-  precio_texto: string
-  cta: string
-  descripcion_imagen: string
-  estilo: string
+  concepto: string
+  // Format 1080 (1:1)
+  titulo_principal_1080: string
+  subtitulo_1080: string
+  precio_texto_1080: string
+  cta_1080: string
+  descripcion_imagen_1080: string
+  estilo_1080: string
+  // Format 1920 (16:9)
+  titulo_principal_1920: string
+  subtitulo_1920: string
+  precio_texto_1920: string
+  cta_1920: string
+  descripcion_imagen_1920: string
+  estilo_1920: string
 
   // Generated images (Google Drive)
-  image_4x5_file_id: string | null
-  image_4x5_url: string | null
-  image_9x16_file_id: string | null
-  image_9x16_url: string | null
+  image_1080_file_id: string | null
+  image_1080_url: string | null
+  image_1920_file_id: string | null
+  image_1920_url: string | null
 
   // Generation metadata
-  model_used: string // e.g., "gemini-1.5-pro"
+  model_used: string // e.g., "gemini-2.0-flash"
   imagen_model_used: string | null // e.g., "imagen-3.0-generate-001"
-  prompt_version: string // e.g., "v2"
+  prompt_version: string // e.g., "v3"
   generation_cost_tokens: number | null
 
   // Timestamps

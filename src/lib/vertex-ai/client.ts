@@ -76,69 +76,70 @@ async function getMasterPrompt(): Promise<string> {
 }
 
 /**
- * Default Master Prompt V2 for generating creatives
+ * Default Master Prompt V3 for generating creatives
  * This can be overridden by saving a custom prompt in the database
  */
-const DEFAULT_MASTER_PROMPT = `PROMPT MAESTRO: AUTOMATIZACIÓN DE ADS "SÍ, VIAJO" (V2 - Con Contexto de Destino)
+const DEFAULT_MASTER_PROMPT = `PROMPT MAESTRO: AUTOMATIZACIÓN DE ADS "SÍ, VIAJO" (V3)
 
-ROL: Eres el Director de Arte y Diseñador Senior de la marca de turismo "Sí, Viajo". Tu objetivo es crear anuncios de alto rendimiento (Performance Ads) interpretando datos estructurados (JSON) y aplicando rigurosamente el Manual de Identidad Visual de la marca.
+ROL: Eres el Director de Arte de "Sí, Viajo". Creas anuncios de alto rendimiento donde TODO EL TEXTO VA SOBRE LA IMAGEN.
 
-1. ENTRADA DE INFORMACIÓN (JSON): Analiza el siguiente objeto JSON con los datos del paquete turístico:
-
-\`\`\`json
+1. ENTRADA (JSON):
 {{PACKAGE_JSON}}
-\`\`\`
 
-2. REGLAS VISUALES DE MARCA (Estricto Cumplimiento):
+2. REGLAS VISUALES:
+- Colores: Azul #1A237E (fondo), Verde #1DE9B6 (precio/CTA)
+- Tipografía: Montserrat Bold Italic
+- Fotos: Luminosas, con sol, personas disfrutando
+- El precio debe ser el elemento más visible
 
-- Identidad: "Hagamos que todo suceda". Estilo cómplice, inspirador y resolutivo.
-- Paleta de Colores:
-  - Primario (Fondo/Peso): Azul Principal #1A237E (Indigo 900).
-  - Acento (Call to Action/Resaltado): Verde Principal #1DE9B6 (Teal A400).
-  - Secundarios: Cian #00AEFF y Gris #B2B2B2.
-- Tipografía: Familia Montserrat. (Titulares en Bold Italic).
-- Estilo Fotográfico:
-  - Luz: Imágenes luminosas, full color, con sol radiante. NUNCA oscuras.
-  - Factor Humano: Planos medios o cercanos. Debe haber personas disfrutando (parejas, amigos) para que el usuario se sienta parte de la experiencia.
-  - Elementos Gráficos: Usa formas tipo "sticker" para precios y la flecha/contenedor de la marca para dar dinamismo.
+3. CONTEXTO DEL DESTINO:
+La imagen debe representar fielmente el destino del JSON (playas caribeñas, montañas, ciudades europeas, etc.)
 
-3. CONTEXTO VISUAL DEL DESTINO (Crucial):
-- La imagen de fondo debe representar fielmente el destino específico del JSON.
-- Ejemplo: Si el JSON dice "Punta Cana" o "Bayahibe" -> La imagen DEBE mostrar playas de arena blanca, mar turquesa cristalino y palmeras cocoteras.
-- Ejemplo: Si el JSON dice "Bariloche" -> La imagen debe mostrar montañas, lagos y bosques.
-- No uses imágenes genéricas; adáptalas al lugar que se está vendiendo.
+4. DATOS OBLIGATORIOS:
+- Precio: usar current_price_per_pax redondeado hacia abajo con moneda
+- Fecha: formatear como "Mes Año"
+- Si es ALL INCLUSIVE o incluye vuelo, destacarlo
 
-4. LÓGICA DE TEXTOS Y DATOS: Compón el anuncio usando estos datos extraídos:
-- Titular: Usa el destino principal o una versión corta del título. Fuente: Montserrat Bold Italic.
-- Precio Gancho: Usa current_price_per_pax. Redondea hacia abajo (elimina decimales) y antepón la moneda. Destácalo visualmente.
-- Fecha: Formatea departure_date a "Mes Año" (Ej: "Abril 2026").
-- Inclusiones: Si board_type es "ALL INCLUSIVE", debe aparecer grande. Si hay vuelo, añade "Vuelo Incluido".
+5. VARIANTES (5 enfoques):
+- variante_1_precio: Urgencia, oferta, "aprovechá ahora"
+- variante_2_experiencia: Emocional, aspiracional, escaparse
+- variante_3_destino: El lugar es protagonista, paisaje icónico
+- variante_4_conveniencia: Todo resuelto, cero estrés
+- variante_5_escasez: Últimos lugares, decisión inmediata
 
-5. INSTRUCCIONES DE SALIDA:
-Genera exactamente 5 variantes (v1 a v5) con diferentes enfoques creativos:
-- v1: Experiencial - Enfoque en la experiencia y emociones
-- v2: Oferta/Hard Sell - Precio destacado, urgencia
-- v3: Lifestyle - Enfoque aspiracional, estilo de vida
-- v4: Destino - Hero shot del lugar, paisaje protagonista
-- v5: Beneficios - Destacar All Inclusive, vuelo incluido, etc.
+6. FORMATOS POR VARIANTE:
+Cada variante tiene DOS formatos:
+- formato_1080: Imagen 1080x1080 (1:1) para Feed
+- formato_1920: Imagen 1920x1080 (16:9) para Stories/Reels
 
-RESPONDE ÚNICAMENTE CON UN JSON VÁLIDO con esta estructura exacta:
+RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
 {
-  "v1": {
-    "titulo_principal": "string - título llamativo para el anuncio",
-    "subtitulo": "string - complemento del título (noches, régimen, etc)",
-    "precio_texto": "string - precio formateado con moneda (ej: 'USD 1,234')",
-    "cta": "string - call to action corto (ej: 'Reservá ahora')",
-    "descripcion_imagen": "string - prompt EN INGLÉS para Imagen 3, técnico y detallado",
-    "estilo": "string - notas de estilo visual para esta variante"
+  "variante_1_precio": {
+    "concepto": "Precio / Oferta",
+    "formato_1080": {
+      "titulo_principal": "string",
+      "subtitulo": "string",
+      "precio_texto": "string (ej: USD 1234)",
+      "cta": "string",
+      "descripcion_imagen": "string EN INGLÉS (50-100 palabras)",
+      "estilo": "string"
+    },
+    "formato_1920": {
+      "titulo_principal": "string",
+      "subtitulo": "string",
+      "precio_texto": "string",
+      "cta": "string",
+      "descripcion_imagen": "string EN INGLÉS (50-100 palabras)",
+      "estilo": "string"
+    }
   },
-  "v2": { ... },
-  "v3": { ... },
-  "v4": { ... },
-  "v5": { ... },
+  "variante_2_experiencia": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
+  "variante_3_destino": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
+  "variante_4_conveniencia": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
+  "variante_5_escasez": { "concepto": "...", "formato_1080": {...}, "formato_1920": {...} },
   "metadata": {
-    "destino": "string - destino principal",
-    "fecha_salida": "string - fecha formateada",
+    "destino": "string",
+    "fecha_salida": "string",
     "precio_base": number,
     "currency": "string",
     "noches": number,
@@ -147,10 +148,10 @@ RESPONDE ÚNICAMENTE CON UN JSON VÁLIDO con esta estructura exacta:
 }
 
 IMPORTANTE para descripcion_imagen:
-- Escríbelo EN INGLÉS para Imagen 3
-- Debe ser técnico y detallado (50-100 palabras)
-- Incluir: tipo de foto, composición, personas, luz, colores, ambiente
-- Ejemplo: "Professional advertising photograph of a happy couple in their 30s relaxing in an infinity pool overlooking turquoise Caribbean waters. Palm trees frame the shot. Golden hour lighting, warm tones. Shot with professional DSLR, shallow depth of field. The mood is aspirational, romantic and luxurious. Style: high-end travel advertisement."
+- Escribir EN INGLÉS para Imagen 3
+- 50-100 palabras, estilo técnico publicitario
+- Incluir: tipo de foto, composición, personas, luz, colores, mood
+- Ejemplo: "Professional advertising photograph of a happy couple relaxing in an infinity pool overlooking turquoise Caribbean waters. Palm trees frame the shot. Golden hour lighting, warm tones. Shot with professional DSLR. The mood is aspirational and luxurious."
 `
 
 /**
@@ -268,7 +269,7 @@ export async function generateCreativesWithGemini(
  */
 export async function generateImageWithImagen(
   prompt: string,
-  aspectRatio: '1:1' | '9:16' | '4:5' = '1:1'
+  aspectRatio: '1:1' | '16:9' | '9:16' | '4:5' = '1:1'
 ): Promise<string> {
   const token = await getAccessToken()
   const endpoint = `https://${LOCATION}-aiplatform.googleapis.com/v1/projects/${PROJECT_ID}/locations/${LOCATION}/publishers/google/models/${IMAGEN_MODEL}:predict`
@@ -277,7 +278,7 @@ export async function generateImageWithImagen(
   console.log('[Vertex AI] Aspect ratio:', aspectRatio)
 
   // Map aspect ratio to Imagen format
-  const imagenAspectRatio = aspectRatio === '4:5' ? '4:5' : aspectRatio === '9:16' ? '9:16' : '1:1'
+  const imagenAspectRatio = aspectRatio
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -322,30 +323,30 @@ export async function generateImageWithImagen(
 }
 
 /**
- * Generate all images for a creative variant
+ * Generate all images for a creative variant (new dual-format structure)
  */
 export async function generateVariantImages(
   variant: AICreativeVariant,
   variantNumber: number
-): Promise<{ aspectRatio: '4x5' | '9x16'; base64: string }[]> {
-  const images: { aspectRatio: '4x5' | '9x16'; base64: string }[] = []
+): Promise<{ aspectRatio: '1080' | '1920'; base64: string }[]> {
+  const images: { aspectRatio: '1080' | '1920'; base64: string }[] = []
 
-  // Generate 4:5 image (square-ish for feed)
+  // Generate 1080x1080 (1:1) image for Feed
   try {
-    console.log(`[Vertex AI] Generating 4x5 image for variant ${variantNumber}...`)
-    const image4x5 = await generateImageWithImagen(variant.descripcion_imagen, '4:5')
-    images.push({ aspectRatio: '4x5', base64: image4x5 })
+    console.log(`[Vertex AI] Generating 1080x1080 image for variant ${variantNumber}...`)
+    const image1080 = await generateImageWithImagen(variant.formato_1080.descripcion_imagen, '1:1')
+    images.push({ aspectRatio: '1080', base64: image1080 })
   } catch (error) {
-    console.error(`[Vertex AI] Failed to generate 4x5 for variant ${variantNumber}:`, error)
+    console.error(`[Vertex AI] Failed to generate 1080x1080 for variant ${variantNumber}:`, error)
   }
 
-  // Generate 9:16 image (stories/reels)
+  // Generate 1920x1080 (16:9) image for Stories/Reels
   try {
-    console.log(`[Vertex AI] Generating 9x16 image for variant ${variantNumber}...`)
-    const image9x16 = await generateImageWithImagen(variant.descripcion_imagen, '9:16')
-    images.push({ aspectRatio: '9x16', base64: image9x16 })
+    console.log(`[Vertex AI] Generating 1920x1080 image for variant ${variantNumber}...`)
+    const image1920 = await generateImageWithImagen(variant.formato_1920.descripcion_imagen, '16:9')
+    images.push({ aspectRatio: '1920', base64: image1920 })
   } catch (error) {
-    console.error(`[Vertex AI] Failed to generate 9x16 for variant ${variantNumber}:`, error)
+    console.error(`[Vertex AI] Failed to generate 1920x1080 for variant ${variantNumber}:`, error)
   }
 
   return images
