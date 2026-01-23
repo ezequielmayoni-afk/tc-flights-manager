@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Upload, X, Check, ExternalLink, Trash2, Play } from 'lucide-react'
+import { Loader2, Upload, X, Check, ExternalLink, Trash2, Play, FolderOpen } from 'lucide-react'
 import { toast } from 'sonner'
 
 type AspectRatio = '4x5' | '9x16'
@@ -37,6 +37,11 @@ type UploadProgress = {
   status: 'uploading' | 'done' | 'error'
 }
 
+type FoldersInfo = {
+  packageFolderId: string | null
+  variantFolders: Record<number, string>
+}
+
 interface DesignModalProps {
   packageId: number
   packageTitle: string
@@ -59,6 +64,7 @@ const ASPECT_RATIOS: { key: AspectRatio; label: string }[] = [
 
 export function DesignModal({ packageId, packageTitle, open, onOpenChange }: DesignModalProps) {
   const [creatives, setCreatives] = useState<Record<number, VariantCreatives>>({})
+  const [folders, setFolders] = useState<FoldersInfo>({ packageFolderId: null, variantFolders: {} })
   const [isLoading, setIsLoading] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<Record<string, PendingFile>>({})
   const [uploadProgress, setUploadProgress] = useState<Record<string, UploadProgress>>({})
@@ -82,6 +88,10 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
           grouped[creative.variant][creative.aspectRatio] = creative
         }
         setCreatives(grouped)
+      }
+
+      if (data.folders) {
+        setFolders(data.folders)
       }
     } catch (error) {
       console.error('Error loading creatives:', error)
@@ -324,8 +334,8 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
     const sizeClass = ar.key === '4x5' ? 'w-[100px] h-[100px]' : 'w-[100px] h-[160px]'
 
     if (creative && !pending) {
-      // Google Drive direct image URL (works for publicly shared files)
-      const thumbnailUrl = `https://lh3.googleusercontent.com/d/${creative.fileId}=w400`
+      // Google Drive thumbnail URL (works for publicly shared files)
+      const thumbnailUrl = `https://drive.google.com/thumbnail?id=${creative.fileId}&sz=w150`
 
       return (
         <div className={`relative group ${sizeClass} border rounded-lg overflow-hidden bg-gray-100`}>
@@ -333,6 +343,7 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
             src={thumbnailUrl}
             alt={`${ar.label} preview`}
             className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
           />
           {/* Green checkmark badge */}
           <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5">
@@ -426,7 +437,20 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
       <DialogContent className="w-full max-w-[1000px] sm:max-w-[1000px] bg-gray-100 p-0 overflow-hidden">
         <DialogHeader className="bg-white px-6 py-4 border-b">
           <DialogTitle className="flex items-center justify-between text-base">
-            <span className="truncate max-w-[500px]">{packageTitle}</span>
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="truncate max-w-[500px]">{packageTitle}</span>
+              {folders.packageFolderId && (
+                <a
+                  href={`https://drive.google.com/drive/folders/${folders.packageFolderId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+                >
+                  <FolderOpen className="h-3.5 w-3.5" />
+                  Ver carpeta
+                </a>
+              )}
+            </div>
             <span className="text-sm font-normal text-muted-foreground ml-4">
               {completed}/{total}
             </span>
@@ -448,6 +472,17 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
                 <div className="text-center">
                   <span className="text-sm font-medium text-muted-foreground">V{variant}</span>
                   <p className="text-[10px] text-muted-foreground/70">{VARIANT_LABELS[variant]}</p>
+                  {folders.variantFolders[variant] && (
+                    <a
+                      href={`https://drive.google.com/drive/folders/${folders.variantFolders[variant]}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-0.5 text-[10px] text-primary hover:underline mt-0.5"
+                    >
+                      <FolderOpen className="h-3 w-3" />
+                      Ver carpeta
+                    </a>
+                  )}
                 </div>
                 <div className="flex flex-col gap-3">
                   {ASPECT_RATIOS.map((ar) => (

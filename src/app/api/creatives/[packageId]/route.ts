@@ -30,12 +30,15 @@ export async function GET(
       .single()
 
     if (dbError || !pkg) {
-      return NextResponse.json({ creatives: [] })
+      return NextResponse.json({ creatives: [], folders: { packageFolderId: null, variantFolders: {} } })
     }
 
-    const creatives = await listPackageCreatives(pkg.tc_package_id)
+    const result = await listPackageCreatives(pkg.tc_package_id)
 
-    return NextResponse.json({ creatives })
+    return NextResponse.json({
+      creatives: result.creatives,
+      folders: result.folders,
+    })
   } catch (error) {
     console.error('[Creatives] List error:', error)
     return NextResponse.json(
@@ -50,6 +53,8 @@ export async function DELETE(
   { params }: { params: Promise<{ packageId: string }> }
 ) {
   try {
+    const { packageId } = await params
+    const id = parseInt(packageId, 10)
     const { fileId } = await request.json()
 
     if (!fileId) {
@@ -57,6 +62,30 @@ export async function DELETE(
     }
 
     await deleteCreative(fileId)
+
+    // Decrement creative_count atomically
+    if (!isNaN(id)) {
+      const db = getSupabaseClient()
+      const { error: rpcError } = await db.rpc('decrement_creative_count', {
+        package_id_param: id,
+      })
+
+      if (rpcError) {
+        // Fallback to direct update if RPC doesn't exist
+        const { data: pkg } = await db
+          .from('packages')
+          .select('creative_count')
+          .eq('id', id)
+          .single()
+
+        if (pkg && pkg.creative_count > 0) {
+          await db
+            .from('packages')
+            .update({ creative_count: pkg.creative_count - 1 })
+            .eq('id', id)
+        }
+      }
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

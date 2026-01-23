@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Table,
@@ -143,16 +143,41 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
   const [bulkUnmarking, setBulkUnmarking] = useState(false)
   const [bulkSendingMarketing, setBulkSendingMarketing] = useState(false)
 
-  // Filter packages by status
-  const filteredPackages = statusFilter === 'all'
-    ? packages
-    : statusFilter === 'pending'
-    ? packages.filter(p => !p.design_completed)
-    : statusFilter === 'completed'
-    ? packages.filter(p => p.design_completed)
-    : statusFilter === 'expired'
-    ? packages.filter(p => isExpired(p.date_range_end))
-    : packages.filter(p => p.status === statusFilter)
+  // Debounce ref for realtime updates
+  const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Debounced refresh function - prevents multiple rapid refreshes
+  const debouncedRefresh = useCallback(() => {
+    if (refreshTimeoutRef.current) {
+      clearTimeout(refreshTimeoutRef.current)
+    }
+    refreshTimeoutRef.current = setTimeout(() => {
+      router.refresh()
+    }, 500) // 500ms debounce
+  }, [router])
+
+  // Memoized date calculations for all packages (avoids recalculating on every render)
+  const packageDateInfo = useMemo(() => {
+    const info: Record<number, { expired: boolean; daysLeft: number | null; deadlineDays: number | null; deadlinePassed: boolean }> = {}
+    for (const pkg of packages) {
+      info[pkg.id] = {
+        expired: isExpired(pkg.date_range_end),
+        daysLeft: getDaysUntilExpiration(pkg.date_range_end),
+        deadlineDays: getDaysUntilDeadline(pkg.design_deadline),
+        deadlinePassed: isDeadlinePassed(pkg.design_deadline),
+      }
+    }
+    return info
+  }, [packages])
+
+  // Memoized filtered packages - only recalculate when dependencies change
+  const filteredPackages = useMemo(() => {
+    if (statusFilter === 'all') return packages
+    if (statusFilter === 'pending') return packages.filter(p => !p.design_completed)
+    if (statusFilter === 'completed') return packages.filter(p => p.design_completed)
+    if (statusFilter === 'expired') return packages.filter(p => packageDateInfo[p.id]?.expired)
+    return packages.filter(p => p.status === statusFilter)
+  }, [packages, statusFilter, packageDateInfo])
 
   // Mark a single package as design completed
   const handleMarkComplete = async (packageId: number) => {
@@ -287,7 +312,7 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
     }
   }
 
-  // Realtime subscription
+  // Realtime subscription with debouncing
   useEffect(() => {
     const supabase = createClient()
 
@@ -301,15 +326,20 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
           table: 'packages',
         },
         () => {
-          router.refresh()
+          // Use debounced refresh to prevent cascading refreshes
+          debouncedRefresh()
         }
       )
       .subscribe()
 
     return () => {
       supabase.removeChannel(channel)
+      // Clean up any pending timeout on unmount
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current)
+      }
     }
-  }, [router])
+  }, [debouncedRefresh])
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -599,11 +629,11 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setAiModalPackage({ id: pkg.tc_package_id, title: pkg.title })}
-                      className="gap-1"
-                      title="Generar creativos con IA"
+                      disabled
+                      className="gap-1 opacity-50 cursor-not-allowed"
+                      title="Generación con IA temporalmente deshabilitada"
                     >
-                      <Sparkles className="h-4 w-4 text-purple-500" />
+                      <Sparkles className="h-4 w-4 text-gray-400" />
                       IA
                     </Button>
                     <Button

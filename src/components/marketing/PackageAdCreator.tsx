@@ -627,9 +627,9 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
                             </div>
                             <div className="flex gap-2">
                               {variantCreatives.map(creative => {
-                                // Generate Google Drive thumbnail URL using lh3 format (more reliable)
+                                // Generate Google Drive thumbnail URL
                                 const thumbnailUrl = creative.drive_file_id
-                                  ? `https://lh3.googleusercontent.com/d/${creative.drive_file_id}=w200`
+                                  ? `https://drive.google.com/thumbnail?id=${creative.drive_file_id}&sz=w200`
                                   : null
 
                                 return (
@@ -651,6 +651,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
                                           alt={`V${creative.variant} ${creative.aspect_ratio}`}
                                           className="w-full h-full object-cover"
                                           loading="lazy"
+                                          referrerPolicy="no-referrer"
                                           onError={(e) => {
                                             // Fallback to icon if thumbnail fails to load
                                             const target = e.target as HTMLImageElement

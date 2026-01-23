@@ -1,4 +1,4 @@
--- Update package_ai_creatives table for dual format structure (1080x1080 + 1920x1080)
+-- Update package_ai_creatives table for dual format structure (1080x1080 + 1080x1920)
 
 -- Add concepto column
 ALTER TABLE package_ai_creatives ADD COLUMN IF NOT EXISTS concepto TEXT;
@@ -49,4 +49,4 @@ WHERE titulo_principal_1080 IS NULL
   AND titulo_principal IS NOT NULL;
 
 -- Add comment explaining the structure
-COMMENT ON TABLE package_ai_creatives IS 'AI-generated creative content for packages. Each variant has two formats: 1080x1080 (1:1 for Feed) and 1920x1080 (16:9 for Stories/Reels)';
+COMMENT ON TABLE package_ai_creatives IS 'AI-generated creative content for packages. Each variant has two formats: 1080x1080 (1:1 for Feed) and 1080x1920 (9:16 for Stories/Reels)';

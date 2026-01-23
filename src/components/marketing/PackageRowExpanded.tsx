@@ -1431,7 +1431,7 @@ export function PackageRowExpanded({
                         <div className="relative w-24 h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={`https://lh3.googleusercontent.com/d/${fileId4x5}=w200`}
+                            src={`https://drive.google.com/thumbnail?id=${fileId4x5}&sz=w200`}
                             alt={`V${variant} 4x5 Drive`}
                             className="w-full h-full object-cover"
                             loading="lazy"
@@ -1463,7 +1463,7 @@ export function PackageRowExpanded({
                         <div className="relative w-[68px] h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
-                            src={`https://lh3.googleusercontent.com/d/${fileId9x16}=w200`}
+                            src={`https://drive.google.com/thumbnail?id=${fileId9x16}&sz=w200`}
                             alt={`V${variant} 9x16 Drive`}
                             className="w-full h-full object-cover"
                             loading="lazy"

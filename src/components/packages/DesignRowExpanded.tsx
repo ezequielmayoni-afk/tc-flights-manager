@@ -329,13 +329,15 @@ export function DesignRowExpanded({ packageId, tcPackageId, requestedVariants, o
     const sizeClass = ar.key === '4x5' ? 'w-[70px] h-[70px]' : 'w-[70px] h-[112px]'
 
     if (creative) {
-      const thumbnailUrl = `https://lh3.googleusercontent.com/d/${creative.fileId}=w400`
+      const thumbnailUrl = `https://drive.google.com/thumbnail?id=${creative.fileId}&sz=w150`
       return (
         <div className={`relative group ${sizeClass} border rounded-lg overflow-hidden bg-gray-100`}>
           <img
             src={thumbnailUrl}
             alt={`${ar.label} actual`}
             className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            loading="lazy"
           />
           <div className="absolute top-0.5 right-0.5 bg-green-500 rounded-full p-0.5">
             <Check className="h-2 w-2 text-white" />

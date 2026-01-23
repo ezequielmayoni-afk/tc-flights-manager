@@ -3,7 +3,6 @@ import { Header } from '@/components/layout/Header'
 import { DesignTable } from '@/components/packages/DesignTable'
 import { CreativeRequestsPanel } from '@/components/design/CreativeRequestsPanel'
 import { DesignPageHeader } from '@/components/design/DesignPageHeader'
-import { listPackageCreatives } from '@/lib/google-drive/client'
 
 export type PackageForDesign = {
   id: number
@@ -27,6 +26,7 @@ export type PackageForDesign = {
   design_completed_at: string | null
   design_deadline: string | null
   creative_update_needed?: boolean
+  creative_count: number // Now from DB instead of Google Drive API
 }
 
 async function getDesignPackages(): Promise<PackageForDesign[]> {
@@ -55,7 +55,8 @@ async function getDesignPackages(): Promise<PackageForDesign[]> {
       design_completed,
       design_completed_at,
       design_deadline,
-      creative_update_needed
+      creative_update_needed,
+      creative_count
     `)
     .eq('send_to_design', true)
     .order('design_completed', { ascending: true })
@@ -103,69 +104,36 @@ async function getPendingCreativeRequests() {
   return requests || []
 }
 
-async function getDesignStats() {
-  const supabase = await createClient()
+// Compute stats from packages array instead of making 3 separate DB queries
+function computeStats(packages: PackageForDesign[]) {
+  const total = packages.length
+  const pending = packages.filter(p => !p.design_completed).length
+  const completed = packages.filter(p => p.design_completed).length
 
-  const [{ count: totalCount }, { count: pendingCount }, { count: completedCount }] = await Promise.all([
-    supabase
-      .from('packages')
-      .select('*', { count: 'exact', head: true })
-      .eq('send_to_design', true),
-    supabase
-      .from('packages')
-      .select('*', { count: 'exact', head: true })
-      .eq('send_to_design', true)
-      .eq('design_completed', false),
-    supabase
-      .from('packages')
-      .select('*', { count: 'exact', head: true })
-      .eq('send_to_design', true)
-      .eq('design_completed', true),
-  ])
-
-  return {
-    total: totalCount || 0,
-    pending: pendingCount || 0,
-    completed: completedCount || 0,
-  }
+  return { total, pending, completed }
 }
 
-// Get creative counts for all packages (from Google Drive)
-async function getCreativeCounts(packages: PackageForDesign[]): Promise<Record<number, number>> {
+// Build creative counts map from packages (already have creative_count in DB)
+function buildCreativeCounts(packages: PackageForDesign[]): Record<number, number> {
   const counts: Record<number, number> = {}
-
-  // Fetch creatives for each package in parallel (limit concurrency to avoid rate limits)
-  const batchSize = 5
-  for (let i = 0; i < packages.length; i += batchSize) {
-    const batch = packages.slice(i, i + batchSize)
-    const results = await Promise.all(
-      batch.map(async (pkg) => {
-        try {
-          const creatives = await listPackageCreatives(pkg.tc_package_id)
-          return { id: pkg.id, count: creatives.length }
-        } catch (error) {
-          console.error(`Error fetching creatives for package ${pkg.tc_package_id}:`, error)
-          return { id: pkg.id, count: 0 }
-        }
-      })
-    )
-    for (const result of results) {
-      counts[result.id] = result.count
-    }
+  for (const pkg of packages) {
+    counts[pkg.id] = pkg.creative_count || 0
   }
-
   return counts
 }
 
 export default async function DesignPage() {
-  const [packages, stats, creativeRequests] = await Promise.all([
+  // Single parallel fetch - no more sequential Google Drive API calls!
+  const [packages, creativeRequests] = await Promise.all([
     getDesignPackages(),
-    getDesignStats(),
     getPendingCreativeRequests(),
   ])
 
-  // Fetch creative counts for all packages
-  const creativeCounts = await getCreativeCounts(packages)
+  // Compute stats from already-fetched packages (saves 3 DB queries)
+  const stats = computeStats(packages)
+
+  // Build creative counts from DB field (saves 100+ Google Drive API calls)
+  const creativeCounts = buildCreativeCounts(packages)
 
   return (
     <div className="flex flex-col h-full">

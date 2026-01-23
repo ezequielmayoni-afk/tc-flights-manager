@@ -90,7 +90,7 @@ export async function getOrCreateVariantFolder(packageFolderId: string, variant:
   return folder.data.id!
 }
 
-export type AspectRatio = '4x5' | '9x16'
+export type AspectRatio = '4x5' | '9x16' | '1080' | '1920'
 
 function getExtensionFromMimeType(mimeType: string): string {
   const mimeToExt: Record<string, string> = {
@@ -186,14 +186,26 @@ export async function uploadCreative(
   }
 }
 
-export async function listPackageCreatives(packageId: number): Promise<{
-  variant: number
-  aspectRatio: AspectRatio
-  fileId: string
-  webViewLink: string
-}[]> {
+export type PackageCreativesResult = {
+  creatives: {
+    variant: number
+    aspectRatio: AspectRatio
+    fileId: string
+    webViewLink: string
+  }[]
+  folders: {
+    packageFolderId: string | null
+    variantFolders: Record<number, string>
+  }
+}
+
+export async function listPackageCreatives(packageId: number): Promise<PackageCreativesResult> {
   const drive = getDrive()
-  const result: { variant: number; aspectRatio: AspectRatio; fileId: string; webViewLink: string }[] = []
+  const creatives: PackageCreativesResult['creatives'] = []
+  const folders: PackageCreativesResult['folders'] = {
+    packageFolderId: null,
+    variantFolders: {},
+  }
 
   try {
     // Find package folder - supports Shared Drives
@@ -205,10 +217,11 @@ export async function listPackageCreatives(packageId: number): Promise<{
     })
 
     if (!packageFolder.data.files || packageFolder.data.files.length === 0) {
-      return []
+      return { creatives: [], folders }
     }
 
     const packageFolderId = packageFolder.data.files[0].id!
+    folders.packageFolderId = packageFolderId
 
     // List variant folders - supports Shared Drives
     const variantFolders = await drive.files.list({
@@ -218,13 +231,14 @@ export async function listPackageCreatives(packageId: number): Promise<{
       includeItemsFromAllDrives: true,
     })
 
-    if (!variantFolders.data.files) return []
+    if (!variantFolders.data.files) return { creatives, folders }
 
     for (const variantFolder of variantFolders.data.files) {
       const variantMatch = variantFolder.name?.match(/^v(\d+)$/)
       if (!variantMatch) continue
 
       const variant = parseInt(variantMatch[1], 10)
+      folders.variantFolders[variant] = variantFolder.id!
 
       // List files in variant folder - supports Shared Drives
       const files = await drive.files.list({
@@ -237,18 +251,32 @@ export async function listPackageCreatives(packageId: number): Promise<{
       if (!files.data.files) continue
 
       for (const file of files.data.files) {
-        // Check if file starts with 4x5 or 9x16 (any extension)
+        // Check if file starts with known aspect ratios (any extension)
         if (file.name?.startsWith('4x5.')) {
-          result.push({
+          creatives.push({
             variant,
             aspectRatio: '4x5',
             fileId: file.id!,
             webViewLink: file.webViewLink!,
           })
         } else if (file.name?.startsWith('9x16.')) {
-          result.push({
+          creatives.push({
             variant,
             aspectRatio: '9x16',
+            fileId: file.id!,
+            webViewLink: file.webViewLink!,
+          })
+        } else if (file.name?.startsWith('1080.')) {
+          creatives.push({
+            variant,
+            aspectRatio: '1080',
+            fileId: file.id!,
+            webViewLink: file.webViewLink!,
+          })
+        } else if (file.name?.startsWith('1920.')) {
+          creatives.push({
+            variant,
+            aspectRatio: '1920',
             fileId: file.id!,
             webViewLink: file.webViewLink!,
           })
@@ -259,7 +287,10 @@ export async function listPackageCreatives(packageId: number): Promise<{
     console.error('Error listing creatives:', error)
   }
 
-  return result.sort((a, b) => a.variant - b.variant || a.aspectRatio.localeCompare(b.aspectRatio))
+  return {
+    creatives: creatives.sort((a, b) => a.variant - b.variant || a.aspectRatio.localeCompare(b.aspectRatio)),
+    folders,
+  }
 }
 
 export async function deleteCreative(fileId: string): Promise<void> {

@@ -2,13 +2,13 @@
  * Types for AI-generated creative content
  */
 
-// Single format output (1080x1080 or 1920x1080)
+// Single format output (1080x1080 or 1080x1920)
 export interface AICreativeFormat {
   titulo_principal: string
   subtitulo: string
   precio_texto: string
   cta: string
-  descripcion_imagen: string // English prompt for Imagen 3
+  descripcion_imagen: string // English prompt for Gemini 3 Pro Image (with text rendering)
   estilo: string // Style notes for the variant
 }
 
@@ -16,7 +16,7 @@ export interface AICreativeFormat {
 export interface AICreativeVariant {
   concepto: string
   formato_1080: AICreativeFormat // 1:1 (1080x1080) for Feed
-  formato_1920: AICreativeFormat // 16:9 (1920x1080) for Stories/Reels
+  formato_1920: AICreativeFormat // 9:16 (1080x1920) for Stories/Reels
 }
 
 // Full Gemini response with all 5 variants
@@ -39,7 +39,7 @@ export interface AICreativeOutput {
 // Generated image info
 export interface AIGeneratedImage {
   variant: number
-  aspectRatio: '1080' | '1920' // 1080x1080 (1:1) or 1920x1080 (16:9)
+  aspectRatio: '1080' | '1920' // 1080x1080 (1:1) or 1080x1920 (9:16)
   imageUrl: string // Google Drive URL or base64
   fileId?: string // Google Drive file ID if uploaded
 }
@@ -76,7 +76,7 @@ export interface PackageAICreative {
 
   // Generation metadata
   model_used: string // e.g., "gemini-2.0-flash"
-  imagen_model_used: string | null // e.g., "imagen-3.0-generate-001"
+  imagen_model_used: string | null // e.g., "gemini-3-pro-image-preview" (for images with text)
   prompt_version: string // e.g., "v3"
   generation_cost_tokens: number | null
 

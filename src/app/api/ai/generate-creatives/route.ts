@@ -22,8 +22,8 @@ function getSupabaseClient() {
 
 /**
  * POST /api/ai/generate-creatives
- * Generate AI creatives for a package using Gemini + Imagen 3
- * Processes each variant SEQUENTIALLY: Gemini → Imagen → Drive upload → next variant
+ * Generate AI creatives for a package using Gemini + Gemini 3 Pro Image
+ * Processes each variant SEQUENTIALLY: Gemini → Gemini 3 Pro Image (with text) → Drive upload → next variant
  *
  * Body:
  * - packageId: number (tc_package_id)
@@ -229,13 +229,19 @@ export async function POST(request: NextRequest) {
                 .from('package_ai_creatives')
                 .upsert(creativeData, { onConflict: 'package_id,variant' })
 
-              // Step 3: Generate images with Imagen 3
+              // Step 3: Generate professional images with Gemini 3 Pro Image (includes text overlay)
               const variantImages: { aspectRatio: string; url: string }[] = []
+
+              // Get destination name for image generation
+              const destinationName = variantOutput.metadata?.destino
+                || packageData.package_destinations?.[0]
+                || packageData.title
+                || 'destino turístico'
 
               if (generateImages && packageFolderId) {
                 sendEvent('progress', {
                   variant: variantNumber,
-                  step: `Generando imágenes V${variantNumber} con Imagen 3...`,
+                  step: `Generando imágenes profesionales V${variantNumber} con Gemini 3 Pro...`,
                 })
 
                 const images = await generateVariantImages(
@@ -244,7 +250,8 @@ export async function POST(request: NextRequest) {
                     formato_1080: variantOutput.formato_1080,
                     formato_1920: variantOutput.formato_1920,
                   },
-                  variantNumber
+                  variantNumber,
+                  destinationName
                 )
 
                 // Step 4: Upload to Google Drive
@@ -275,7 +282,7 @@ export async function POST(request: NextRequest) {
                       .from('package_ai_creatives')
                       .update({
                         ...updateField,
-                        imagen_model_used: 'imagen-3.0-generate-001',
+                        imagen_model_used: 'gemini-3-pro-image-preview',
                       })
                       .eq('package_id', pkg.id)
                       .eq('variant', variantNumber)

@@ -189,6 +189,28 @@ export async function POST(request: NextRequest) {
     const result = await uploadCreative(variantFolderId, aspectRatio, file, mimeType, fileName)
     console.log('[Creatives] Step 5 complete:', result)
 
+    // Step 6: Increment creative_count atomically
+    console.log('[Creatives] Step 6: Incrementing creative_count...')
+    const { error: rpcError } = await db.rpc('increment_creative_count', {
+      package_id_param: packageId,
+    })
+
+    if (rpcError) {
+      // Fallback to direct update if RPC doesn't exist
+      console.log('[Creatives] RPC fallback, using direct update')
+      const { data: currentPkg } = await db
+        .from('packages')
+        .select('creative_count')
+        .eq('id', packageId)
+        .single()
+
+      await db
+        .from('packages')
+        .update({ creative_count: (currentPkg?.creative_count || 0) + 1 })
+        .eq('id', packageId)
+    }
+    console.log('[Creatives] Step 6 complete')
+
     console.log('[Creatives] === Upload complete ===')
 
     return NextResponse.json({

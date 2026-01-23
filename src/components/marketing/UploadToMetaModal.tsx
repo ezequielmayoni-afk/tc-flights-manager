@@ -260,7 +260,7 @@ export function UploadToMetaModal({
   const metaByVariant = groupByVariant(metaCreatives)
 
   const getDriveThumbnail = (fileId: string) =>
-    `https://lh3.googleusercontent.com/d/${fileId}=w200`
+    `https://drive.google.com/thumbnail?id=${fileId}&sz=w200`
 
   const getMetaThumbnail = (hash: string) =>
     metaImageUrls[hash] || ''
@@ -389,14 +389,14 @@ export function UploadToMetaModal({
                     <div className="flex items-center gap-2 w-[140px]">
                       <div className="w-10 h-12 bg-green-50 rounded overflow-hidden flex items-center justify-center shrink-0 border border-green-200">
                         {drive4x5?.fileId ? (
-                          <img src={getDriveThumbnail(drive4x5.fileId)} alt="" className="w-full h-full object-cover" />
+                          <img src={getDriveThumbnail(drive4x5.fileId)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <ImageIcon className="h-4 w-4 text-gray-300" />
                         )}
                       </div>
                       <div className="w-7 h-12 bg-green-50 rounded overflow-hidden flex items-center justify-center shrink-0 border border-green-200">
                         {drive9x16?.fileId ? (
-                          <img src={getDriveThumbnail(drive9x16.fileId)} alt="" className="w-full h-full object-cover" />
+                          <img src={getDriveThumbnail(drive9x16.fileId)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           <Video className="h-3 w-3 text-gray-300" />
                         )}
@@ -468,7 +468,7 @@ export function UploadToMetaModal({
                               <p className="text-[10px] text-muted-foreground mb-1">4x5</p>
                               <div className="w-24 aspect-[4/5] bg-green-50 rounded-lg overflow-hidden border border-green-200">
                                 {drive4x5?.fileId ? (
-                                  <img src={getDriveThumbnail(drive4x5.fileId)} alt="" className="w-full h-full object-cover" />
+                                  <img src={getDriveThumbnail(drive4x5.fileId)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
                                     <ImageIcon className="h-6 w-6 text-gray-300" />
@@ -480,7 +480,7 @@ export function UploadToMetaModal({
                               <p className="text-[10px] text-muted-foreground mb-1">9x16</p>
                               <div className="w-16 aspect-[9/16] bg-green-50 rounded-lg overflow-hidden border border-green-200">
                                 {drive9x16?.fileId ? (
-                                  <img src={getDriveThumbnail(drive9x16.fileId)} alt="" className="w-full h-full object-cover" />
+                                  <img src={getDriveThumbnail(drive9x16.fileId)} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center">
                                     <Video className="h-5 w-5 text-gray-300" />

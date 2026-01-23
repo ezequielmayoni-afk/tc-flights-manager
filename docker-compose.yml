@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tc-flights-manager
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # Supabase
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      # TravelCompositor API
+      - TC_API_BASE_URL=${TC_API_BASE_URL}
+      - TC_USERNAME=${TC_USERNAME}
+      - TC_PASSWORD=${TC_PASSWORD}
+      - TC_MICROSITE_ID=${TC_MICROSITE_ID}
+      - TC_SUPPLIER_ID=${TC_SUPPLIER_ID}
+      # Cron
+      - CRON_SECRET=${CRON_SECRET}
+      # Google Cloud / Vertex AI
+      - GOOGLE_CLOUD_PROJECT_ID=${GOOGLE_CLOUD_PROJECT_ID}
+      - GOOGLE_CLOUD_LOCATION=${GOOGLE_CLOUD_LOCATION}
+      # Google Drive
+      - GOOGLE_DRIVE_CREDENTIALS=${GOOGLE_DRIVE_CREDENTIALS}
+      - GOOGLE_DRIVE_FOLDER_ID=${GOOGLE_DRIVE_FOLDER_ID}
+      - GOOGLE_DRIVE_IMPERSONATE_EMAIL=${GOOGLE_DRIVE_IMPERSONATE_EMAIL}
+      # Gemini API (for image generation)
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Development service with hot reload
+  dev:
+    profiles: ["dev"]
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: tc-flights-manager-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+    env_file:
+      - .env.local

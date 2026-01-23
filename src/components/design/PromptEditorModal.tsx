@@ -50,7 +50,7 @@ La imagen debe representar fielmente el destino del JSON (playas caribeñas, mon
 6. FORMATOS POR VARIANTE:
 Cada variante tiene DOS formatos:
 - formato_1080: Imagen 1080x1080 (1:1) para Feed
-- formato_1920: Imagen 1920x1080 (16:9) para Stories/Reels
+- formato_1920: Imagen 1080x1920 (9:16) para Stories/Reels
 
 RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
 {
@@ -61,7 +61,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
       "subtitulo": "string",
       "precio_texto": "string (ej: USD 1234)",
       "cta": "string",
-      "descripcion_imagen": "string EN INGLÉS (50-100 palabras)",
+      "descripcion_imagen": "string EN INGLÉS (50-100 palabras, describe la ESCENA)",
       "estilo": "string"
     },
     "formato_1920": {
@@ -69,7 +69,7 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
       "subtitulo": "string",
       "precio_texto": "string",
       "cta": "string",
-      "descripcion_imagen": "string EN INGLÉS (50-100 palabras)",
+      "descripcion_imagen": "string EN INGLÉS (50-100 palabras, describe la ESCENA)",
       "estilo": "string"
     }
   },
@@ -88,10 +88,14 @@ RESPONDE ÚNICAMENTE CON JSON VÁLIDO:
 }
 
 IMPORTANTE para descripcion_imagen:
-- Escribir EN INGLÉS para Imagen 3
+- Escribir EN INGLÉS para Gemini 3 Pro Image (renderiza texto profesionalmente)
 - 50-100 palabras, estilo técnico publicitario
 - Incluir: tipo de foto, composición, personas, luz, colores, mood
-- Ejemplo: "Professional advertising photograph of a happy couple relaxing in an infinity pool overlooking turquoise Caribbean waters. Palm trees frame the shot. Golden hour lighting, warm tones. Shot with professional DSLR. The mood is aspirational and luxurious."`
+- CRÍTICO: La descripción DEBE incluir instrucciones para TEXTO SUPERPUESTO en la imagen:
+  * Título principal visible en la parte superior
+  * Precio destacado en grande (verde #1DE9B6)
+  * Botón CTA en la parte inferior
+- Ejemplo: "Professional travel advertisement photo of a couple on a Caribbean beach at sunset. OVERLAY TEXT: Large bold white text 'PUNTA CANA' at top, prominent green price 'USD 1,299' in center, 'RESERVÁ AHORA' button at bottom. Warm golden lighting, turquoise water, palm trees. Aspirational luxury mood."`
 
 export function PromptEditorModal({ open, onOpenChange }: PromptEditorModalProps) {
   const [prompt, setPrompt] = useState('')
