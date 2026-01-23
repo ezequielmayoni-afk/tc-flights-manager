@@ -32,9 +32,7 @@ import {
   Loader2,
   X,
   Moon,
-  Calendar,
   Sparkles,
-  Megaphone,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
@@ -470,7 +468,6 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
         </TableHeader>
         <TableBody>
           {filteredPackages.map((pkg) => {
-            const daysLeft = getDaysUntilExpiration(pkg.date_range_end)
             const expired = isExpired(pkg.date_range_end)
 
             return (

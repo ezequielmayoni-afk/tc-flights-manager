@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Upload, X, Check, ExternalLink, Trash2, Play, RefreshCw } from 'lucide-react'
+import { Loader2, Upload, X, Check, ExternalLink, Play, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 
 type AspectRatio = '4x5' | '9x16'
@@ -44,7 +44,7 @@ const ASPECT_RATIOS: { key: AspectRatio; label: string }[] = [
   { key: '9x16', label: '9:16' },
 ]
 
-export function DesignRowExpanded({ packageId, tcPackageId, requestedVariants, onCreativesChange }: DesignRowExpandedProps) {
+export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, requestedVariants, onCreativesChange }: DesignRowExpandedProps) {
   // Use requested variants if provided, otherwise show all
   const displayVariants = requestedVariants && requestedVariants.length > 0 ? requestedVariants.sort((a, b) => a - b) : VARIANTS
   const [creatives, setCreatives] = useState<Record<number, VariantCreatives>>({})
@@ -259,7 +259,7 @@ export function DesignRowExpanded({ packageId, tcPackageId, requestedVariants, o
     }
   }
 
-  const handleDelete = async (variant: number, aspectRatio: AspectRatio, fileId: string) => {
+  const _handleDelete = async (variant: number, aspectRatio: AspectRatio, fileId: string) => {
     try {
       const response = await fetch(`/api/creatives/${packageId}`, {
         method: 'DELETE',
