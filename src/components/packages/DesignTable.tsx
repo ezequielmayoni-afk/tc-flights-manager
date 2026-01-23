@@ -33,6 +33,7 @@ import {
   X,
   Moon,
   Sparkles,
+  Megaphone,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
