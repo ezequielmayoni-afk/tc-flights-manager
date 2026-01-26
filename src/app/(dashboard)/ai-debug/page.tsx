@@ -46,6 +46,8 @@ import {
   Eye,
   ChevronLeft,
   ChevronRight,
+  Plus,
+  Pencil,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -129,6 +131,18 @@ export default function AIDebugPage() {
   const [variants, setVariants] = useState<PromptVariant[]>([])
   const [variantsLoading, setVariantsLoading] = useState(true)
   const [selectedVariant, setSelectedVariant] = useState<PromptVariant | null>(null)
+  const [isVariantModalOpen, setIsVariantModalOpen] = useState(false)
+  const [editingVariant, setEditingVariant] = useState<PromptVariant | null>(null)
+  const [savingVariant, setSavingVariant] = useState(false)
+  const [variantForm, setVariantForm] = useState({
+    name: '',
+    focus: '',
+    description_es: '',
+    visual_direction: '',
+    hook_phrases: '',
+    prompt_addition: '',
+    is_active: true,
+  })
 
   // Fetch logs
   const fetchLogs = useCallback(async () => {
@@ -251,6 +265,110 @@ export default function AIDebugPage() {
         fetchAssets()
       } else {
         toast.error('Error al eliminar')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    }
+  }
+
+  // Open variant modal for creating
+  const handleOpenCreateVariant = () => {
+    setEditingVariant(null)
+    setVariantForm({
+      name: '',
+      focus: '',
+      description_es: '',
+      visual_direction: '',
+      hook_phrases: '',
+      prompt_addition: '',
+      is_active: true,
+    })
+    setIsVariantModalOpen(true)
+  }
+
+  // Open variant modal for editing
+  const handleOpenEditVariant = (variant: PromptVariant) => {
+    setEditingVariant(variant)
+    setVariantForm({
+      name: variant.name,
+      focus: variant.focus,
+      description_es: variant.description_es,
+      visual_direction: variant.visual_direction,
+      hook_phrases: variant.hook_phrases.join('\n'),
+      prompt_addition: variant.prompt_addition,
+      is_active: variant.is_active,
+    })
+    setIsVariantModalOpen(true)
+  }
+
+  // Save variant (create or update)
+  const handleSaveVariant = async () => {
+    if (!variantForm.name || !variantForm.focus || !variantForm.description_es ||
+        !variantForm.visual_direction || !variantForm.hook_phrases || !variantForm.prompt_addition) {
+      toast.error('Todos los campos son requeridos')
+      return
+    }
+
+    setSavingVariant(true)
+    try {
+      const hookPhrasesArray = variantForm.hook_phrases
+        .split('\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0)
+
+      if (hookPhrasesArray.length === 0) {
+        toast.error('Debe ingresar al menos una hook phrase')
+        setSavingVariant(false)
+        return
+      }
+
+      const body = {
+        name: variantForm.name,
+        focus: variantForm.focus,
+        description_es: variantForm.description_es,
+        visual_direction: variantForm.visual_direction,
+        hook_phrases: hookPhrasesArray,
+        prompt_addition: variantForm.prompt_addition,
+        is_active: variantForm.is_active,
+        ...(editingVariant && { variant_number: editingVariant.variant_number }),
+      }
+
+      const response = await fetch('/api/ai/prompt-variants', {
+        method: editingVariant ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+      if (response.ok) {
+        toast.success(editingVariant ? 'Variante actualizada' : 'Variante creada')
+        setIsVariantModalOpen(false)
+        fetchVariants()
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Error al guardar')
+      }
+    } catch {
+      toast.error('Error de conexión')
+    } finally {
+      setSavingVariant(false)
+    }
+  }
+
+  // Delete variant
+  const handleDeleteVariant = async (variantNumber: number) => {
+    if (!confirm(`¿Eliminar la variante V${variantNumber}? Esta acción no se puede deshacer.`)) return
+
+    try {
+      const response = await fetch(`/api/ai/prompt-variants?variant_number=${variantNumber}`, {
+        method: 'DELETE',
+      })
+
+      if (response.ok) {
+        toast.success(`Variante V${variantNumber} eliminada`)
+        fetchVariants()
+      } else {
+        const data = await response.json()
+        toast.error(data.error || 'Error al eliminar')
       }
     } catch {
       toast.error('Error de conexión')
@@ -474,118 +592,43 @@ export default function AIDebugPage() {
         {/* Assets Tab */}
         <TabsContent value="assets" className="space-y-4">
           <div className="grid gap-4">
-            {/* Manual de Marca */}
+            {/* System Instruction - PRIMERO porque es el más importante */}
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
                     <CardTitle className="flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Manual de Marca
+                      <Sparkles className="h-5 w-5" />
+                      System Instruction
                     </CardTitle>
                     <CardDescription>
-                      Documento con la identidad de Sí, Viajo (Markdown)
+                      Instrucciones del sistema para Gemini (incluye manual de marca y análisis de estilo)
                     </CardDescription>
                   </div>
-                  <Badge variant={assets.manual_marca?.value ? 'default' : 'outline'}>
-                    {assets.manual_marca?.value ? `${assets.manual_marca.value.length} chars` : 'Vacío'}
+                  <Badge variant={assets.system_instruction?.value ? 'default' : 'outline'}>
+                    {assets.system_instruction?.value ? `${assets.system_instruction.value.length} chars` : 'Vacío'}
                   </Badge>
                 </div>
               </CardHeader>
               <CardContent>
-                {editingAsset === 'manual_marca' ? (
+                {editingAsset === 'system_instruction' ? (
                   <div className="space-y-3">
                     <Textarea
                       value={assetValue}
                       onChange={(e) => setAssetValue(e.target.value)}
-                      rows={15}
-                      placeholder="Pega aquí el contenido del manual de marca en Markdown..."
-                      className="font-mono text-sm"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        onClick={() => handleSaveAsset('manual_marca')}
-                        disabled={savingAsset}
-                      >
-                        <Save className="h-4 w-4 mr-2" />
-                        Guardar
-                      </Button>
-                      <Button
-                        variant="outline"
-                        onClick={() => setEditingAsset(null)}
-                      >
-                        Cancelar
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {assets.manual_marca?.value ? (
-                      <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-[200px] whitespace-pre-wrap">
-                        {assets.manual_marca.value.slice(0, 1000)}
-                        {assets.manual_marca.value.length > 1000 && '...'}
-                      </pre>
-                    ) : (
-                      <p className="text-sm text-muted-foreground">Sin contenido</p>
-                    )}
-                    <div className="flex gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          setAssetValue(assets.manual_marca?.value || '')
-                          setEditingAsset('manual_marca')
-                        }}
-                      >
-                        <Upload className="h-4 w-4 mr-2" />
-                        {assets.manual_marca?.value ? 'Editar' : 'Cargar'}
-                      </Button>
-                      {assets.manual_marca?.value && (
-                        <Button
-                          variant="outline"
-                          className="text-red-600"
-                          onClick={() => handleClearAsset('manual_marca')}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Limpiar
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      rows={20}
+                      placeholder="Eres un diseñador gráfico profesional especializado en publicidad turística para Si, Viajo...
 
-            {/* Análisis de Estilo */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <FileText className="h-5 w-5" />
-                      Análisis de Estilo Visual
-                    </CardTitle>
-                    <CardDescription>
-                      Análisis del estilo Nano Banana / Sí, Viajo (Markdown)
-                    </CardDescription>
-                  </div>
-                  <Badge variant={assets.analisis_estilo?.value ? 'default' : 'outline'}>
-                    {assets.analisis_estilo?.value ? `${assets.analisis_estilo.value.length} chars` : 'Vacío'}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {editingAsset === 'analisis_estilo' ? (
-                  <div className="space-y-3">
-                    <Textarea
-                      value={assetValue}
-                      onChange={(e) => setAssetValue(e.target.value)}
-                      rows={15}
-                      placeholder="Pega aquí el análisis de estilo visual en Markdown..."
+Incluye aquí:
+- Instrucciones de comportamiento
+- Manual de marca
+- Análisis de estilo visual
+- Reglas de diseño"
                       className="font-mono text-sm"
                     />
                     <div className="flex gap-2">
                       <Button
-                        onClick={() => handleSaveAsset('analisis_estilo')}
+                        onClick={() => handleSaveAsset('system_instruction')}
                         disabled={savingAsset}
                       >
                         <Save className="h-4 w-4 mr-2" />
@@ -601,30 +644,30 @@ export default function AIDebugPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {assets.analisis_estilo?.value ? (
-                      <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-[200px] whitespace-pre-wrap">
-                        {assets.analisis_estilo.value.slice(0, 1000)}
-                        {assets.analisis_estilo.value.length > 1000 && '...'}
+                    {assets.system_instruction?.value ? (
+                      <pre className="text-xs bg-muted p-3 rounded-lg overflow-auto max-h-[300px] whitespace-pre-wrap">
+                        {assets.system_instruction.value.slice(0, 2000)}
+                        {assets.system_instruction.value.length > 2000 && '...'}
                       </pre>
                     ) : (
-                      <p className="text-sm text-muted-foreground">Sin contenido</p>
+                      <p className="text-sm text-muted-foreground">Sin system instruction configurado</p>
                     )}
                     <div className="flex gap-2">
                       <Button
                         variant="outline"
                         onClick={() => {
-                          setAssetValue(assets.analisis_estilo?.value || '')
-                          setEditingAsset('analisis_estilo')
+                          setAssetValue(assets.system_instruction?.value || '')
+                          setEditingAsset('system_instruction')
                         }}
                       >
                         <Upload className="h-4 w-4 mr-2" />
-                        {assets.analisis_estilo?.value ? 'Editar' : 'Cargar'}
+                        {assets.system_instruction?.value ? 'Editar' : 'Configurar'}
                       </Button>
-                      {assets.analisis_estilo?.value && (
+                      {assets.system_instruction?.value && (
                         <Button
                           variant="outline"
                           className="text-red-600"
-                          onClick={() => handleClearAsset('analisis_estilo')}
+                          onClick={() => handleClearAsset('system_instruction')}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Limpiar
@@ -725,6 +768,103 @@ export default function AIDebugPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Reference Images */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ImageIcon className="h-5 w-5" />
+                  Imágenes de Referencia
+                </CardTitle>
+                <CardDescription>
+                  Hasta 6 imágenes que Gemini usará como referencia de estilo/composición
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {[1, 2, 3, 4, 5, 6].map((num) => {
+                    const key = `reference_image_${num}` as const
+                    const asset = assets[key]
+                    return (
+                      <div key={key} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm">Referencia {num}</span>
+                          <Badge variant={asset?.value ? 'default' : 'outline'} className="text-xs">
+                            {asset?.value ? `${Math.round(asset.value.length / 1024)}KB` : 'Vacío'}
+                          </Badge>
+                        </div>
+
+                        {editingAsset === key ? (
+                          <div className="space-y-2">
+                            <Textarea
+                              value={assetValue}
+                              onChange={(e) => setAssetValue(e.target.value)}
+                              rows={3}
+                              placeholder="iVBORw0KGgoAAAANSUhEUgAA..."
+                              className="font-mono text-xs"
+                            />
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleSaveAsset(key)}
+                                disabled={savingAsset}
+                              >
+                                <Save className="h-3 w-3 mr-1" />
+                                Guardar
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setEditingAsset(null)}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-2">
+                            {asset?.value ? (
+                              <img
+                                src={asset.value.startsWith('data:') ? asset.value : `data:image/png;base64,${asset.value}`}
+                                alt={`Referencia ${num}`}
+                                className="w-full h-32 object-cover bg-gray-100 rounded"
+                              />
+                            ) : (
+                              <div className="w-full h-32 bg-gray-100 rounded flex items-center justify-center text-muted-foreground text-sm">
+                                Sin imagen
+                              </div>
+                            )}
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setAssetValue(asset?.value || '')
+                                  setEditingAsset(key)
+                                }}
+                              >
+                                <Upload className="h-3 w-3 mr-1" />
+                                {asset?.value ? 'Cambiar' : 'Cargar'}
+                              </Button>
+                              {asset?.value && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-red-600"
+                                  onClick={() => handleClearAsset(key)}
+                                >
+                                  <Trash2 className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </TabsContent>
 
@@ -734,15 +874,21 @@ export default function AIDebugPage() {
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
-                  <CardTitle>Las 5 Variantes con &ldquo;Sí&rdquo;</CardTitle>
+                  <CardTitle>Variantes con &ldquo;Sí&rdquo;</CardTitle>
                   <CardDescription>
                     Cada variante apela a un motivador psicológico diferente para Meta Andromeda
                   </CardDescription>
                 </div>
-                <Button variant="outline" onClick={fetchVariants} disabled={variantsLoading}>
-                  <RefreshCw className={`h-4 w-4 mr-2 ${variantsLoading ? 'animate-spin' : ''}`} />
-                  Actualizar
-                </Button>
+                <div className="flex gap-2">
+                  <Button onClick={handleOpenCreateVariant}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar
+                  </Button>
+                  <Button variant="outline" onClick={fetchVariants} disabled={variantsLoading}>
+                    <RefreshCw className={`h-4 w-4 mr-2 ${variantsLoading ? 'animate-spin' : ''}`} />
+                    Actualizar
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -755,7 +901,7 @@ export default function AIDebugPage() {
                   {variants.map((variant) => (
                     <div
                       key={variant.variant_number}
-                      className="p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                      className={`p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors ${!variant.is_active ? 'opacity-60' : ''}`}
                       onClick={() => setSelectedVariant(variant)}
                     >
                       <div className="flex items-start justify-between">
@@ -771,6 +917,11 @@ export default function AIDebugPage() {
                             <Badge variant="secondary" className="text-xs">
                               {variant.focus}
                             </Badge>
+                            {!variant.is_active && (
+                              <Badge variant="outline" className="text-xs text-gray-500">
+                                Inactiva
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-sm text-muted-foreground">
                             {variant.description_es}
@@ -784,11 +935,37 @@ export default function AIDebugPage() {
                                 &ldquo;{phrase}&rdquo;
                               </span>
                             ))}
+                            {variant.hook_phrases.length > 2 && (
+                              <span className="text-xs px-2 py-0.5 text-muted-foreground">
+                                +{variant.hook_phrases.length - 2} más
+                              </span>
+                            )}
                           </div>
                         </div>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); setSelectedVariant(variant) }}
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); handleOpenEditVariant(variant) }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            onClick={(e) => { e.stopPropagation(); handleDeleteVariant(variant.variant_number) }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -947,6 +1124,123 @@ export default function AIDebugPage() {
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Create/Edit Variant Dialog */}
+      <Dialog open={isVariantModalOpen} onOpenChange={setIsVariantModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingVariant ? `Editar Variante V${editingVariant.variant_number}` : 'Nueva Variante'}
+            </DialogTitle>
+            <DialogDescription>
+              {editingVariant
+                ? 'Modifica los campos de la variante existente'
+                : 'Crea una nueva variante con un enfoque psicológico diferente'}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="variant-name">Nombre *</Label>
+                <Input
+                  id="variant-name"
+                  placeholder="Ej: Precio/Oferta"
+                  value={variantForm.name}
+                  onChange={(e) => setVariantForm(f => ({ ...f, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="variant-focus">Focus *</Label>
+                <Input
+                  id="variant-focus"
+                  placeholder="Ej: Ahorro"
+                  value={variantForm.focus}
+                  onChange={(e) => setVariantForm(f => ({ ...f, focus: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="variant-description">Descripción (ES) *</Label>
+              <Textarea
+                id="variant-description"
+                placeholder="Describe el enfoque psicológico de esta variante..."
+                value={variantForm.description_es}
+                onChange={(e) => setVariantForm(f => ({ ...f, description_es: e.target.value }))}
+                rows={2}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="variant-visual">Dirección Visual *</Label>
+              <Textarea
+                id="variant-visual"
+                placeholder="Describe cómo debe verse la imagen generada..."
+                value={variantForm.visual_direction}
+                onChange={(e) => setVariantForm(f => ({ ...f, visual_direction: e.target.value }))}
+                rows={3}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="variant-hooks">Hook Phrases * (una por línea)</Label>
+              <Textarea
+                id="variant-hooks"
+                placeholder="Sí, ¡a este precio!&#10;Sí, ¡qué oferta!&#10;Sí, ¡lo quiero!"
+                value={variantForm.hook_phrases}
+                onChange={(e) => setVariantForm(f => ({ ...f, hook_phrases: e.target.value }))}
+                rows={4}
+                className="font-mono text-sm"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="variant-prompt">Instrucciones para Gemini (Prompt Addition) *</Label>
+              <Textarea
+                id="variant-prompt"
+                placeholder="Instrucciones específicas que se agregarán al prompt de generación..."
+                value={variantForm.prompt_addition}
+                onChange={(e) => setVariantForm(f => ({ ...f, prompt_addition: e.target.value }))}
+                rows={6}
+                className="font-mono text-sm"
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="variant-active"
+                checked={variantForm.is_active}
+                onChange={(e) => setVariantForm(f => ({ ...f, is_active: e.target.checked }))}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <Label htmlFor="variant-active" className="font-normal">
+                Variante activa (se usará en la generación de creativos)
+              </Label>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setIsVariantModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleSaveVariant} disabled={savingVariant}>
+              {savingVariant ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="h-4 w-4 mr-2" />
+                  {editingVariant ? 'Guardar Cambios' : 'Crear Variante'}
+                </>
+              )}
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -101,6 +101,7 @@ async function updateGenerationLog(
  * Body:
  * - packageId: number (tc_package_id)
  * - variants: number[] (which variants to generate, default: [1,2,3,4,5])
+ * - aspectRatios: string[] (which aspect ratios to generate, default: ['1:1', '9:16'])
  * - includeLogo: boolean (whether to send logo as reference image)
  *
  * Returns SSE stream with progress updates
@@ -123,6 +124,7 @@ export async function POST(request: NextRequest) {
     const {
       packageId,
       variants = [1, 2, 3, 4, 5],
+      aspectRatios = ['1:1', '9:16'],
       includeLogo = true,
     } = body
 
@@ -266,12 +268,20 @@ export async function POST(request: NextRequest) {
             // Create variant folder
             const variantFolderId = await getOrCreateVariantFolder(packageFolderId, variantNumber)
 
-            // Generate both aspect ratios: 4x5 for feed, 9x16 for stories
-            // geminiAspect is what we send to Gemini, driveAspect is how we save in Drive
-            for (const { geminiAspect, driveAspect, label } of [
-              { geminiAspect: '4:5' as const, driveAspect: '4x5' as const, label: '4x5 Feed' },
-              { geminiAspect: '9:16' as const, driveAspect: '9x16' as const, label: '9x16 Stories' },
-            ]) {
+            // Build aspect ratio configs based on requested aspectRatios
+            // Mapping: '1:1' -> 1x1 Feed, '9:16' -> 9x16 Stories
+            const aspectRatioConfigs: Array<{ geminiAspect: '1:1' | '9:16'; driveAspect: '1x1' | '9x16'; label: string }> = []
+
+            for (const ar of aspectRatios as string[]) {
+              if (ar === '1:1') {
+                aspectRatioConfigs.push({ geminiAspect: '1:1', driveAspect: '1x1', label: '1x1 Feed' })
+              } else if (ar === '9:16') {
+                aspectRatioConfigs.push({ geminiAspect: '9:16', driveAspect: '9x16', label: '9x16 Stories' })
+              }
+            }
+
+            // Generate requested aspect ratios
+            for (const { geminiAspect, driveAspect, label } of aspectRatioConfigs) {
               const startTime = Date.now()
 
               // Create log entry
@@ -284,9 +294,9 @@ export async function POST(request: NextRequest) {
                 model_used: 'gemini-3-pro-image-preview',
                 package_data: packageData,
                 assets_used: {
-                  manual_marca: !!assets.manual_marca,
-                  analisis_estilo: !!assets.analisis_estilo,
+                  system_instruction: !!assets.system_instruction,
                   logo_base64: includeLogo && !!assets.logo_base64,
+                  reference_images: [assets.reference_image_1, assets.reference_image_2, assets.reference_image_3, assets.reference_image_4, assets.reference_image_5, assets.reference_image_6].filter(Boolean).length,
                 },
                 status: 'generating',
                 started_at: new Date().toISOString(),
@@ -336,10 +346,12 @@ export async function POST(request: NextRequest) {
                 }
 
                 // Save to package_ai_creatives (for backwards compatibility)
-                // 4x5 maps to image_1080, 9x16 maps to image_1920
-                const creativeUpdateField = driveAspect === '4x5'
+                // 1x1 maps to image_1080, 9x16 maps to image_1920
+                const creativeUpdateField = driveAspect === '1x1'
                   ? { image_1080_file_id: uploaded.id, image_1080_url: uploaded.webViewLink }
-                  : { image_1920_file_id: uploaded.id, image_1920_url: uploaded.webViewLink }
+                  : driveAspect === '9x16'
+                  ? { image_1920_file_id: uploaded.id, image_1920_url: uploaded.webViewLink }
+                  : {} // 4x5 not stored in this table
 
                 await db
                   .from('package_ai_creatives')

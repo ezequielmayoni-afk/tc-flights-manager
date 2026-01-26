@@ -115,7 +115,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate key
-    const validKeys = ['manual_marca', 'logo_base64', 'analisis_estilo']
+    const validKeys = [
+      'logo_base64',
+      'system_instruction',
+      'reference_image_1',
+      'reference_image_2',
+      'reference_image_3',
+      'reference_image_4',
+      'reference_image_5',
+      'reference_image_6',
+    ]
     if (!validKeys.includes(key)) {
       return NextResponse.json(
         { error: `Invalid key. Must be one of: ${validKeys.join(', ')}` },
@@ -123,7 +132,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const contentTypeValue = content_type || (key === 'logo_base64' ? 'image/png' : 'text/markdown')
+    // Determine content type based on key
+    const imageKeys = ['logo_base64', 'reference_image_1', 'reference_image_2', 'reference_image_3', 'reference_image_4', 'reference_image_5', 'reference_image_6']
+    const contentTypeValue = content_type || (imageKeys.includes(key) ? 'image/png' : 'text/plain')
 
     // First, check if the row exists
     const { data: existing } = await db

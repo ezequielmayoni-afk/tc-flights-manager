@@ -136,7 +136,7 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [designModalPackage, setDesignModalPackage] = useState<{ id: number; title: string } | null>(null)
-  const [aiModalPackage, setAiModalPackage] = useState<{ id: number; title: string } | null>(null)
+  const [aiModalPackage, setAiModalPackage] = useState<{ id: number; tc_package_id: number; title: string } | null>(null)
   const [markingComplete, setMarkingComplete] = useState<number | null>(null)
   const [bulkMarking, setBulkMarking] = useState(false)
   const [bulkUnmarking, setBulkUnmarking] = useState(false)
@@ -627,11 +627,11 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled
-                      className="gap-1 opacity-50 cursor-not-allowed"
-                      title="Generación con IA temporalmente deshabilitada"
+                      onClick={() => setAiModalPackage({ id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title })}
+                      className="gap-1"
+                      title="Generar creativos con IA"
                     >
-                      <Sparkles className="h-4 w-4 text-gray-400" />
+                      <Sparkles className="h-4 w-4 text-purple-500" />
                       IA
                     </Button>
                     <Button
@@ -670,7 +670,7 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
       {/* AI Generator Modal */}
       {aiModalPackage && (
         <AIGeneratorModal
-          packageId={aiModalPackage.id}
+          packageId={aiModalPackage.tc_package_id}
           packageTitle={aiModalPackage.title}
           open={!!aiModalPackage}
           onOpenChange={(open) => !open && setAiModalPackage(null)}

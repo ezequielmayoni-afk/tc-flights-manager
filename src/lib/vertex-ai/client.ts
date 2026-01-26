@@ -43,9 +43,14 @@ export interface PromptVariant {
 }
 
 export interface BrandAssets {
-  manual_marca: string
   logo_base64: string
-  analisis_estilo: string
+  system_instruction: string
+  reference_image_1: string
+  reference_image_2: string
+  reference_image_3: string
+  reference_image_4: string
+  reference_image_5: string
+  reference_image_6: string
 }
 
 // ============================================================================
@@ -71,25 +76,44 @@ export async function loadBrandAssets(): Promise<BrandAssets> {
 
   if (error) {
     console.warn('[Vertex AI] Error loading brand assets:', error.message)
-    return { manual_marca: '', logo_base64: '', analisis_estilo: '' }
+    return {
+      logo_base64: '',
+      system_instruction: '',
+      reference_image_1: '',
+      reference_image_2: '',
+      reference_image_3: '',
+      reference_image_4: '',
+      reference_image_5: '',
+      reference_image_6: '',
+    }
   }
 
   const assets: BrandAssets = {
-    manual_marca: '',
     logo_base64: '',
-    analisis_estilo: '',
+    system_instruction: '',
+    reference_image_1: '',
+    reference_image_2: '',
+    reference_image_3: '',
+    reference_image_4: '',
+    reference_image_5: '',
+    reference_image_6: '',
   }
 
   for (const asset of data || []) {
-    if (asset.key === 'manual_marca') assets.manual_marca = asset.value
     if (asset.key === 'logo_base64') assets.logo_base64 = asset.value
-    if (asset.key === 'analisis_estilo') assets.analisis_estilo = asset.value
+    if (asset.key === 'system_instruction') assets.system_instruction = asset.value
+    if (asset.key === 'reference_image_1') assets.reference_image_1 = asset.value
+    if (asset.key === 'reference_image_2') assets.reference_image_2 = asset.value
+    if (asset.key === 'reference_image_3') assets.reference_image_3 = asset.value
+    if (asset.key === 'reference_image_4') assets.reference_image_4 = asset.value
+    if (asset.key === 'reference_image_5') assets.reference_image_5 = asset.value
+    if (asset.key === 'reference_image_6') assets.reference_image_6 = asset.value
   }
 
   console.log('[Vertex AI] Brand assets loaded:', {
-    manual_marca: assets.manual_marca ? `${assets.manual_marca.length} chars` : 'empty',
     logo_base64: assets.logo_base64 ? `${assets.logo_base64.length} chars` : 'empty',
-    analisis_estilo: assets.analisis_estilo ? `${assets.analisis_estilo.length} chars` : 'empty',
+    system_instruction: assets.system_instruction ? `${assets.system_instruction.length} chars` : 'empty',
+    reference_images: [assets.reference_image_1, assets.reference_image_2, assets.reference_image_3, assets.reference_image_4, assets.reference_image_5, assets.reference_image_6].filter(Boolean).length,
   })
 
   return assets
@@ -168,89 +192,138 @@ export async function saveBrandAsset(
 // ============================================================================
 
 /**
- * Build the complete prompt for image generation combining all assets
+ * Load the master prompt from ai_settings table
  */
-export function buildCompletePrompt(
+async function loadMasterPrompt(): Promise<string> {
+  try {
+    const db = getSupabaseClient()
+    const { data, error } = await db
+      .from('ai_settings')
+      .select('value')
+      .eq('key', 'master_prompt')
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.warn('[Vertex AI] Error loading master_prompt:', error.message)
+    }
+
+    return data?.value || ''
+  } catch (error) {
+    console.warn('[Vertex AI] Error loading master_prompt:', error)
+    return ''
+  }
+}
+
+/**
+ * Build the complete prompt for image generation using master_prompt from DB
+ * Supports placeholders: {{PACKAGE_JSON}}, {{VARIANT}}, {{ASPECT_RATIO}}, {{HOOK_PHRASE}}, etc.
+ * If no placeholders exist, returns master_prompt as-is (relies on system_instruction)
+ */
+export async function buildCompletePrompt(
   packageData: PackageDataForAI,
   variant: PromptVariant,
-  assets: BrandAssets,
-  aspectRatio: '4:5' | '9:16'
-): string {
-  const formatName = aspectRatio === '9:16' ? '1080x1920 Stories/Reels' : '1080x1350 Feed (4:5)'
+  aspectRatio: '1:1' | '4:5' | '9:16'
+): Promise<string> {
+  // Load master prompt from database
+  const masterPrompt = await loadMasterPrompt()
+
+  // Calculate values for replacement
   const destination = packageData.package_destinations?.[0] || packageData.title || 'destino'
   const price = Math.floor(packageData.current_price_per_pax || 0)
   const currency = packageData.currency || 'USD'
   const nights = packageData.nights_count || 0
+  const formatName = aspectRatio === '9:16'
+    ? '1080x1920 Stories/Reels (9:16)'
+    : aspectRatio === '1:1'
+    ? '1080x1080 Feed (1:1)'
+    : '1080x1350 Feed (4:5)'
 
   // Get a random hook phrase from the variant
   const hookPhrase = variant.hook_phrases[Math.floor(Math.random() * variant.hook_phrases.length)]
     .replace('{price}', String(price))
     .replace('{destination}', destination)
     .replace('{DESTINATION}', destination.toUpperCase())
+    .replace('{currency}', currency)
+    .replace('{nights}', String(nights))
 
-  return `
-═══════════════════════════════════════════════════════════════════
-            PROFESSIONAL TRAVEL AD - SI, VIAJO
-═══════════════════════════════════════════════════════════════════
+  // If no master prompt configured, use minimal prompt (relies on system_instruction)
+  if (!masterPrompt) {
+    console.log('[Vertex AI] No master_prompt configured, using minimal prompt')
+    return buildMinimalPrompt(packageData, variant, aspectRatio, hookPhrase)
+  }
 
-[BRAND IDENTITY]
-${assets.manual_marca || 'Brand: Si, Viajo - "Es la respuesta". Travel agency that inspires people to say YES.'}
+  // Build package JSON for {{PACKAGE_JSON}} replacement
+  const packageJson = JSON.stringify({
+    ...packageData,
+    _computed: {
+      destination,
+      price,
+      currency,
+      nights,
+      formatName,
+      aspectRatio,
+      hookPhrase,
+      variant: {
+        number: variant.variant_number,
+        name: variant.name,
+        focus: variant.focus,
+      }
+    }
+  }, null, 2)
 
-Brand Colors:
-- Primary: Navy Blue #1A237E
-- Accent: Teal/Green #1DE9B6
-- White: #FFFFFF
-
-Typography: Montserrat Bold
-
-[VISUAL STYLE GUIDE]
-${assets.analisis_estilo || 'Professional travel advertising style. High saturation, luminous images, real people enjoying.'}
-
-[PACKAGE DATA]
-Destination: ${destination}
-${packageData.hotel ? `Hotel: ${packageData.hotel.name}` : ''}
-${packageData.hotel?.board_type ? `Regime: ${packageData.hotel.board_type} ${packageData.hotel.board_name || ''}` : ''}
-Nights: ${nights}
-Price: ${currency} ${price} per person
-${packageData.departure_date ? `Date: ${packageData.departure_date}` : ''}
-${packageData.flight ? `Flight: ${packageData.flight.company}` : ''}
-
-[FORMAT]
-Aspect Ratio: ${aspectRatio} (${formatName})
-
-[VARIANT #${variant.variant_number}: ${variant.name}]
+  // Build variant info for {{VARIANT}} replacement
+  const variantInfo = `[VARIANTE #${variant.variant_number}: ${variant.name}]
 Focus: ${variant.focus}
 Hook Phrase: "${hookPhrase}"
 
-${variant.prompt_addition}
+${variant.prompt_addition}`
 
-═══════════════════════════════════════════════════════════════════
-                    GENERATION INSTRUCTIONS
-═══════════════════════════════════════════════════════════════════
+  // Replace all supported placeholders
+  let prompt = masterPrompt
+  prompt = prompt.replace(/\{\{PACKAGE_JSON\}\}/g, packageJson)
+  prompt = prompt.replace(/\{\{VARIANT\}\}/g, variantInfo)
+  prompt = prompt.replace(/\{\{ASPECT_RATIO\}\}/g, `${aspectRatio} (${formatName})`)
+  prompt = prompt.replace(/\{\{HOOK_PHRASE\}\}/g, hookPhrase)
+  prompt = prompt.replace(/\{\{DESTINATION\}\}/g, destination)
+  prompt = prompt.replace(/\{\{PRICE\}\}/g, `${currency} ${price}`)
+  prompt = prompt.replace(/\{\{NIGHTS\}\}/g, String(nights))
+  prompt = prompt.replace(/\{\{CURRENCY\}\}/g, currency)
+  prompt = prompt.replace(/\{\{HOTEL\}\}/g, packageData.hotel?.name || 'N/A')
+  prompt = prompt.replace(/\{\{REGIME\}\}/g, packageData.hotel?.board_type || 'N/A')
 
-Generate a SINGLE scroll-stopping travel advertisement image.
+  console.log('[Vertex AI] Using master_prompt from DB, length:', prompt.length)
+  return prompt.trim()
+}
 
-CRITICAL REQUIREMENTS:
-1. The word "SI" must be LARGE and prominent (this is the brand's core message)
-2. Hook phrase: "${hookPhrase}" - make it impossible to miss
-3. Price "${currency} ${price}" in a large teal #1DE9B6 badge
-4. Destination "${destination}" clearly visible
-5. Si, Viajo brand identity (colors, style)
-6. This image must STOP THE SCROLL in 0.1 seconds
+/**
+ * Minimal prompt when no master_prompt is configured
+ * Relies on system_instruction for brand context
+ */
+function buildMinimalPrompt(
+  packageData: PackageDataForAI,
+  variant: PromptVariant,
+  aspectRatio: '1:1' | '4:5' | '9:16',
+  hookPhrase: string
+): string {
+  const destination = packageData.package_destinations?.[0] || packageData.title || 'destino'
+  const price = Math.floor(packageData.current_price_per_pax || 0)
+  const currency = packageData.currency || 'USD'
+  const nights = packageData.nights_count || 0
 
-TEXT OVERLAY (in Spanish, render in the image):
-- Main Hook: "${hookPhrase}"
-- Price: "${currency} ${price}"
-- Details: "${destination} - ${nights} noches"
+  return `Genera una imagen publicitaria para:
 
-VISUAL STYLE:
-- Professional travel advertisement
-- High quality, sharp, vibrant
-- Brand colors: Navy #1A237E, Teal #1DE9B6, White
-- ${aspectRatio === '9:16' ? 'Vertical mobile-optimized composition' : '4:5 vertical feed-optimized composition (Instagram recommended)'}
+DESTINO: ${destination}
+PRECIO: ${currency} ${price} por persona
+NOCHES: ${nights}
+HOTEL: ${packageData.hotel?.name || 'N/A'}
+RÉGIMEN: ${packageData.hotel?.board_type || 'N/A'}
 
-Generate the image now.
-`.trim()
+VARIANTE: ${variant.name} (${variant.focus})
+HOOK: "${hookPhrase}"
+
+FORMATO: ${aspectRatio}
+
+${variant.prompt_addition}`.trim()
 }
 
 /**
@@ -816,7 +889,7 @@ export async function generateVariantImages(
 export async function generateCreativeImageV2(
   packageData: PackageDataForAI,
   variantNumber: number,
-  aspectRatio: '4:5' | '9:16',
+  aspectRatio: '1:1' | '4:5' | '9:16',
   options?: {
     assets?: BrandAssets
     variant?: PromptVariant
@@ -836,14 +909,19 @@ export async function generateCreativeImageV2(
     throw new Error(`Variant ${variantNumber} not found or not active`)
   }
 
-  // Build the complete prompt
-  const prompt = buildCompletePrompt(packageData, variant, assets, aspectRatio)
+  // Build the complete prompt (now async, loads master_prompt from DB)
+  const prompt = await buildCompletePrompt(packageData, variant, aspectRatio)
 
   // Track which assets were used
   const assetsUsed: string[] = []
-  if (assets.manual_marca) assetsUsed.push('manual_marca')
-  if (assets.analisis_estilo) assetsUsed.push('analisis_estilo')
   if (assets.logo_base64 && options?.includeLogo) assetsUsed.push('logo_base64')
+  if (assets.system_instruction) assetsUsed.push('system_instruction')
+  if (assets.reference_image_1) assetsUsed.push('reference_image_1')
+  if (assets.reference_image_2) assetsUsed.push('reference_image_2')
+  if (assets.reference_image_3) assetsUsed.push('reference_image_3')
+  if (assets.reference_image_4) assetsUsed.push('reference_image_4')
+  if (assets.reference_image_5) assetsUsed.push('reference_image_5')
+  if (assets.reference_image_6) assetsUsed.push('reference_image_6')
 
   console.log(`[Vertex AI V2] Generating V${variantNumber} ${aspectRatio} for ${packageData.package_destinations?.[0] || 'unknown'}`)
   console.log(`[Vertex AI V2] Assets used:`, assetsUsed)
@@ -858,6 +936,22 @@ export async function generateCreativeImageV2(
   const model = GEMINI_IMAGE_MODEL
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
 
+  // Helper function to parse base64 data and extract mime type
+  const parseBase64Image = (base64Data: string): { mimeType: string; data: string } => {
+    let data = base64Data
+    let mimeType = 'image/png'
+
+    if (data.startsWith('data:')) {
+      const match = data.match(/^data:([^;]+);base64,(.+)$/)
+      if (match) {
+        mimeType = match[1]
+        data = match[2]
+      }
+    }
+
+    return { mimeType, data }
+  }
+
   // Build request parts
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
     { text: prompt }
@@ -865,27 +959,58 @@ export async function generateCreativeImageV2(
 
   // Add logo as image reference if available and requested
   if (assets.logo_base64 && options?.includeLogo) {
-    // Strip data URL prefix if present (e.g., "data:image/png;base64,")
-    let logoData = assets.logo_base64
-    let mimeType = 'image/png'
-
-    if (logoData.startsWith('data:')) {
-      const match = logoData.match(/^data:([^;]+);base64,(.+)$/)
-      if (match) {
-        mimeType = match[1]
-        logoData = match[2]
-      }
-    }
-
-    console.log(`[Vertex AI V2] Logo: ${logoData.length} chars, mime: ${mimeType}`)
-
-    parts.push({
-      inlineData: {
-        mimeType,
-        data: logoData,
-      }
-    })
+    const { mimeType, data } = parseBase64Image(assets.logo_base64)
+    console.log(`[Vertex AI V2] Logo: ${data.length} chars, mime: ${mimeType}`)
+    parts.push({ inlineData: { mimeType, data } })
     console.log('[Vertex AI V2] Logo added as reference image')
+  }
+
+  // Add reference images (up to 6)
+  const referenceImages = [
+    { key: 'reference_image_1', value: assets.reference_image_1 },
+    { key: 'reference_image_2', value: assets.reference_image_2 },
+    { key: 'reference_image_3', value: assets.reference_image_3 },
+    { key: 'reference_image_4', value: assets.reference_image_4 },
+    { key: 'reference_image_5', value: assets.reference_image_5 },
+    { key: 'reference_image_6', value: assets.reference_image_6 },
+  ].filter(img => img.value)
+
+  for (const img of referenceImages) {
+    const { mimeType, data } = parseBase64Image(img.value)
+    console.log(`[Vertex AI V2] ${img.key}: ${data.length} chars, mime: ${mimeType}`)
+    parts.push({ inlineData: { mimeType, data } })
+  }
+
+  if (referenceImages.length > 0) {
+    console.log(`[Vertex AI V2] Added ${referenceImages.length} reference image(s)`)
+  }
+
+  // Build request body
+  const requestBody: {
+    contents: Array<{ parts: typeof parts }>
+    system_instruction?: { parts: Array<{ text: string }> }
+    generationConfig: {
+      responseModalities: string[]
+      temperature: number
+      imageConfig: { aspectRatio: string }
+    }
+  } = {
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      temperature: 1.0,
+      imageConfig: {
+        aspectRatio: aspectRatio,
+      },
+    },
+  }
+
+  // Add system instruction if available
+  if (assets.system_instruction) {
+    requestBody.system_instruction = {
+      parts: [{ text: assets.system_instruction }]
+    }
+    console.log(`[Vertex AI V2] System instruction: ${assets.system_instruction.length} chars`)
   }
 
   const response = await fetch(endpoint, {
@@ -893,16 +1018,7 @@ export async function generateCreativeImageV2(
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseModalities: ['IMAGE', 'TEXT'],
-        temperature: 1.0,
-        imageConfig: {
-          aspectRatio: aspectRatio,
-        },
-      },
-    }),
+    body: JSON.stringify(requestBody),
   })
 
   if (!response.ok) {
@@ -935,7 +1051,128 @@ export async function generateCreativeImageV2(
 }
 
 /**
+ * Adapt an existing image to a new aspect ratio
+ * This maintains visual consistency by using the original image as reference
+ */
+export async function adaptImageToAspectRatio(
+  sourceImageBase64: string,
+  targetAspectRatio: '4:5' | '1:1',
+  context: {
+    destination: string
+    hookPhrase: string
+    price: string
+    currency: string
+  },
+  assets: BrandAssets
+): Promise<{
+  base64: string
+  model: string
+}> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY is not set')
+  }
+
+  const model = GEMINI_IMAGE_MODEL
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+
+  // Parse source image
+  let sourceData = sourceImageBase64
+  let sourceMimeType = 'image/png'
+  if (sourceData.startsWith('data:')) {
+    const match = sourceData.match(/^data:([^;]+);base64,(.+)$/)
+    if (match) {
+      sourceMimeType = match[1]
+      sourceData = match[2]
+    }
+  }
+
+  const adaptPrompt = `
+Adapta esta imagen publicitaria de viajes al formato ${targetAspectRatio}.
+
+INSTRUCCIONES CRÍTICAS:
+1. MANTENÉ exactamente el mismo diseño, colores, y estilo visual
+2. MANTENÉ todos los textos en las mismas posiciones relativas:
+   - Hook: "${context.hookPhrase}"
+   - Precio: "${context.currency} ${context.price}"
+   - Destino: "${context.destination}"
+3. AJUSTÁ la composición para el nuevo formato sin perder elementos
+4. NO cambies la foto de fondo ni el estilo gráfico
+5. Mantené la identidad visual de Si, Viajo (Navy #1A237E, Teal #1DE9B6)
+
+Formato objetivo: ${targetAspectRatio} ${targetAspectRatio === '4:5' ? '(1080x1350 Instagram Feed)' : '(1080x1080 cuadrado)'}
+`.trim()
+
+  // Build parts with source image
+  const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+    { text: adaptPrompt },
+    { inlineData: { mimeType: sourceMimeType, data: sourceData } }
+  ]
+
+  // Build request body
+  const requestBody: {
+    contents: Array<{ parts: typeof parts }>
+    system_instruction?: { parts: Array<{ text: string }> }
+    generationConfig: {
+      responseModalities: string[]
+      temperature: number
+      imageConfig: { aspectRatio: string }
+    }
+  } = {
+    contents: [{ parts }],
+    generationConfig: {
+      responseModalities: ['IMAGE', 'TEXT'],
+      temperature: 0.5, // Lower temperature for more consistent adaptation
+      imageConfig: {
+        aspectRatio: targetAspectRatio,
+      },
+    },
+  }
+
+  // Add system instruction if available
+  if (assets.system_instruction) {
+    requestBody.system_instruction = {
+      parts: [{ text: assets.system_instruction }]
+    }
+  }
+
+  console.log(`[Vertex AI V2] Adapting image to ${targetAspectRatio}...`)
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(requestBody),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[Vertex AI V2] Adapt error:', errorText)
+    throw new Error(`Gemini API error: ${response.status} - ${errorText}`)
+  }
+
+  const result = await response.json()
+  const responseParts = result.candidates?.[0]?.content?.parts
+
+  if (!responseParts || responseParts.length === 0) {
+    throw new Error('No content in Gemini adapt response')
+  }
+
+  for (const part of responseParts) {
+    if (part.inlineData?.data) {
+      console.log(`[Vertex AI V2] ✓ Image adapted to ${targetAspectRatio}`)
+      return {
+        base64: part.inlineData.data,
+        model,
+      }
+    }
+  }
+
+  throw new Error('No image data in Gemini adapt response')
+}
+
+/**
  * Generate all creatives for a package (5 variants × 2 formats = 10 images)
+ * Flow: Generate 9:16 first, then adapt to 4:5 for consistency
  * Returns a generator for streaming progress updates
  */
 export async function* generateAllCreativesV2(
@@ -957,6 +1194,11 @@ export async function* generateAllCreativesV2(
 
   const variantMap = new Map(variants.map(v => [v.variant_number, v]))
 
+  // Extract context for adaptation
+  const destination = packageData.package_destinations?.[0] || packageData.title || 'destino'
+  const price = String(Math.floor(packageData.current_price_per_pax || 0))
+  const currency = packageData.currency || 'USD'
+
   for (const variantNumber of selectedVariants) {
     const variant = variantMap.get(variantNumber)
     if (!variant) {
@@ -968,34 +1210,18 @@ export async function* generateAllCreativesV2(
       continue
     }
 
-    // Generate 1080x1350 (4:5) for Instagram Feed
-    yield { type: 'progress', variant: variantNumber, aspectRatio: '4:5' }
-    try {
-      const result4x5 = await generateCreativeImageV2(
-        packageData,
-        variantNumber,
-        '4:5',
-        { assets, variant, includeLogo: options?.includeLogo }
-      )
-      yield {
-        type: 'complete',
-        variant: variantNumber,
-        aspectRatio: '4:5',
-        result: result4x5,
-      }
-    } catch (error) {
-      yield {
-        type: 'error',
-        variant: variantNumber,
-        aspectRatio: '4:5',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      }
-    }
+    // Get hook phrase for this variant
+    const hookPhrase = variant.hook_phrases[Math.floor(Math.random() * variant.hook_phrases.length)]
+      .replace('{price}', price)
+      .replace('{destination}', destination)
+      .replace('{DESTINATION}', destination.toUpperCase())
 
-    // Generate 1080x1920 (9:16)
+    // STEP 1: Generate 9:16 first (Stories/Reels - main creative)
     yield { type: 'progress', variant: variantNumber, aspectRatio: '9:16' }
+    let result916: { base64: string; prompt: string; model: string; assetsUsed: string[] } | null = null
+
     try {
-      const result1920 = await generateCreativeImageV2(
+      result916 = await generateCreativeImageV2(
         packageData,
         variantNumber,
         '9:16',
@@ -1005,7 +1231,7 @@ export async function* generateAllCreativesV2(
         type: 'complete',
         variant: variantNumber,
         aspectRatio: '9:16',
-        result: result1920,
+        result: result916,
       }
     } catch (error) {
       yield {
@@ -1013,6 +1239,53 @@ export async function* generateAllCreativesV2(
         variant: variantNumber,
         aspectRatio: '9:16',
         error: error instanceof Error ? error.message : 'Unknown error',
+      }
+      // If 9:16 fails, skip 4:5 adaptation for this variant
+      continue
+    }
+
+    // STEP 2: Adapt the 9:16 image to 4:5 (Feed format)
+    yield { type: 'progress', variant: variantNumber, aspectRatio: '4:5' }
+    try {
+      const adapted4x5 = await adaptImageToAspectRatio(
+        result916.base64,
+        '4:5',
+        { destination, hookPhrase, price, currency },
+        assets
+      )
+      yield {
+        type: 'complete',
+        variant: variantNumber,
+        aspectRatio: '4:5',
+        result: {
+          base64: adapted4x5.base64,
+          prompt: `Adapted from 9:16 - ${result916.prompt.slice(0, 100)}...`,
+          model: adapted4x5.model,
+        },
+      }
+    } catch (error) {
+      // If adaptation fails, try generating 4:5 from scratch as fallback
+      console.warn(`[Vertex AI V2] Adaptation failed for V${variantNumber}, generating 4:5 from scratch`)
+      try {
+        const result4x5 = await generateCreativeImageV2(
+          packageData,
+          variantNumber,
+          '4:5',
+          { assets, variant, includeLogo: options?.includeLogo }
+        )
+        yield {
+          type: 'complete',
+          variant: variantNumber,
+          aspectRatio: '4:5',
+          result: result4x5,
+        }
+      } catch (fallbackError) {
+        yield {
+          type: 'error',
+          variant: variantNumber,
+          aspectRatio: '4:5',
+          error: fallbackError instanceof Error ? fallbackError.message : 'Unknown error',
+        }
       }
     }
   }
