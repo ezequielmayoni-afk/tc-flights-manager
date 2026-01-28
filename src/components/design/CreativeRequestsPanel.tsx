@@ -17,6 +17,28 @@ import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { DesignRowExpanded } from '@/components/packages/DesignRowExpanded'
 
+/**
+ * Helper to create URL slug from title
+ */
+function createSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
+}
+
+/**
+ * Build siviajo.com package URL
+ */
+function buildPackageUrl(packageId: number, title: string): string {
+  const slug = createSlug(title)
+  return `https://www.siviajo.com/es/idea/${packageId}/${slug}`
+}
+
 interface CreativeRequest {
   id: number
   package_id: number
@@ -182,9 +204,14 @@ export function CreativeRequestsPanel({ requests: initialRequests }: CreativeReq
                       <Badge variant="outline" className="font-mono">
                         {request.tc_package_id}
                       </Badge>
-                      <span className="font-medium truncate">
+                      <a
+                        href={buildPackageUrl(request.tc_package_id, request.packages?.title || '')}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium truncate text-blue-600 hover:underline"
+                      >
                         {request.packages?.title || 'Paquete'}
-                      </span>
+                      </a>
                       <Badge
                         variant="outline"
                         className={PRIORITY_CONFIG[request.priority].color}

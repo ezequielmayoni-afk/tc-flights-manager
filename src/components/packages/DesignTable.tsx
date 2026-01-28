@@ -85,6 +85,22 @@ function isExpired(dateRangeEnd: string | null): boolean {
   return endDate < today
 }
 
+function createSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim()
+}
+
+function buildPackageUrl(packageId: number, title: string): string {
+  const slug = createSlug(title)
+  return `https://www.siviajo.com/es/idea/${packageId}/${slug}`
+}
+
 function getDaysUntilExpiration(dateRangeEnd: string | null): number | null {
   if (!dateRangeEnd) return null
   const today = new Date()
@@ -485,9 +501,14 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
                 </TableCell>
 
                 <TableCell>
-                  <span className="text-sm font-medium line-clamp-2">
+                  <a
+                    href={buildPackageUrl(pkg.tc_package_id, pkg.title)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm font-medium line-clamp-2 text-blue-600 hover:underline"
+                  >
                     {pkg.title}
-                  </span>
+                  </a>
                 </TableCell>
 
                 <TableCell className="text-xs text-muted-foreground">
