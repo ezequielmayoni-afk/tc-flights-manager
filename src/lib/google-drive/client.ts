@@ -90,7 +90,7 @@ export async function getOrCreateVariantFolder(packageFolderId: string, variant:
   return folder.data.id!
 }
 
-export type AspectRatio = '4x5' | '9x16' | '1080' | '1920'
+export type AspectRatio = '4x5' | '9x16' | '1080' | '1920' | '1x1'
 
 function getExtensionFromMimeType(mimeType: string): string {
   const mimeToExt: Record<string, string> = {
