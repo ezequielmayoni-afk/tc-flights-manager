@@ -66,6 +66,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { DesignModal } from './DesignModal'
+import { SendToDesignModal } from './SendToDesignModal'
 import { useAuth } from '@/hooks/useAuth'
 
 // Normalize string by removing accents/diacritics
@@ -399,6 +400,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
   const [refreshingId, setRefreshingId] = useState<number | null>(null)
   const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null)
   const [bulkActionResults, setBulkActionResults] = useState<BulkActionResult[] | null>(null)
+  const [designModalOpen, setDesignModalOpen] = useState(false)
   const [requoteRunning, setRequoteRunning] = useState(false)
   const [requoteStatus, setRequoteStatus] = useState('')
   const [requoteCurrentPackage, setRequoteCurrentPackage] = useState<string | null>(null)
@@ -793,7 +795,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     }
   }
 
-  const handleBulkAction = async (action: 'design' | 'marketing' | 'expired' | 'delete' | 'monitor' | 'unmonitor' | 'run_requote') => {
+  const handleBulkAction = async (action: 'design' | 'marketing' | 'expired' | 'delete' | 'monitor' | 'unmonitor' | 'run_requote', extraData?: Record<string, unknown>) => {
     if (selectedIds.size === 0) return
 
     // Handle run_requote separately
@@ -818,6 +820,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
         body: JSON.stringify({
           packageIds: Array.from(selectedIds),
           action,
+          ...extraData,
         }),
       })
 
@@ -924,15 +927,11 @@ export function PackagesTable({ packages }: PackagesTableProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleBulkAction('design')}
+              onClick={() => setDesignModalOpen(true)}
               disabled={bulkActionLoading !== null}
               className="gap-2"
             >
-              {bulkActionLoading === 'design' ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Palette className="h-4 w-4" />
-              )}
+              <Palette className="h-4 w-4" />
               Enviar a Diseño
             </Button>
             <Button
@@ -1617,6 +1616,18 @@ export function PackagesTable({ packages }: PackagesTableProps) {
           onOpenChange={(open) => !open && setDesignModalPackage(null)}
         />
       )}
+
+      {/* Send to Design Modal */}
+      <SendToDesignModal
+        selectedCount={selectedIds.size}
+        open={designModalOpen}
+        onOpenChange={setDesignModalOpen}
+        isLoading={bulkActionLoading === 'design'}
+        onConfirm={async ({ reason, priority, reasonDetail }) => {
+          await handleBulkAction('design', { reason, priority, reason_detail: reasonDetail })
+          setDesignModalOpen(false)
+        }}
+      />
     </div>
   )
 }

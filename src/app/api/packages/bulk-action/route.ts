@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   const db = getSupabaseClient()
 
   try {
-    const { packageIds, action } = await request.json()
+    const { packageIds, action, reason, priority, reason_detail } = await request.json()
 
     if (!packageIds || !Array.isArray(packageIds) || packageIds.length === 0) {
       return NextResponse.json({ error: 'No packages selected' }, { status: 400 })
@@ -58,13 +58,17 @@ export async function POST(request: NextRequest) {
         let tcError: string | null = null
 
         switch (action) {
-          case 'design':
+          case 'design': {
+            const designReason = reason || 'new_package'
+            const designPriority = priority || 'normal'
+            const designReasonDetail = reason_detail || 'Paquete enviado a diseño'
+
             updateData = {
               status: 'in_design',
               send_to_design: true,
               send_to_design_at: new Date().toISOString(),
               creative_update_needed: true,
-              creative_update_reason: 'new_package',
+              creative_update_reason: designReason,
               creative_update_requested_at: new Date().toISOString(),
               creative_update_requested_by: 'Marketing',
             }
@@ -75,9 +79,9 @@ export async function POST(request: NextRequest) {
               .insert({
                 package_id: pkg.id,
                 tc_package_id: pkg.tc_package_id,
-                reason: 'new_package',
-                reason_detail: 'Paquete nuevo enviado a diseño',
-                priority: 'normal',
+                reason: designReason,
+                reason_detail: designReasonDetail,
+                priority: designPriority,
                 requested_by: 'Marketing',
                 status: 'pending',
               })
@@ -102,9 +106,9 @@ export async function POST(request: NextRequest) {
                 tcPackageId: pkg.tc_package_id,
                 packageTitle: pkg.title,
                 requestedBy: 'Marketing',
-                reason: 'new_package',
-                reasonDetail: 'Paquete nuevo enviado a diseño',
-                priority: 'normal',
+                reason: designReason,
+                reasonDetail: designReasonDetail,
+                priority: designPriority,
                 systemUrl: SYSTEM_URL,
               })
 
@@ -118,7 +122,7 @@ export async function POST(request: NextRequest) {
                 package_id: pkg.id,
                 creative_request_id: creativeRequest.id,
                 message_title: `Nueva solicitud de creativo para ${pkg.tc_package_id}`,
-                message_data: { reason: 'new_package', priority: 'normal' },
+                message_data: { reason: designReason, priority: designPriority },
                 status: slackResult.ok ? 'sent' : 'failed',
                 error_message: slackResult.error,
                 slack_message_ts: slackResult.ts,
@@ -137,6 +141,7 @@ export async function POST(request: NextRequest) {
               }
             }
             break
+          }
           case 'marketing':
             console.log(`[Bulk Action] Setting package ${pkg.id} to marketing`)
 
