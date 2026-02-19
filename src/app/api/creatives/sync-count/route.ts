@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listPackageCreatives } from '@/lib/google-drive/client'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * POST /api/creatives/sync-count
@@ -16,7 +12,10 @@ function getSupabaseClient() {
  * Body: { packageId?: number } - If not provided, syncs all packages
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json().catch(() => ({}))
@@ -62,15 +61,12 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Sync] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Sync failed' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
 async function syncPackageCount(
-  db: ReturnType<typeof getSupabaseClient>,
+  db: ReturnType<typeof createAdminClient>,
   packageId: number
 ): Promise<{ count: number; updated: boolean }> {
   // Get tc_package_id

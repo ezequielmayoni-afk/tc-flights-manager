@@ -1,19 +1,18 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/seo/config
  * Get the current prompt configuration
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('seo')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const { data, error } = await db
@@ -24,16 +23,13 @@ export async function GET() {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json(data)
   } catch (error) {
     console.error('[SEO Config GET] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -42,7 +38,10 @@ export async function GET() {
  * Update the prompt configuration
  */
 export async function PUT(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('seo')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const { prompt_template } = await request.json()
@@ -81,7 +80,7 @@ export async function PUT(request: NextRequest) {
     }
 
     if (result.error) {
-      return NextResponse.json({ error: result.error.message }, { status: 500 })
+      return errorResponse(result.error)
     }
 
     return NextResponse.json({
@@ -90,9 +89,6 @@ export async function PUT(request: NextRequest) {
     })
   } catch (error) {
     console.error('[SEO Config PUT] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

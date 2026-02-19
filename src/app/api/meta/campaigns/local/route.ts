@@ -1,12 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/meta/campaigns/local
@@ -14,7 +10,10 @@ function getSupabaseClient() {
  * Used for displaying options in the UI without triggering expensive API syncs
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     // Get all active campaigns from database
@@ -60,9 +59,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[Meta Campaigns Local] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching local data' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

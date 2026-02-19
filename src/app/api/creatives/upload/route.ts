@@ -5,16 +5,12 @@ import {
   uploadCreative,
   AspectRatio,
 } from '@/lib/google-drive/client'
-import { createClient } from '@supabase/supabase-js'
 import Busboy from 'busboy'
 import { Readable } from 'stream'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Allow large file uploads (videos) - 500MB max
 export const maxDuration = 300 // 5 minutes timeout for large uploads
@@ -134,6 +130,9 @@ async function parseMultipartForm(request: NextRequest): Promise<ParsedFormData>
 }
 
 export async function POST(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
     console.log('[Creatives] === Starting upload ===')
 
@@ -158,7 +157,7 @@ export async function POST(request: NextRequest) {
 
     // Step 2: Get tc_package_id from database
     console.log('[Creatives] Step 2: Fetching package from DB...')
-    const db = getSupabaseClient()
+    const db = createAdminClient()
     const { data: pkg, error: dbError } = await db
       .from('packages')
       .select('tc_package_id')
@@ -224,9 +223,6 @@ export async function POST(request: NextRequest) {
     if (error instanceof Error) {
       console.error('[Creatives] Error stack:', error.stack)
     }
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Upload failed' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

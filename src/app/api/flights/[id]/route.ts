@@ -1,17 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { flightFormSchema } from '@/lib/validations/flight'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
 // Cliente sin tipos para operaciones complejas
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Helper para calcular end_date basándose en plus_days de los segmentos
 function calculateEndDate(startDate: string, segments: Array<{ plus_days?: number }>): string {
@@ -33,6 +29,9 @@ function calculateEndDate(startDate: string, segments: Array<{ plus_days?: numbe
 }
 
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
   const supabase = await createClient()
 
@@ -49,13 +48,16 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 })
+    return errorResponse(error)
   }
 
   return NextResponse.json(flight)
 }
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
   const supabase = await createClient()
 
@@ -82,7 +84,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       ...flightData
     } = validatedData
 
-    const db = getUntypedClient()
+    const db = createAdminClient()
 
     // Obtener el leg_type del vuelo actual
     const { data: existingFlight } = await db
@@ -402,16 +404,19 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     console.error('Validation error:', error)
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return errorResponse(error)
     }
     return NextResponse.json({ error: 'Error de validación' }, { status: 400 })
   }
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
   const supabase = await createClient()
-  const db = getUntypedClient() // Need untyped client for relations
+  const db = createAdminClient() // Need untyped client for relations
 
   console.log('[DELETE API] Deleting flight:', id)
 
@@ -476,7 +481,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     .eq('id', id)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json({

@@ -1,20 +1,19 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import type { PackageForComercial } from '@/types/comercial'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/comercial
  * Fetch packages for the comercial dashboard with all related data and cupos
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('comercial')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const searchParams = request.nextUrl.searchParams
 
   const search = searchParams.get('search')
@@ -213,9 +212,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Comercial API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching data' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

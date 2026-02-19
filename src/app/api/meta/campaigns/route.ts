@@ -1,13 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/meta/campaigns
@@ -15,7 +11,10 @@ function getSupabaseClient() {
  * This makes 2-3 API calls instead of 100+ calls
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const metaClient = getMetaAdsClient()
@@ -130,9 +129,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[Meta Campaigns] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error syncing campaigns' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

@@ -1,19 +1,18 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/meta/adsets?campaign_id=XXX
  * Get ad sets for a specific campaign
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const campaignId = request.nextUrl.searchParams.get('campaign_id')
 
   try {
@@ -36,9 +35,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ adsets })
   } catch (error) {
     console.error('[Meta AdSets] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching ad sets' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
-import { createClient } from '@supabase/supabase-js'
 import { checkAndSendManualQuoteNotifications } from '@/lib/notifications/manual-quote'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * POST /api/requote/run
@@ -20,6 +16,9 @@ function getSupabaseClient() {
  * If not provided, the bot will process all pending packages (batch mode for cron)
  */
 export async function POST(request: Request) {
+  const { authorized } = await checkSectionAccess('requote')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   // Parse optional packageIds from request body
   let packageIds: number[] | null = null
   try {
@@ -269,12 +268,11 @@ export async function POST(request: Request) {
  * Check how many packages are pending
  */
 export async function GET() {
-  const { createClient } = await import('@supabase/supabase-js')
+  const { authorized } = await checkSectionAccess('requote')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+
+  const supabase = createAdminClient()
 
   const { data: pending, error } = await supabase
     .from('packages')
@@ -283,7 +281,7 @@ export async function GET() {
     .eq('monitor_enabled', true)
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json({

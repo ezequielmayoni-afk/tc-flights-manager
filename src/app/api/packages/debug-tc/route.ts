@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPackageDetail } from '@/lib/travelcompositor/client'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 /**
  * GET /api/packages/debug-tc?id=43317855
  * Debug endpoint to see raw TC API response for a package
  */
 export async function GET(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const searchParams = request.nextUrl.searchParams
   const packageId = searchParams.get('id')
 
@@ -126,9 +131,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Debug TC] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching TC data' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

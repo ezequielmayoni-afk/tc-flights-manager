@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { listPackageCreatives, deleteCreative } from '@/lib/google-drive/client'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ packageId: string }> }
 ) {
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
     const { packageId } = await params
     const id = parseInt(packageId, 10)
@@ -22,7 +21,7 @@ export async function GET(
     }
 
     // Get the tc_package_id from database
-    const db = getSupabaseClient()
+    const db = createAdminClient()
     const { data: pkg, error: dbError } = await db
       .from('packages')
       .select('tc_package_id')
@@ -41,10 +40,7 @@ export async function GET(
     })
   } catch (error) {
     console.error('[Creatives] List error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to list creatives' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -52,6 +48,9 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ packageId: string }> }
 ) {
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
     const { packageId } = await params
     const id = parseInt(packageId, 10)
@@ -65,7 +64,7 @@ export async function DELETE(
 
     // Decrement creative_count atomically
     if (!isNaN(id)) {
-      const db = getSupabaseClient()
+      const db = createAdminClient()
       const { error: rpcError } = await db.rpc('decrement_creative_count', {
         package_id_param: id,
       })
@@ -90,9 +89,6 @@ export async function DELETE(
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Creatives] Delete error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to delete creative' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

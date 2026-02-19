@@ -1,23 +1,22 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   uploadPackageCreativesToMeta,
   getPackageCreatives,
 } from '@/lib/meta-ads/creative-uploader'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/meta/creatives?package_id=XXX
  * Get creatives status for a package
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const packageId = request.nextUrl.searchParams.get('package_id')
 
   if (!packageId) {
@@ -57,10 +56,7 @@ export async function GET(request: NextRequest) {
     )
   } catch (error) {
     console.error('[Meta Creatives GET] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error fetching creatives' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -69,7 +65,10 @@ export async function GET(request: NextRequest) {
  * Upload creatives from Drive to Meta (SSE stream)
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -204,9 +203,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Meta Creatives POST] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error uploading creatives' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }

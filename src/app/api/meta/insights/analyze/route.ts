@@ -1,14 +1,10 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import type { AnalysisType, AIAnalysisResponse, AIRecommendation } from '@/lib/meta-ads/types'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 let openaiClient: OpenAI | null = null
 
@@ -68,7 +64,10 @@ Responde SOLO con un JSON válido:
  * Analyze ad performance with AI
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -229,10 +228,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Insights Analyze] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error analyzing insights' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -241,7 +237,10 @@ export async function POST(request: NextRequest) {
  * Get previous AI recommendations
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const limit = parseInt(request.nextUrl.searchParams.get('limit') || '10')
 
   try {
@@ -258,9 +257,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ recommendations: data })
   } catch (error) {
     console.error('[Insights Analyze GET] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching recommendations' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

@@ -5,15 +5,11 @@
  * POST - Create/update a brand asset
  */
 
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/ai/brand-assets
@@ -21,7 +17,10 @@ function getSupabaseClient() {
  * Get all brand assets or a specific one by key
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
   const key = searchParams.get('key')
 
@@ -75,10 +74,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('[Brand Assets API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -94,7 +90,10 @@ export async function GET(request: NextRequest) {
  * - description: string (optional) - Description
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -193,10 +192,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Brand Assets API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -206,7 +202,10 @@ export async function POST(request: NextRequest) {
  * Clear a brand asset (set value to empty string)
  */
 export async function DELETE(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
   const key = searchParams.get('key')
 
@@ -231,9 +230,6 @@ export async function DELETE(request: NextRequest) {
 
   } catch (error) {
     console.error('[Brand Assets API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

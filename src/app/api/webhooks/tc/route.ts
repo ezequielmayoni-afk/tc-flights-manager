@@ -1,16 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { logSyncOperation } from '@/lib/logger'
 import { getBooking, deleteTransport, validateTransportPrice } from '@/lib/travelcompositor/client'
 import type { TCBookingTransportService, TCBookingResponse } from '@/lib/travelcompositor/types'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // Use service role for webhook (no user auth)
-function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Webhook notification payload (minimal - just tells us what happened)
 interface TCWebhookNotification {
@@ -35,7 +29,7 @@ interface TCSegment {
 }
 
 async function findFlightBySegment(
-  db: ReturnType<typeof getSupabaseAdmin>,
+  db: ReturnType<typeof createAdminClient>,
   segment: TCSegment,
   supplierId: number,
   isReturn: boolean = false
@@ -98,7 +92,7 @@ async function findFlightBySegment(
 // Update inventory (sold count) and check for auto-deactivation
 // Uses atomic SQL function to prevent race conditions
 async function updateInventory(
-  db: ReturnType<typeof getSupabaseAdmin>,
+  db: ReturnType<typeof createAdminClient>,
   flightId: number,
   passengersDelta: number
 ): Promise<{ soldOut: boolean; remaining: number; tcTransportId?: string }> {
@@ -194,7 +188,7 @@ async function updateInventory(
 
 // Handle new booking
 async function handleNewBooking(
-  db: ReturnType<typeof getSupabaseAdmin>,
+  db: ReturnType<typeof createAdminClient>,
   service: TCBookingTransportService,
   bookingReference: string,  // Main booking reference (e.g., "SIV-948")
   bookingPayload: Record<string, unknown>
@@ -389,7 +383,7 @@ async function handleNewBooking(
 
 // Handle booking modification
 async function handleModifyBooking(
-  db: ReturnType<typeof getSupabaseAdmin>,
+  db: ReturnType<typeof createAdminClient>,
   service: TCBookingTransportService,
   bookingReference: string,
   bookingPayload: Record<string, unknown>
@@ -483,7 +477,7 @@ async function handleModifyBooking(
 
 // Handle booking cancellation
 async function handleCancelBooking(
-  db: ReturnType<typeof getSupabaseAdmin>,
+  db: ReturnType<typeof createAdminClient>,
   service: TCBookingTransportService,
   bookingPayload: Record<string, unknown>
 ) {
@@ -565,7 +559,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const db = getSupabaseAdmin()
+  const db = createAdminClient()
 
   try {
     const notification: TCWebhookNotification = await request.json()

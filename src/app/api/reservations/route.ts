@@ -1,16 +1,15 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 // Cliente sin tipos para tablas no tipadas
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 export async function GET(request: NextRequest) {
-  const supabase = getUntypedClient()
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const supabase = createAdminClient()
   const searchParams = request.nextUrl.searchParams
 
   // Filters
@@ -67,7 +66,7 @@ export async function GET(request: NextRequest) {
   const { data: reservations, error, count } = await query
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json({ reservations, total: count })
@@ -75,7 +74,10 @@ export async function GET(request: NextRequest) {
 
 // Manual reservation creation (for testing or manual entry)
 export async function POST(request: NextRequest) {
-  const supabase = getUntypedClient()
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const supabase = createAdminClient()
   const body = await request.json()
 
   const { data, error } = await supabase
@@ -99,7 +101,7 @@ export async function POST(request: NextRequest) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   // Update inventory if flight_id is provided

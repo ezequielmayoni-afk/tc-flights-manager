@@ -1,14 +1,10 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
 import { getPackageCreatives, uploadCreativeToMeta } from '@/lib/meta-ads/creative-uploader'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Instagram user ID for the account - MUST be configured, no fallback to avoid wrong account
 const INSTAGRAM_USER_ID = process.env.META_INSTAGRAM_USER_ID
@@ -44,7 +40,10 @@ interface UpdateAdRequest {
  *   OR: { ads: UpdateAdRequest[] } (legacy: updates specific ads)
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -414,9 +413,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Ads Update POST] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error updating ads' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }

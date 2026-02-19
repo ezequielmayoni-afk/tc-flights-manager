@@ -1,21 +1,20 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getAllTransports } from '@/lib/travelcompositor/client'
 import type { TCTransportWithModalities } from '@/lib/travelcompositor/types'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/flights/import
  * Fetch all transports from TravelCompositor for preview
  */
 export async function GET() {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const supabase = await createClient()
 
   // Verify authentication
@@ -29,7 +28,7 @@ export async function GET() {
     const transports = await getAllTransports()
 
     // Get existing flights from DB to compare
-    const db = getUntypedClient()
+    const db = createAdminClient()
     const { data: existingFlights } = await db
       .from('flights')
       .select('tc_transport_id, base_id, name, sync_status')
@@ -55,10 +54,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error('Error fetching transports from TC:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching transports' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -67,6 +63,9 @@ export async function GET() {
  * Import selected transports from TC to local DB
  */
 export async function POST(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const supabase = await createClient()
 
   // Verify authentication
@@ -87,7 +86,7 @@ export async function POST(request: NextRequest) {
       deleteUnmatched?: boolean
     }
 
-    const db = getUntypedClient()
+    const db = createAdminClient()
 
     // Fetch transports from TC
     const allTransports = await getAllTransports()
@@ -222,10 +221,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error importing transports:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error importing transports' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -333,7 +329,7 @@ function mapTransportToFlight(
  * Create flight segments from TC transport
  */
 async function createFlightSegments(
-  db: ReturnType<typeof getUntypedClient>,
+  db: ReturnType<typeof createAdminClient>,
   flightId: number,
   transport: TCTransportWithModalities
 ) {
@@ -359,7 +355,7 @@ async function createFlightSegments(
  * Update flight segments (delete old, create new)
  */
 async function updateFlightSegments(
-  db: ReturnType<typeof getUntypedClient>,
+  db: ReturnType<typeof createAdminClient>,
   flightId: number,
   transport: TCTransportWithModalities
 ) {
@@ -373,7 +369,7 @@ async function updateFlightSegments(
  * Create flight modality from TC transport
  */
 async function createFlightModality(
-  db: ReturnType<typeof getUntypedClient>,
+  db: ReturnType<typeof createAdminClient>,
   flightId: number,
   transport: TCTransportWithModalities
 ) {
@@ -423,7 +419,7 @@ async function createFlightModality(
  * Update flight modality (delete old, create new)
  */
 async function updateFlightModality(
-  db: ReturnType<typeof getUntypedClient>,
+  db: ReturnType<typeof createAdminClient>,
   flightId: number,
   transport: TCTransportWithModalities
 ) {
@@ -449,6 +445,9 @@ async function updateFlightModality(
  * Delete all local flights (for testing/reset purposes)
  */
 export async function DELETE() {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const supabase = await createClient()
 
   // Verify authentication
@@ -458,7 +457,7 @@ export async function DELETE() {
   }
 
   try {
-    const db = getUntypedClient()
+    const db = createAdminClient()
 
     // Count before delete
     const { count: beforeCount } = await db
@@ -469,7 +468,7 @@ export async function DELETE() {
     const { error } = await db.from('flights').delete().neq('id', 0)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json({
@@ -479,9 +478,6 @@ export async function DELETE() {
     })
   } catch (error) {
     console.error('Error deleting flights:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error deleting flights' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

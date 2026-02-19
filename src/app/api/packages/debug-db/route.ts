@@ -1,18 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/packages/debug-db?id=43317855
  * Debug endpoint to see what's stored in DB for a package's transports
  */
 export async function GET(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const searchParams = request.nextUrl.searchParams
   const tcPackageId = searchParams.get('id')
 
@@ -20,7 +19,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Package ID required' }, { status: 400 })
   }
 
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     // First get the package
@@ -121,9 +120,6 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Debug DB] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

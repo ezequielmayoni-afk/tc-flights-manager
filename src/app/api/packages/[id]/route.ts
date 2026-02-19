@@ -1,13 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 // Supabase client with service role for server operations
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -18,8 +14,11 @@ interface RouteParams {
  * Get a single package with all related data
  */
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     const { data: pkg, error } = await db
@@ -46,16 +45,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'Package not found' }, { status: 404 })
       }
       console.error('[Package] Error fetching:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json(pkg)
   } catch (error) {
     console.error('[Package] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -64,8 +60,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * Update a single package
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -147,16 +146,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: 'Package not found' }, { status: 404 })
       }
       console.error('[Package] Error updating:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json(data)
   } catch (error) {
     console.error('[Package] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -165,8 +161,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
  * Delete a package (soft delete by setting status to 'expired')
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     // Get current package status
@@ -188,7 +187,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
     if (error) {
       console.error('[Package] Error deleting:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     // Record workflow change
@@ -203,9 +202,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[Package] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

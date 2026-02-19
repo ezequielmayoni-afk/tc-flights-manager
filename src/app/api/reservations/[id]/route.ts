@@ -1,22 +1,21 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 interface RouteParams {
   params: Promise<{ id: string }>
 }
 
 // Cliente sin tipos para tablas no tipadas
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // GET single reservation
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const supabase = getUntypedClient()
+  const supabase = createAdminClient()
 
   const { data: reservation, error } = await supabase
     .from('reservations')
@@ -35,7 +34,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 404 })
+    return errorResponse(error)
   }
 
   return NextResponse.json(reservation)
@@ -43,8 +42,11 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 // PUT - Update reservation (modify)
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const supabase = getUntypedClient()
+  const supabase = createAdminClient()
   const body = await request.json()
 
   // Get existing reservation to calculate passenger delta
@@ -82,7 +84,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   // Update inventory if there's a passenger change
@@ -109,8 +111,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 // DELETE - Cancel reservation
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const supabase = getUntypedClient()
+  const supabase = createAdminClient()
 
   // Get existing reservation
   const { data: existing } = await supabase
@@ -139,7 +144,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   // Return seats to inventory

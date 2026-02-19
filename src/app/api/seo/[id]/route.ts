@@ -1,12 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -17,8 +13,11 @@ interface RouteParams {
  * Update SEO fields for a specific package
  */
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('seo')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -54,7 +53,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .single()
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json({
@@ -63,9 +62,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     })
   } catch (error) {
     console.error('[SEO Update] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

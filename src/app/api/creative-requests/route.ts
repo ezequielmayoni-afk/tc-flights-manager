@@ -1,17 +1,13 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import {
   sendSlackMessage,
   buildCreativeRequestMessage,
   // buildCreativeCompletedMessage, // Disabled - see PATCH handler
 } from '@/lib/slack/client'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
@@ -20,7 +16,10 @@ const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
  * List creative requests with optional filters
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
 
   const status = searchParams.get('status')
@@ -65,10 +64,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Creative Requests GET] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error fetching requests' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -77,7 +73,10 @@ export async function GET(request: NextRequest) {
  * Create a new creative request
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -203,10 +202,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Creative Requests POST] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error creating request' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -215,7 +211,10 @@ export async function POST(request: NextRequest) {
  * Update a creative request status
  */
 export async function PATCH(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -349,10 +348,7 @@ export async function PATCH(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Creative Requests PATCH] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error updating request' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -361,7 +357,10 @@ export async function PATCH(request: NextRequest) {
  * Delete a creative request (marketing acknowledged/discarded it)
  */
 export async function DELETE(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
 
   const id = searchParams.get('id')
@@ -414,9 +413,6 @@ export async function DELETE(request: NextRequest) {
     )
   } catch (error) {
     console.error('[Creative Requests DELETE] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error deleting request' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }

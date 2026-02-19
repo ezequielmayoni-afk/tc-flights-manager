@@ -1,19 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAllPackagesExcludingUsers, getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import type { TCPackageListItem, TCPackageInfoResponse, TCPackageDetailResponse } from '@/lib/travelcompositor/types'
 import { generateSEOContent, type PackageDataForSEO } from '@/lib/openai/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 // Usernames to EXCLUDE from import (import all packages EXCEPT from these users)
 const EXCLUDED_USERS = ['Ezequiel Mayoni']
 
 // Supabase client with service role for server operations
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 interface ImportStats {
   total: number
@@ -206,7 +202,7 @@ function mapPackageToInsert(
  * Import destinations from a TC package to our database
  */
 async function importPackageDestinations(
-  db: ReturnType<typeof getSupabaseClient>,
+  db: ReturnType<typeof createAdminClient>,
   packageId: number,
   destinations: TCPackageListItem['destinations']
 ) {
@@ -229,7 +225,7 @@ async function importPackageDestinations(
  * Import transports (flights) from TC package detail to our database
  */
 async function importPackageTransports(
-  db: ReturnType<typeof getSupabaseClient>,
+  db: ReturnType<typeof createAdminClient>,
   packageId: number,
   detail: TCPackageDetailResponse,
   adultsCount: number,
@@ -319,7 +315,7 @@ async function importPackageTransports(
  * Import hotels from TC package detail to our database
  */
 async function importPackageHotels(
-  db: ReturnType<typeof getSupabaseClient>,
+  db: ReturnType<typeof createAdminClient>,
   packageId: number,
   detail: TCPackageDetailResponse,
   adultsCount: number,
@@ -396,7 +392,10 @@ async function importPackageHotels(
  * - forceUpdate: boolean - If true, updates existing packages even if they exist
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     // Parse options from request body
@@ -717,7 +716,10 @@ export async function POST(request: NextRequest) {
  * Get import status and stats
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     // Get counts and stats
@@ -764,9 +766,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[Import] Error getting stats:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

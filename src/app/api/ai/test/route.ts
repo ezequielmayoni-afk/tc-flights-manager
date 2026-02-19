@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server'
 import { validateConfig } from '@/lib/vertex-ai/client'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 /**
  * GET /api/ai/test
  * Test Vertex AI configuration and connectivity
  */
 export async function GET() {
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
     // 1. Check environment variables
     const configCheck = validateConfig()
@@ -83,7 +88,7 @@ export async function GET() {
     return NextResponse.json(
       {
         status: 'ERROR',
-        error: error instanceof Error ? error.message : 'Unknown error',
+        error: 'Error interno del servidor',
       },
       { status: 500 }
     )

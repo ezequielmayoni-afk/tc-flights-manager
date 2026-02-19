@@ -1,6 +1,7 @@
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
+import { checkSectionAccess } from '@/lib/auth'
 
 /**
  * POST /api/seo/upload-to-tc
@@ -8,6 +9,9 @@ import path from 'path'
  * Returns Server-Sent Events stream with real-time logs
  */
 export async function POST(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('seo')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const body = await request.json()
   const { packageIds } = body as { packageIds: number[] }
 

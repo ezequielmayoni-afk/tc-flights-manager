@@ -1,13 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { checkAndSendManualQuoteNotifications } from '@/lib/notifications/manual-quote'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * POST /api/notifications/check-manual-quotes
@@ -15,6 +11,9 @@ function getSupabaseClient() {
  * for those that haven't been notified yet
  */
 export async function POST() {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const result = await checkAndSendManualQuoteNotifications()
 
   if (result.error) {
@@ -29,7 +28,10 @@ export async function POST() {
  * Get count of packages that need notification
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const { count, error } = await db
@@ -39,16 +41,13 @@ export async function GET() {
       .not('requote_price', 'is', null)
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json({
       pendingCount: count || 0,
     })
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

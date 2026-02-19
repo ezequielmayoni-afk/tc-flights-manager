@@ -8,7 +8,6 @@
  * - SSE streaming for real-time progress
  */
 
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   generateCreativeImageV2,
@@ -24,13 +23,10 @@ import {
   getOrCreateVariantFolder,
 } from '@/lib/google-drive/client'
 import type { PackageDataForAI } from '@/types/ai-creatives'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 interface GenerationLog {
   package_id: number
@@ -49,7 +45,7 @@ interface GenerationLog {
  * Create a generation log entry
  */
 async function createGenerationLog(
-  db: ReturnType<typeof getSupabaseClient>,
+  db: ReturnType<typeof createAdminClient>,
   log: GenerationLog
 ): Promise<string | null> {
   const { data, error } = await db
@@ -70,7 +66,7 @@ async function createGenerationLog(
  * Update a generation log entry
  */
 async function updateGenerationLog(
-  db: ReturnType<typeof getSupabaseClient>,
+  db: ReturnType<typeof createAdminClient>,
   logId: string,
   updates: Partial<{
     status: string
@@ -107,7 +103,10 @@ async function updateGenerationLog(
  * Returns SSE stream with progress updates
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     // Validate configuration
@@ -442,13 +441,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[API V2] Error:', error)
-    return NextResponse.json(
-      {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -458,7 +451,10 @@ export async function POST(request: NextRequest) {
  * Get generation logs for a package
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
   const packageId = searchParams.get('packageId')
   const limit = parseInt(searchParams.get('limit') || '50')
@@ -487,9 +483,6 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('[API V2] Error fetching logs:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

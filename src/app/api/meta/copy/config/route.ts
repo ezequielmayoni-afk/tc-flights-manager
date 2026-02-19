@@ -1,19 +1,18 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/meta/copy/config
  * Get the active prompt template
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const { data, error } = await db
@@ -33,10 +32,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[Meta Copy Config GET] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching config' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -45,7 +41,10 @@ export async function GET() {
  * Update or create the prompt template
  */
 export async function PUT(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -84,9 +83,6 @@ export async function PUT(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Meta Copy Config PUT] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error saving config' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

@@ -1,14 +1,10 @@
-import { createClient } from '@supabase/supabase-js'
-import { NextRequest } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
 import { getPackageCreatives, uploadCreativeToMeta } from '@/lib/meta-ads/creative-uploader'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Instagram user ID for the account - MUST be configured, no fallback to avoid wrong account
 const INSTAGRAM_USER_ID = process.env.META_INSTAGRAM_USER_ID
@@ -32,7 +28,10 @@ function getInstagramUserId(): string {
  * - Ads are created in the EXISTING AdSet (no new AdSets created)
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -394,10 +393,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Meta Ads POST] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error creating ads' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -406,7 +402,10 @@ export async function POST(request: NextRequest) {
  * Get ads for a package
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const packageId = request.nextUrl.searchParams.get('package_id')
   const tcPackageId = request.nextUrl.searchParams.get('tc_package_id')
 
@@ -437,10 +436,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Meta Ads GET] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error fetching ads' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -452,7 +448,10 @@ export async function GET(request: NextRequest) {
  * Body: { ad_ids: number[], delete_from_meta?: boolean }
  */
 export async function DELETE(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -541,9 +540,6 @@ export async function DELETE(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Meta Ads DELETE] Error:', error)
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Error deleting ads' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    )
+    return errorResponse(error)
   }
 }

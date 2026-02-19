@@ -1,21 +1,17 @@
 import { NextResponse } from 'next/server'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { tcClient } from '@/lib/travelcompositor/client'
 import { mapFlightToTransport, mapModalityToTC, createDefaultModality, type DBFlight } from '@/lib/travelcompositor/mapper'
 import { hasCredentials } from '@/lib/travelcompositor/auth'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 // Cliente sin tipos para operaciones de update
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Helper to sync a single flight (transport + modality)
 // Uses flight.supplier_id to sync to the correct supplier in TC
 async function syncSingleFlight(
-  db: ReturnType<typeof getUntypedClient>,
+  db: ReturnType<typeof createAdminClient>,
   flight: DBFlight,
   combinableRtContracts: string[] = []
 ): Promise<{ success: boolean; transportId?: string; error?: string }> {
@@ -112,6 +108,9 @@ async function syncSingleFlight(
 
 // POST /api/sync - Sync a flight to TravelCompositor
 export async function POST(request: Request) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   if (!hasCredentials()) {
     return NextResponse.json(
       { error: 'TravelCompositor credentials not configured' },
@@ -129,7 +128,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'flightId is required' }, { status: 400 })
     }
 
-    const db = getUntypedClient()
+    const db = createAdminClient()
 
     // Fetch the complete flight with all relations
     const { data: flightData, error } = await db
@@ -233,9 +232,6 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('Sync error:', error)
-    return NextResponse.json(
-      { error: 'Sync failed', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

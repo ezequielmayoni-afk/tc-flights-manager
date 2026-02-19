@@ -1,14 +1,10 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import type { TCPackageDetailResponse } from '@/lib/travelcompositor/types'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
@@ -206,8 +202,11 @@ function extractCosts(detail: TCPackageDetailResponse): {
  * Refresh a single package from TravelCompositor API
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const { id } = await params
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     // Get existing package from our DB
@@ -481,9 +480,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     })
   } catch (error) {
     console.error('[Refresh] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

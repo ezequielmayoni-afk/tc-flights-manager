@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 interface ModalityInventory {
   quantity: number
@@ -53,8 +55,11 @@ interface ReservationRow {
 }
 
 export async function GET(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
     const searchParams = request.nextUrl.searchParams
 
     // Optional filters
@@ -92,7 +97,7 @@ export async function GET(request: NextRequest) {
 
       if (resError) {
         console.error('[Dashboard API] Error fetching reservations:', resError)
-        return NextResponse.json({ error: resError.message }, { status: 500 })
+        return errorResponse(resError)
       }
 
       console.log('[Dashboard API] Reservations in date range:', reservations?.length || 0)
@@ -154,7 +159,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[Dashboard API] Error fetching flights:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     // Calculate totals and stats by supplier

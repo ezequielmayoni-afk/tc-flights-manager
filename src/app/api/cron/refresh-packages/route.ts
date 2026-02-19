@@ -1,19 +1,13 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import type { TCPackageDetailResponse } from '@/lib/travelcompositor/types'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // Vercel cron jobs have a 60s timeout on hobby, 300s on pro
 // We process packages in batches to stay within limits
 const BATCH_SIZE = 10
 const DELAY_BETWEEN_PACKAGES = 500 // ms
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * Extract cost breakdown from package detail
@@ -144,7 +138,7 @@ function extractCosts(detail: TCPackageDetailResponse): {
   }
 }
 
-async function refreshPackage(db: ReturnType<typeof getSupabaseClient>, pkg: {
+async function refreshPackage(db: ReturnType<typeof createAdminClient>, pkg: {
   id: number
   tc_package_id: number
   current_price_per_pax: number
@@ -286,7 +280,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const db = getSupabaseClient()
+  const db = createAdminClient()
   const startTime = Date.now()
 
   console.log('[Cron] Starting daily package refresh...')

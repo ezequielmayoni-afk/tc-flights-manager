@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
 
 // =====================================================
 // Structured Logger for Application-wide Logging
@@ -95,15 +95,12 @@ export interface SyncLogEntry {
 
 // Server-side logger using service role key
 function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !key) {
+  try {
+    return createAdminClient()
+  } catch {
     console.warn('Supabase credentials not found for logging')
     return null
   }
-
-  return createClient(url, key)
 }
 
 // Log sync operation to database (server-side)

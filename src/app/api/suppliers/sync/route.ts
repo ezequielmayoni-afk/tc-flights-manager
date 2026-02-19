@@ -1,19 +1,18 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@supabase/supabase-js'
 import { listSuppliers } from '@/lib/travelcompositor/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * POST /api/suppliers/sync
  * Fetch suppliers from TravelCompositor and sync them to the database
  */
 export async function POST() {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
     console.log('[Suppliers Sync] Starting sync from TravelCompositor')
 
@@ -30,7 +29,7 @@ export async function POST() {
       })
     }
 
-    const db = getSupabaseClient()
+    const db = createAdminClient()
 
     // Get existing suppliers from DB
     const { data: existingSuppliers } = await db
@@ -84,9 +83,6 @@ export async function POST() {
     })
   } catch (error) {
     console.error('[Suppliers Sync] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

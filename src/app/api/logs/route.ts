@@ -1,16 +1,15 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 // Cliente sin tipos para evitar errores de tipado con sync_logs
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 export async function GET(request: NextRequest) {
-  const supabase = getUntypedClient()
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const supabase = createAdminClient()
   const searchParams = request.nextUrl.searchParams
 
   // Filters
@@ -41,14 +40,17 @@ export async function GET(request: NextRequest) {
   const { data: logs, error, count } = await query
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json({ logs, total: count })
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = getUntypedClient()
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const supabase = createAdminClient()
   const body = await request.json()
 
   // Mapear campos a las columnas reales de sync_logs
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     console.error('Error saving log:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json(data)
@@ -77,7 +79,10 @@ export async function POST(request: NextRequest) {
 
 // Delete old logs (cleanup)
 export async function DELETE(request: NextRequest) {
-  const supabase = getUntypedClient()
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const supabase = createAdminClient()
   const searchParams = request.nextUrl.searchParams
   const days = parseInt(searchParams.get('days') || '30')
 
@@ -90,7 +95,7 @@ export async function DELETE(request: NextRequest) {
     .lt('created_at', cutoffDate.toISOString())
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json({ deleted: count })

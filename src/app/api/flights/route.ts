@@ -1,15 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { flightFormSchema } from '@/lib/validations/flight'
-import { createClient as createSupabaseClient } from '@supabase/supabase-js'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 // Cliente sin tipos para operaciones complejas
-function getUntypedClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Helper para calcular end_date basándose en plus_days de los segmentos
 function calculateEndDate(startDate: string, segments: Array<{ plus_days?: number }>): string {
@@ -34,6 +30,9 @@ function calculateEndDate(startDate: string, segments: Array<{ plus_days?: numbe
 }
 
 export async function GET() {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const supabase = await createClient()
 
   const { data: flights, error } = await supabase
@@ -47,7 +46,7 @@ export async function GET() {
     .order('created_at', { ascending: false })
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorResponse(error)
   }
 
   return NextResponse.json(flights)
@@ -55,7 +54,7 @@ export async function GET() {
 
 // Helper to create a single flight with its relations
 async function createSingleFlight(
-  db: ReturnType<typeof getUntypedClient>,
+  db: ReturnType<typeof createAdminClient>,
   flightData: Record<string, unknown>,
   segments: Array<Record<string, unknown>>,
   datasheets: Array<Record<string, unknown>>,
@@ -178,6 +177,9 @@ async function createSingleFlight(
 }
 
 export async function POST(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const supabase = await createClient()
 
   // Verificar autenticación
@@ -204,7 +206,7 @@ export async function POST(request: NextRequest) {
     } = validatedData
 
     // Usar cliente sin tipos para inserción
-    const db = getUntypedClient()
+    const db = createAdminClient()
 
     // Separate segments by leg_type
     const outboundSegments = segments.filter(s => s.leg_type === 'outbound')
@@ -415,7 +417,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Validation error:', error)
     if (error instanceof Error) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+      return errorResponse(error)
     }
     return NextResponse.json({ error: 'Error de validación' }, { status: 400 })
   }

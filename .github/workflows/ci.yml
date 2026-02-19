@@ -27,8 +27,7 @@ jobs:
         run: npm ci
 
       - name: Run linter
-        run: npm run lint || echo "Lint warnings found but continuing..."
-        continue-on-error: true
+        run: npm run lint
 
   typecheck:
     name: Type Check

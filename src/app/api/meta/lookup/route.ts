@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 /**
  * GET /api/meta/lookup?type=campaign&id=XXX
@@ -7,6 +9,9 @@ import { getMetaAdsClient } from '@/lib/meta-ads/client'
  * Lookup campaign or adset details by ID from Meta API
  */
 export async function GET(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const type = request.nextUrl.searchParams.get('type')
   const id = request.nextUrl.searchParams.get('id')
 
@@ -62,9 +67,6 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('[Meta Lookup] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error looking up', found: false },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

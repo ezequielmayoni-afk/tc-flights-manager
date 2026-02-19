@@ -1,14 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { getUserWithRole } from '@/lib/auth'
+import { getUserWithRole, checkSectionAccess } from '@/lib/auth'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { errorResponse } from '@/lib/api/errors'
 
 // Supabase client with service role for server operations
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 // Check authentication: API Key for external systems OR session for Hub users
 async function checkAuth(request: NextRequest): Promise<boolean> {
@@ -48,7 +43,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
 
-  const db = getSupabaseClient()
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
 
   try {
@@ -136,7 +131,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('[Packages] Error fetching:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json({
@@ -150,10 +145,7 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Packages] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -166,13 +158,15 @@ export async function GET(request: NextRequest) {
  * - updates: Object with fields to update
  */
 export async function PATCH(request: NextRequest) {
-  // Check authentication (API Key or session)
-  const isAuthorized = await checkAuth(request)
-  if (!isAuthorized) {
-    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  // API Key for external systems, section-based auth for Hub users
+  const apiKey = request.headers.get('X-API-Key')
+  const isApiKeyAuth = apiKey && apiKey === process.env.HUB_API_KEY
+  if (!isApiKeyAuth) {
+    const { authorized } = await checkSectionAccess('productos')
+    if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   }
 
-  const db = getSupabaseClient()
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -228,7 +222,7 @@ export async function PATCH(request: NextRequest) {
 
     if (error) {
       console.error('[Packages] Error updating:', error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     return NextResponse.json({
@@ -238,9 +232,6 @@ export async function PATCH(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Packages] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

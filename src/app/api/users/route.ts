@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkAdmin, UserRole, ROLE_PERMISSIONS } from '@/lib/auth'
 
@@ -117,7 +116,7 @@ export async function GET() {
       )
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     // Get all profiles with user info
     const { data, error: profilesError } = await supabase

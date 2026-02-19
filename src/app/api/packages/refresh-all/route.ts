@@ -1,13 +1,9 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * POST /api/packages/refresh-all
@@ -15,7 +11,10 @@ function getSupabaseClient() {
  * This is a one-time operation to populate missing data
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     // Get all packages that are in marketing or published and active
@@ -180,10 +179,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(results)
   } catch (error) {
     console.error('[Refresh All] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -192,7 +188,10 @@ export async function POST(request: NextRequest) {
  * Get status of packages that need transport/hotel data
  */
 export async function GET() {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     // Get packages in marketing
@@ -211,7 +210,7 @@ export async function GET() {
       .or('status.eq.in_marketing,status.eq.published,send_to_marketing.eq.true')
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return errorResponse(error)
     }
 
     const withTransportData = packages?.filter(p => (p.package_transports as any[])?.length > 0).length || 0
@@ -232,9 +231,6 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[Refresh All] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

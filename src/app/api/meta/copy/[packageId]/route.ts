@@ -1,12 +1,8 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/meta/copy/[packageId]
@@ -16,7 +12,10 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ packageId: string }> }
 ) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { packageId } = await params
 
   try {
@@ -33,10 +32,7 @@ export async function GET(
     return NextResponse.json({ copies })
   } catch (error) {
     console.error('[Meta Copy GET] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching copies' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -48,7 +44,10 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ packageId: string }> }
 ) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { packageId } = await params
 
   try {
@@ -90,9 +89,6 @@ export async function PUT(
     return NextResponse.json({ success: true, copy: data })
   } catch (error) {
     console.error('[Meta Copy PUT] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error updating copy' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

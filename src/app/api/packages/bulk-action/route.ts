@@ -1,16 +1,12 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { deactivatePackage, getPackageDetail } from '@/lib/travelcompositor/client'
 import { sendSlackMessage, buildCreativeRequestMessage, buildSentToMarketingMessage } from '@/lib/slack/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 interface PackageResult {
   id: number
@@ -25,7 +21,10 @@ interface PackageResult {
  * Execute bulk actions on multiple packages
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const { packageIds, action, reason, priority, reason_detail } = await request.json()
@@ -446,9 +445,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Bulk Action] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

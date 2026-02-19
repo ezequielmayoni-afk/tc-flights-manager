@@ -1,4 +1,3 @@
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { spawn } from 'child_process'
 import path from 'path'
@@ -11,6 +10,9 @@ import type {
   TCServicePriceBreakdown,
 } from '@/lib/travelcompositor/types'
 import { generateSEOContent, type PackageDataForSEO } from '@/lib/openai/client'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 /**
  * Extract price breakdown values from TC service
@@ -25,12 +27,6 @@ function extractPriceBreakdown(priceBreakdown?: TCServicePriceBreakdown) {
   }
 }
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * Extract cost breakdown from package detail
@@ -146,7 +142,10 @@ function extractCosts(detail: TCPackageDetailResponse): {
  * Import a single package by TC ID
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('productos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -811,9 +810,6 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('[Import Single] Fatal error:', error)
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Error desconocido' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

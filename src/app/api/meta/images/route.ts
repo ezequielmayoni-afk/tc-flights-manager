@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
 const META_API_VERSION = 'v21.0'
 const META_API_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
@@ -9,6 +11,9 @@ const META_API_BASE_URL = `https://graph.facebook.com/${META_API_VERSION}`
  * List all images uploaded to the Meta Ad Account
  */
 export async function GET() {
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   const accessToken = process.env.META_ACCESS_TOKEN!
   const adAccountId = process.env.META_AD_ACCOUNT_ID!
 
@@ -33,10 +38,7 @@ export async function GET() {
     })
   } catch (error) {
     console.error('[Meta Images] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching images' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -48,6 +50,9 @@ export async function GET() {
  * Returns: { urls: Record<string, string>, videoUrls: Record<string, string> }
  */
 export async function POST(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
   try {
     const body = await request.json()
     const { hashes, videoIds } = body as { hashes?: string[]; videoIds?: string[] }
@@ -67,9 +72,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ urls, videoUrls })
   } catch (error) {
     console.error('[Meta Images POST] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Error fetching media URLs' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }

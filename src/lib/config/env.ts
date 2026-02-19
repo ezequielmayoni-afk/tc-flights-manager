@@ -103,5 +103,15 @@ export function hasEnvVar(key: string): boolean {
   return !!process.env[key]
 }
 
-// Exportar variables validadas (se ejecuta al importar el módulo)
-export const env = validateEnv()
+// Lazy singleton - solo valida cuando se llama, no al importar
+let _env: (RequiredEnvVars & OptionalEnvVars) | null = null
+
+export function getEnv(): RequiredEnvVars & OptionalEnvVars {
+  if (!_env) {
+    _env = validateEnv()
+  }
+  return _env
+}
+
+// Mantener backward compat
+export { validateEnv }

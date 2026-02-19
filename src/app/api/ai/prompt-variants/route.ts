@@ -7,15 +7,11 @@
  * DELETE - Delete a prompt variant
  */
 
-import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { checkSectionAccess } from '@/lib/auth'
+import { errorResponse } from '@/lib/api/errors'
 
-function getSupabaseClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-}
 
 /**
  * GET /api/ai/prompt-variants
@@ -23,7 +19,10 @@ function getSupabaseClient() {
  * Get all prompt variants (the 5 creative variants with "Sí" hooks)
  */
 export async function GET(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
   const activeOnly = searchParams.get('activeOnly') !== 'false'
 
@@ -50,10 +49,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error('[Prompt Variants API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -73,7 +69,10 @@ export async function GET(request: NextRequest) {
  * - is_active: boolean
  */
 export async function PUT(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -109,10 +108,7 @@ export async function PUT(request: NextRequest) {
 
   } catch (error) {
     console.error('[Prompt Variants API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -131,7 +127,10 @@ export async function PUT(request: NextRequest) {
  * - is_active: boolean (optional, default true)
  */
 export async function POST(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
 
   try {
     const body = await request.json()
@@ -183,10 +182,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Prompt Variants API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
 
@@ -199,7 +195,10 @@ export async function POST(request: NextRequest) {
  * - variant_number: number (required)
  */
 export async function DELETE(request: NextRequest) {
-  const db = getSupabaseClient()
+  const { authorized } = await checkSectionAccess('diseño')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
   const { searchParams } = new URL(request.url)
   const variantNumber = searchParams.get('variant_number')
 
@@ -226,9 +225,6 @@ export async function DELETE(request: NextRequest) {
 
   } catch (error) {
     console.error('[Prompt Variants API] Error:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    )
+    return errorResponse(error)
   }
 }
