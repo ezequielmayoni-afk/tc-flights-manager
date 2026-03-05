@@ -80,15 +80,16 @@ class TCClient {
     first?: number
     limit?: number
     active?: boolean
-  } = {}): Promise<TCTransportListResponse> {
+  } = {}, overrideSupplierId?: string): Promise<TCTransportListResponse> {
     const params = new URLSearchParams()
 
     if (options.first !== undefined) params.set('first', options.first.toString())
     if (options.limit !== undefined) params.set('limit', options.limit.toString())
     if (options.active !== undefined) params.set('active', options.active.toString())
 
+    const supplierIdToUse = overrideSupplierId || this.supplierId
     const queryString = params.toString()
-    const endpoint = `/transport/${this.supplierId}${queryString ? `?${queryString}` : ''}`
+    const endpoint = `/transport/${supplierIdToUse}${queryString ? `?${queryString}` : ''}`
 
     console.log(`[TC] Listing transports: ${endpoint}`)
 

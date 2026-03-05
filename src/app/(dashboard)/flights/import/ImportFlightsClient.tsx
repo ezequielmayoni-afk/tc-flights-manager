@@ -89,6 +89,11 @@ interface ImportResult {
   message: string
 }
 
+interface TCSupplier {
+  id: number
+  name: string
+}
+
 export function ImportFlightsClient() {
   const [loading, setLoading] = useState(false)
   const [importing, setImporting] = useState(false)
@@ -101,15 +106,36 @@ export function ImportFlightsClient() {
   const [importMode, setImportMode] = useState<'sync' | 'replace'>('sync')
   const [deleteUnmatched, setDeleteUnmatched] = useState(false)
   const [confirmDialog, setConfirmDialog] = useState<'import' | 'delete' | null>(null)
+  const [suppliers, setSuppliers] = useState<TCSupplier[]>([])
+  const [selectedSupplier, setSelectedSupplier] = useState<string>('')
+  const [activeSupplier, setActiveSupplier] = useState<string>('') // The supplier whose transports are currently loaded
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false)
+
+  // Fetch suppliers from TC
+  const fetchSuppliers = async () => {
+    setLoadingSuppliers(true)
+    try {
+      const response = await fetch('/api/suppliers/tc')
+      const data = await response.json()
+      if (response.ok && data.suppliers) {
+        setSuppliers(data.suppliers)
+      }
+    } catch (err) {
+      console.error('Error fetching suppliers:', err)
+    } finally {
+      setLoadingSuppliers(false)
+    }
+  }
 
   // Fetch transports from TC
-  const fetchTransports = async () => {
+  const fetchTransports = async (supplierId?: string) => {
     setLoading(true)
     setError(null)
     setResult(null)
 
     try {
-      const response = await fetch('/api/flights/import')
+      const params = supplierId ? `?supplierId=${supplierId}` : ''
+      const response = await fetch(`/api/flights/import${params}`)
       const data: ImportResponse = await response.json()
 
       if (!response.ok) {
@@ -118,6 +144,7 @@ export function ImportFlightsClient() {
 
       setTransports(data.transports)
       setStats({ total: data.total, existing: data.existing, new: data.new })
+      setActiveSupplier(supplierId || '')
       // Pre-select new transports
       setSelectedIds(new Set(data.transports.filter(t => t.syncStatus === 'new').map(t => t.id)))
     } catch (err) {
@@ -142,6 +169,7 @@ export function ImportFlightsClient() {
           transportIds: selectedIds.size > 0 ? Array.from(selectedIds) : undefined,
           mode: importMode,
           deleteUnmatched,
+          supplierId: activeSupplier || undefined,
         }),
       })
 
@@ -153,7 +181,7 @@ export function ImportFlightsClient() {
 
       setResult(data)
       // Refresh the list
-      await fetchTransports()
+      await fetchTransports(selectedSupplier || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error importing transports')
     } finally {
@@ -191,7 +219,7 @@ export function ImportFlightsClient() {
         message: data.message,
       })
       // Refresh the list
-      await fetchTransports()
+      await fetchTransports(selectedSupplier || undefined)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error deleting flights')
     } finally {
@@ -219,10 +247,52 @@ export function ImportFlightsClient() {
     }
   }
 
-  // Load transports on mount
+  // Load suppliers and transports on mount (single combined fetch)
   useEffect(() => {
-    fetchTransports()
+    let cancelled = false
+
+    async function init() {
+      // Fetch suppliers first, then transports
+      setLoadingSuppliers(true)
+      setLoading(true)
+      try {
+        const [suppRes, transRes] = await Promise.all([
+          fetch('/api/suppliers/tc'),
+          fetch('/api/flights/import'),
+        ])
+        if (cancelled) return
+
+        const suppData = await suppRes.json()
+        if (suppRes.ok && suppData.suppliers) {
+          setSuppliers(suppData.suppliers)
+        }
+
+        const transData: ImportResponse = await transRes.json()
+        if (transRes.ok) {
+          setTransports(transData.transports)
+          setStats({ total: transData.total, existing: transData.existing, new: transData.new })
+          setActiveSupplier('')
+          setSelectedIds(new Set(transData.transports.filter(t => t.syncStatus === 'new').map(t => t.id)))
+        }
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Error loading data')
+      } finally {
+        if (!cancelled) {
+          setLoadingSuppliers(false)
+          setLoading(false)
+        }
+      }
+    }
+
+    init()
+    return () => { cancelled = true }
   }, [])
+
+  // Reload transports when supplier changes
+  const handleSupplierChange = (value: string) => {
+    setSelectedSupplier(value)
+    fetchTransports(value === 'all' ? undefined : value)
+  }
 
   // Get route from segments
   const getRoute = (transport: TCTransport) => {
@@ -253,7 +323,7 @@ export function ImportFlightsClient() {
         </Button>
 
         <div className="flex gap-2">
-          <Button variant="outline" onClick={fetchTransports} disabled={loading}>
+          <Button variant="outline" onClick={() => fetchTransports(selectedSupplier || undefined)} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Recargar
           </Button>
@@ -376,13 +446,37 @@ export function ImportFlightsClient() {
       {/* Transports table */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Plane className="h-5 w-5" />
-            Vuelos en TravelCompositor ({transports.length})
-          </CardTitle>
-          <CardDescription>
-            Selecciona los vuelos que deseas importar a la base de datos local
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Plane className="h-5 w-5" />
+                Vuelos en TravelCompositor ({transports.length})
+              </CardTitle>
+              <CardDescription className="mt-1.5">
+                Selecciona los vuelos que deseas importar a la base de datos local
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium whitespace-nowrap">Proveedor:</label>
+              <Select
+                value={selectedSupplier || 'all'}
+                onValueChange={handleSupplierChange}
+                disabled={loadingSuppliers || loading}
+              >
+                <SelectTrigger className="w-[250px]">
+                  <SelectValue placeholder="Todos los proveedores" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos (por defecto)</SelectItem>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id.toString()}>
+                      {s.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (

@@ -1,17 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { getAllTransports } from '@/lib/travelcompositor/client'
+import { getAllTransports, listSuppliers } from '@/lib/travelcompositor/client'
 import type { TCTransportWithModalities } from '@/lib/travelcompositor/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
+import { tcClient } from '@/lib/travelcompositor/client'
 
 
 /**
  * GET /api/flights/import
  * Fetch all transports from TravelCompositor for preview
+ * Optional query param: supplierId (defaults to TC_SUPPLIER_ID env var)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { authorized } = await checkSectionAccess('cupos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
@@ -24,8 +26,17 @@ export async function GET() {
   }
 
   try {
-    // Fetch all transports from TC
-    const transports = await getAllTransports()
+    const { searchParams } = new URL(request.url)
+    const supplierId = searchParams.get('supplierId')
+
+    // Fetch transports from TC (for specific supplier or default)
+    let transports: TCTransportWithModalities[]
+    if (supplierId) {
+      const response = await tcClient.listTransports({ limit: 200 }, supplierId)
+      transports = response.transports
+    } else {
+      transports = await getAllTransports()
+    }
 
     // Get existing flights from DB to compare
     const db = createAdminClient()
@@ -76,30 +87,45 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    console.log('[Import POST] Body received:', JSON.stringify(body))
     const {
       transportIds,
       mode = 'sync', // 'sync' = update existing, 'replace' = delete all and reimport
-      deleteUnmatched = false // If true, delete local flights not in TC
+      deleteUnmatched = false, // If true, delete local flights not in TC
+      supplierId: bodySupplierId, // Optional: override supplier ID
     } = body as {
       transportIds?: string[]
       mode?: 'sync' | 'replace'
       deleteUnmatched?: boolean
+      supplierId?: string
     }
 
     const db = createAdminClient()
 
-    // Fetch transports from TC
-    const allTransports = await getAllTransports()
+    // Fetch transports from TC (for specific supplier or default)
+    let allTransports: TCTransportWithModalities[]
+    if (bodySupplierId) {
+      const response = await tcClient.listTransports({ limit: 200 }, bodySupplierId)
+      allTransports = response.transports
+    } else {
+      allTransports = await getAllTransports()
+    }
+
+    console.log(`[Import] Fetched ${allTransports.length} transports from supplier ${bodySupplierId || 'default'}`)
 
     // Filter if specific IDs provided
     const transportsToImport = transportIds
       ? allTransports.filter(t => transportIds.includes(t.id))
       : allTransports
 
+    console.log(`[Import] Transports to import: ${transportsToImport.length} (requested IDs: ${transportIds?.length || 'all'})`)
+
     if (transportsToImport.length === 0) {
       return NextResponse.json({
         error: 'No transports to import',
-        message: 'No se encontraron transportes para importar'
+        message: transportIds
+          ? `No se encontraron los transportes seleccionados en el proveedor ${bodySupplierId || 'por defecto'}. Asegurate de seleccionar el proveedor correcto.`
+          : 'No se encontraron transportes para importar'
       }, { status: 400 })
     }
 
@@ -111,8 +137,30 @@ export async function POST(request: NextRequest) {
       errors: [] as string[],
     }
 
-    // Get supplier ID from env
-    const supplierId = parseInt(process.env.TC_SUPPLIER_ID || '0')
+    // Use the specified supplier ID, or fall back to env default
+    const supplierId = bodySupplierId ? parseInt(bodySupplierId) : parseInt(process.env.TC_SUPPLIER_ID || '0')
+
+    // Ensure the supplier exists in local DB (avoid FK constraint failure)
+    if (supplierId) {
+      const { data: existingSupplier } = await db
+        .from('suppliers')
+        .select('id')
+        .eq('id', supplierId)
+        .single()
+
+      if (!existingSupplier) {
+        // Find supplier name from TC
+        const tcSuppliers = await listSuppliers()
+        const supplierInfo = tcSuppliers.find(s => s.id === supplierId)
+        const supplierName = supplierInfo?.name || `Supplier ${supplierId}`
+
+        await db.from('suppliers').upsert({
+          id: supplierId,
+          name: supplierName,
+        })
+        console.log(`[Import] Created supplier in local DB: ${supplierId} - ${supplierName}`)
+      }
+    }
 
     // If replace mode, delete all existing flights first
     if (mode === 'replace') {
@@ -142,6 +190,7 @@ export async function POST(request: NextRequest) {
     for (const transport of transportsToImport) {
       try {
         const existingFlight = existingByTcId.get(transport.id)
+        console.log(`[Import] Processing: ${transport.id} (${transport.name}) - exists: ${!!existingFlight}`)
 
         // Map TC transport to local flight format
         const flightData = mapTransportToFlight(transport, supplierId, user.id)
@@ -158,6 +207,7 @@ export async function POST(request: NextRequest) {
             .eq('id', existingFlight.id)
 
           if (updateError) {
+            console.error(`[Import] Update error for ${transport.name}:`, updateError)
             results.errors.push(`Error updating ${transport.name}: ${updateError.message}`)
             results.skipped++
           } else {
@@ -166,30 +216,38 @@ export async function POST(request: NextRequest) {
             // Update modality
             await updateFlightModality(db, existingFlight.id, transport)
             results.updated++
+            console.log(`[Import] Updated: ${transport.name}`)
           }
         } else {
-          // Create new flight using transactional RPC (ensures atomicity)
-          const { segments, modality, inventories } = prepareFlightRelations(transport)
+          // Create new flight with direct inserts
+          console.log(`[Import] Creating new flight: ${transport.name} with supplier_id: ${supplierId}`)
 
-          const { data: rpcResult, error: rpcError } = await db.rpc('create_flight_with_relations', {
-            p_flight_data: flightData,
-            p_segments: segments,
-            p_modality: modality,
-            p_inventories: inventories,
-          })
+          const { data: newFlight, error: insertError } = await db
+            .from('flights')
+            .insert({
+              ...flightData,
+              sync_status: 'synced',
+              last_sync_at: new Date().toISOString(),
+            })
+            .select('id')
+            .single()
 
-          const result = rpcResult?.[0]
-
-          if (rpcError || !result?.success) {
-            const errorMsg = rpcError?.message || result?.error_message || 'Unknown error'
+          if (insertError || !newFlight) {
+            const errorMsg = insertError?.message || 'Unknown error'
+            console.error(`[Import] FAILED importing ${transport.name}: ${errorMsg}`)
             results.errors.push(`Error importing ${transport.name}: ${errorMsg}`)
             results.skipped++
           } else {
+            // Create segments and modality
+            await createFlightSegments(db, newFlight.id, transport)
+            await createFlightModality(db, newFlight.id, transport)
             results.imported++
+            console.log(`[Import] SUCCESS: ${transport.name} (flight_id: ${newFlight.id})`)
           }
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+        console.error(`[Import] EXCEPTION processing ${transport.name}:`, errorMsg)
         results.errors.push(`Error processing ${transport.name}: ${errorMsg}`)
         results.skipped++
       }
@@ -214,59 +272,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    console.log(`[Import] DONE: imported=${results.imported}, updated=${results.updated}, skipped=${results.skipped}, errors=${results.errors.length}`)
+    if (results.errors.length > 0) {
+      console.log(`[Import] Errors:`, results.errors)
+    }
+
     return NextResponse.json({
       success: true,
       results,
       message: `Importación completada: ${results.imported} importados, ${results.updated} actualizados, ${results.deleted} eliminados, ${results.skipped} omitidos`,
     })
   } catch (error) {
-    console.error('Error importing transports:', error)
+    console.error('[Import] FATAL ERROR:', error)
     return errorResponse(error)
   }
-}
-
-/**
- * Prepare segments, modality, and inventories for transactional insert
- */
-function prepareFlightRelations(transport: TCTransportWithModalities): {
-  segments: Record<string, unknown>[] | null
-  modality: Record<string, unknown> | null
-  inventories: Record<string, unknown>[] | null
-} {
-  // Prepare segments
-  const segments = transport.segments?.map((segment, index) => ({
-    departure_location_code: segment.departureLocationCode,
-    arrival_location_code: segment.arrivalLocationCode,
-    departure_time: segment.departureTime,
-    arrival_time: segment.arrivalTime,
-    plus_days: segment.plusDays || 0,
-    duration_time: segment.durationTime,
-    model: segment.model || '',
-    num_service: segment.numService || '',
-    sort_order: index,
-  })) || null
-
-  // Prepare modality (use first one)
-  const modalityData = transport.modalities?.[0]
-  const modality = modalityData ? {
-    code: modalityData.code,
-    active: modalityData.active,
-    cabin_class_type: modalityData.cabinClassType || 'ECONOMY',
-    baggage_allowance: modalityData.baggageAllowance?.toString() || '0',
-    baggage_allowance_type: modalityData.baggageAllowanceType || 'KG',
-    min_passengers: modalityData.minPassengers || 1,
-    max_passengers: modalityData.maxPassengers || 9,
-    on_request: modalityData.onRequest || false,
-  } : null
-
-  // Prepare inventories
-  const inventories = modalityData?.inventories?.map(inv => ({
-    start_date: inv.inventoryDate.start,
-    end_date: inv.inventoryDate.end,
-    quantity: inv.quantity,
-  })) || null
-
-  return { segments, modality, inventories }
 }
 
 /**
@@ -281,7 +300,7 @@ function mapTransportToFlight(
   const name = transport.datasheets?.ES?.name || transport.name || transport.baseId
 
   return {
-    base_id: transport.baseId,
+    base_id: transport.baseId || transport.id || name,
     tc_transport_id: transport.id,
     name,
     airline_code: transport.airlineCode || '',
