@@ -968,6 +968,42 @@ export class MetaAdsClient {
   }
 
   /**
+   * Get a single ad by ID with creative thumbnail info (for imports)
+   */
+  async getAdWithCreative(adId: string): Promise<{
+    id: string
+    name: string
+    status: string
+    effective_status: string
+    thumbnail_url: string | null
+  } | null> {
+    try {
+      const fields = 'id,name,status,effective_status,creative{id,image_url,thumbnail_url}'
+      const data = await this.request<{
+        id: string
+        name: string
+        status: string
+        effective_status: string
+        creative?: {
+          id: string
+          image_url?: string
+          thumbnail_url?: string
+        }
+      }>(`/${adId}?fields=${fields}`)
+
+      return {
+        id: data.id,
+        name: data.name,
+        status: data.status,
+        effective_status: data.effective_status,
+        thumbnail_url: data.creative?.thumbnail_url || data.creative?.image_url || null,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  /**
    * Update an existing ad's creative
    * This creates a new creative and updates the ad to use it
    */
@@ -1039,6 +1075,108 @@ export class MetaAdsClient {
     }
 
     return allAds
+  }
+
+  /**
+   * Get all ACTIVE ads with delivery in the last 7 days
+   * Includes spend, impressions, clicks, campaign/adset names, and thumbnail
+   */
+  async getActiveAdsWithInsights(): Promise<Array<{
+    id: string
+    name: string
+    effective_status: string
+    campaign_name: string
+    adset_name: string
+    spend: number
+    impressions: number
+    clicks: number
+    thumbnail_url: string | null
+  }>> {
+    const fields = 'id,name,effective_status,campaign{name},adset{name},creative{thumbnail_url,image_url}'
+    const filtering = JSON.stringify([
+      { field: 'effective_status', operator: 'IN', value: ['ACTIVE', 'PENDING_REVIEW'] }
+    ])
+
+    const result: Array<{
+      id: string
+      name: string
+      effective_status: string
+      campaign_name: string
+      adset_name: string
+      spend: number
+      impressions: number
+      clicks: number
+      thumbnail_url: string | null
+    }> = []
+
+    let url = `/${this.adAccountId}/ads?fields=${fields}&filtering=${encodeURIComponent(filtering)}&limit=200`
+
+    while (url) {
+      const response = await this.request<{
+        data: Array<{
+          id: string
+          name: string
+          effective_status: string
+          campaign?: { name: string }
+          adset?: { name: string }
+          creative?: { thumbnail_url?: string; image_url?: string }
+        }>
+        paging?: { next?: string }
+      }>(url)
+
+      for (const ad of response.data) {
+        result.push({
+          id: ad.id,
+          name: ad.name,
+          effective_status: ad.effective_status,
+          campaign_name: ad.campaign?.name || '-',
+          adset_name: ad.adset?.name || '-',
+          spend: 0,
+          impressions: 0,
+          clicks: 0,
+          thumbnail_url: ad.creative?.thumbnail_url || ad.creative?.image_url || null,
+        })
+      }
+
+      url = response.paging?.next || ''
+      if (url) {
+        url = url.replace(META_API_BASE_URL, '')
+        url = url.replace(/&access_token=[^&]+/, '')
+      }
+    }
+
+    // Now fetch insights (last 7 days) for all these ads in batches
+    const adIds = result.map(a => a.id)
+    const BATCH = 50
+    for (let i = 0; i < adIds.length; i += BATCH) {
+      const batch = adIds.slice(i, i + BATCH)
+      const insightsFilter = JSON.stringify([
+        { field: 'ad.id', operator: 'IN', value: batch }
+      ])
+      try {
+        const insightsResponse = await this.request<{
+          data: Array<{
+            ad_id: string
+            spend: string
+            impressions: string
+            clicks: string
+          }>
+        }>(`/${this.adAccountId}/insights?fields=ad_id,spend,impressions,clicks&filtering=${encodeURIComponent(insightsFilter)}&date_preset=last_7d&level=ad&limit=200`)
+
+        for (const insight of insightsResponse.data) {
+          const ad = result.find(a => a.id === insight.ad_id)
+          if (ad) {
+            ad.spend = parseFloat(insight.spend) || 0
+            ad.impressions = parseInt(insight.impressions) || 0
+            ad.clicks = parseInt(insight.clicks) || 0
+          }
+        }
+      } catch (error) {
+        console.warn(`[Meta API] Failed to get insights for batch:`, error)
+      }
+    }
+
+    return result
   }
 
   // ============================================

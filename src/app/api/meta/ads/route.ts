@@ -443,9 +443,10 @@ export async function GET(request: NextRequest) {
 /**
  * DELETE /api/meta/ads
  * Delete ads from the database (and optionally from Meta)
- * Also updates ads_created_count in packages table
+ * Also updates ads_created_count and ads_active_count in packages table
  *
  * Body: { ad_ids: number[], delete_from_meta?: boolean }
+ *   OR: { package_id: number, delete_from_meta?: boolean }  (delete ALL ads for a package)
  */
 export async function DELETE(request: NextRequest) {
   const { authorized } = await checkSectionAccess('marketing')
@@ -455,35 +456,57 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { ad_ids, delete_from_meta = false } = body as {
-      ad_ids: number[]
+    const { ad_ids, package_id, delete_from_meta = false } = body as {
+      ad_ids?: number[]
+      package_id?: number
       delete_from_meta?: boolean
     }
 
-    if (!ad_ids || !Array.isArray(ad_ids) || ad_ids.length === 0) {
-      return new Response(JSON.stringify({ error: 'ad_ids array is required' }), {
+    let adsToDelete: { id: number; meta_ad_id: string; package_id: number }[] | null = null
+    let affectedPackageIds: number[] = []
+
+    if (package_id) {
+      // Delete ALL ads for a package
+      console.log(`[Meta Ads DELETE] Deleting all ads for package ${package_id}, delete_from_meta=${delete_from_meta}`)
+
+      const { data } = await db
+        .from('meta_ads')
+        .select('id, meta_ad_id, package_id')
+        .eq('package_id', package_id)
+
+      if (!data || data.length === 0) {
+        return new Response(JSON.stringify({ error: 'No ads found for this package' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      adsToDelete = data
+      affectedPackageIds = [package_id]
+    } else if (ad_ids && Array.isArray(ad_ids) && ad_ids.length > 0) {
+      // Delete specific ads by ID
+      console.log(`[Meta Ads DELETE] Deleting ${ad_ids.length} ads, delete_from_meta=${delete_from_meta}`)
+
+      const { data } = await db
+        .from('meta_ads')
+        .select('id, meta_ad_id, package_id')
+        .in('id', ad_ids)
+
+      if (!data || data.length === 0) {
+        return new Response(JSON.stringify({ error: 'No ads found with those IDs' }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
+      adsToDelete = data
+      affectedPackageIds = [...new Set(data.map(ad => ad.package_id))]
+    } else {
+      return new Response(JSON.stringify({ error: 'ad_ids array or package_id is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
     }
-
-    console.log(`[Meta Ads DELETE] Deleting ${ad_ids.length} ads, delete_from_meta=${delete_from_meta}`)
-
-    // IMPORTANT: Get ads info BEFORE deleting (to know which packages to update)
-    const { data: adsToDelete } = await db
-      .from('meta_ads')
-      .select('id, meta_ad_id, package_id')
-      .in('id', ad_ids)
-
-    if (!adsToDelete || adsToDelete.length === 0) {
-      return new Response(JSON.stringify({ error: 'No ads found with those IDs' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Get unique package_ids that will be affected
-    const affectedPackageIds = [...new Set(adsToDelete.map(ad => ad.package_id))]
 
     // If delete_from_meta is true, also delete from Meta
     if (delete_from_meta) {
@@ -503,37 +526,47 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete from database
+    const adIdsToDelete = adsToDelete.map(ad => ad.id)
     const { error: deleteError } = await db
       .from('meta_ads')
       .delete()
-      .in('id', ad_ids)
+      .in('id', adIdsToDelete)
 
     if (deleteError) {
       console.error('[Meta Ads DELETE] Database error:', deleteError)
       throw deleteError
     }
 
-    console.log(`[Meta Ads DELETE] Successfully deleted ${ad_ids.length} ads from database`)
+    console.log(`[Meta Ads DELETE] Successfully deleted ${adIdsToDelete.length} ads from database`)
 
-    // Update ads_created_count for each affected package (only non-deleted ads)
-    for (const packageId of affectedPackageIds) {
-      const { count } = await db
+    // Update ads_created_count and ads_active_count for each affected package
+    for (const pkgId of affectedPackageIds) {
+      const { count: totalCount } = await db
         .from('meta_ads')
         .select('*', { count: 'exact', head: true })
-        .eq('package_id', packageId)
+        .eq('package_id', pkgId)
         .neq('status', 'DELETED')
+
+      const { count: activeCount } = await db
+        .from('meta_ads')
+        .select('*', { count: 'exact', head: true })
+        .eq('package_id', pkgId)
+        .eq('status', 'ACTIVE')
 
       await db
         .from('packages')
-        .update({ ads_created_count: count || 0 })
-        .eq('id', packageId)
+        .update({
+          ads_created_count: totalCount || 0,
+          ads_active_count: activeCount || 0,
+        })
+        .eq('id', pkgId)
 
-      console.log(`[Meta Ads DELETE] Updated package ${packageId} ads_created_count to ${count || 0}`)
+      console.log(`[Meta Ads DELETE] Updated package ${pkgId} ads_created_count=${totalCount || 0}, ads_active_count=${activeCount || 0}`)
     }
 
     return new Response(JSON.stringify({
       success: true,
-      deleted_count: ad_ids.length,
+      deleted_count: adIdsToDelete.length,
       updated_packages: affectedPackageIds,
     }), {
       headers: { 'Content-Type': 'application/json' },

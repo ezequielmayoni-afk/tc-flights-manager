@@ -3,7 +3,7 @@ import { MarketingTable } from '@/components/marketing/MarketingTable'
 import { CreativesReadyPanel } from '@/components/marketing/CreativesReadyPanel'
 import { PromptIAButton } from '@/components/marketing/PromptIAButton'
 import Link from 'next/link'
-import { BarChart3, Settings, AlertTriangle } from 'lucide-react'
+import { BarChart3, Settings, AlertTriangle, Radio } from 'lucide-react'
 
 function getSupabaseClient() {
   return createClient(
@@ -37,7 +37,10 @@ export default async function MarketingPage() {
       total_leads,
       creative_update_needed,
       creative_update_reason,
-      price_at_creative_creation
+      price_at_creative_creation,
+      created_at,
+      meta_campaign_id,
+      meta_adset_ids
     `)
     .eq('send_to_marketing', true)
     .order('created_at', { ascending: false })
@@ -146,6 +149,13 @@ export default async function MarketingPage() {
           >
             <Settings className="h-4 w-4" />
             Notificaciones
+          </Link>
+          <Link
+            href="/packages/marketing/active-ads"
+            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
+          >
+            <Radio className="h-4 w-4" />
+            Ads activos
           </Link>
           <Link
             href="/packages/marketing/analytics"

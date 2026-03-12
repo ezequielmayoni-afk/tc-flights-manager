@@ -76,6 +76,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'design_completed',
       'send_to_marketing',
       'marketing_completed',
+      'marketing_status',
+      'ads_created_count',
+      'ads_active_count',
       'needs_manual_quote',
       'seo_title',
       'seo_description',
@@ -84,6 +87,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'requote_status',
       'seo_uploaded_to_tc',
       'title',
+      'meta_campaign_id',
+      'meta_adset_ids',
     ]
 
     // Filter updates to only allowed fields

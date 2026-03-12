@@ -46,6 +46,29 @@ export async function PATCH(request: NextRequest) {
       .update({ status })
       .eq('meta_ad_id', meta_ad_id)
 
+    // Update package ads_active_count and marketing_status
+    const { data: adRow } = await db
+      .from('meta_ads')
+      .select('package_id')
+      .eq('meta_ad_id', meta_ad_id)
+      .single()
+
+    if (adRow?.package_id) {
+      const { count: activeCount } = await db
+        .from('meta_ads')
+        .select('*', { count: 'exact', head: true })
+        .eq('package_id', adRow.package_id)
+        .eq('status', 'ACTIVE')
+
+      await db
+        .from('packages')
+        .update({
+          ads_active_count: activeCount || 0,
+          marketing_status: (activeCount || 0) > 0 ? 'active' : 'paused',
+        })
+        .eq('id', adRow.package_id)
+    }
+
     return new Response(JSON.stringify({ success: true, status }), {
       headers: { 'Content-Type': 'application/json' },
     })
@@ -124,12 +147,28 @@ export async function POST(request: NextRequest) {
       .update({ status })
       .eq('package_id', package_id)
 
+    // Update package ads_active_count and marketing_status
+    const { count: activeCount } = await db
+      .from('meta_ads')
+      .select('*', { count: 'exact', head: true })
+      .eq('package_id', package_id)
+      .eq('status', 'ACTIVE')
+
+    await db
+      .from('packages')
+      .update({
+        ads_active_count: activeCount || 0,
+        marketing_status: (activeCount || 0) > 0 ? 'active' : 'paused',
+      })
+      .eq('id', package_id)
+
     return new Response(JSON.stringify({
       success: true,
       status,
       updated: successCount,
       errors: errorCount,
-      total: ads.length
+      total: ads.length,
+      ads_active_count: activeCount || 0,
     }), {
       headers: { 'Content-Type': 'application/json' },
     })

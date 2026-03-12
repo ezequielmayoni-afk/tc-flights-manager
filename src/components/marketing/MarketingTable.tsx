@@ -35,13 +35,42 @@ import {
   Calendar,
   AlertTriangle,
   PlusCircle,
+  MoreVertical,
+  Trash2,
+  CirclePause,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Link2,
 } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarComponent } from '@/components/ui/calendar'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 import { PackageRowExpanded } from './PackageRowExpanded'
 import { CreativeRequestModal } from './CreativeRequestModal'
+import { ImportAdsModal } from './ImportAdsModal'
+
+function buildPackageUrl(packageId: number, title: string): string {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+  return `https://www.siviajo.com/es/idea/${packageId}/${slug}`
+}
 
 // Normalize string by removing accents/diacritics
 function normalizeText(text: string): string {
@@ -52,11 +81,12 @@ function normalizeText(text: string): string {
 }
 
 // Column configuration for resizable columns
-type ColumnKey = 'id' | 'paquete' | 'rango' | 'vencimiento' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
+type ColumnKey = 'id' | 'paquete' | 'creado' | 'rango' | 'vencimiento' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   id: 90,
   paquete: 200,
+  creado: 90,
   rango: 120,
   vencimiento: 110,
   campaignId: 160,
@@ -140,6 +170,8 @@ function ResizeHandle({ columnKey, onResize, onResizeEnd }: ResizeHandleProps) {
   )
 }
 
+type SortDirection = 'asc' | 'desc' | null
+
 interface ResizableHeaderProps {
   label: string
   columnKey: ColumnKey
@@ -147,6 +179,9 @@ interface ResizableHeaderProps {
   onResize: (key: ColumnKey, delta: number) => void
   onResizeEnd: () => void
   centered?: boolean
+  sortable?: boolean
+  sortDirection?: SortDirection
+  onSort?: (key: ColumnKey) => void
 }
 
 function ResizableHeader({
@@ -156,14 +191,25 @@ function ResizableHeader({
   onResize,
   onResizeEnd,
   centered = false,
+  sortable = false,
+  sortDirection = null,
+  onSort,
 }: ResizableHeaderProps) {
   return (
     <TableHead
       className="relative group"
       style={{ width: `${width}px`, minWidth: `${width}px`, maxWidth: `${width}px` }}
     >
-      <div className={`flex items-center gap-1 text-xs pr-2 ${centered ? 'justify-center' : ''}`}>
+      <div
+        className={`flex items-center gap-1 text-xs pr-2 ${centered ? 'justify-center' : ''} ${sortable ? 'cursor-pointer select-none hover:text-foreground' : ''}`}
+        onClick={sortable && onSort ? () => onSort(columnKey) : undefined}
+      >
         {label}
+        {sortable && (
+          sortDirection === 'asc' ? <ArrowUp className="h-3 w-3" /> :
+          sortDirection === 'desc' ? <ArrowDown className="h-3 w-3" /> :
+          <ArrowUpDown className="h-3 w-3 opacity-30" />
+        )}
       </div>
       <ResizeHandle columnKey={columnKey} onResize={onResize} onResizeEnd={onResizeEnd} />
     </TableHead>
@@ -188,6 +234,9 @@ interface Package {
   creative_update_needed?: boolean
   creative_update_reason?: string | null
   price_at_creative_creation?: number | null
+  created_at?: string | null
+  meta_campaign_id?: string | null
+  meta_adset_ids?: string | null
 }
 
 interface MarketingTableProps {
@@ -226,6 +275,13 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [expandedPackageId, setExpandedPackageId] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [creativeRequestPkg, setCreativeRequestPkg] = useState<Package | null>(null)
+  const [removingAds, setRemovingAds] = useState<Set<number>>(new Set())
+  const [confirmRemovePackageId, setConfirmRemovePackageId] = useState<number | null>(null)
+  const [confirmRemoveFromMarketing, setConfirmRemoveFromMarketing] = useState<number | null>(null)
+  const [removingFromMarketing, setRemovingFromMarketing] = useState<Set<number>>(new Set())
+  const [importAdsPkg, setImportAdsPkg] = useState<Package | null>(null)
+  const [sortColumn, setSortColumn] = useState<ColumnKey | null>(null)
+  const [sortDir, setSortDir] = useState<SortDirection>(null)
 
   // Column widths state
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS)
@@ -449,21 +505,65 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         for (const pkgId of unloadedIds) {
           const creatives = creativesByPackage[pkgId] || { total: 0, uploaded: 0 }
           const ads = adsByPackage[pkgId] || { hasActive: false, adSetId: '' }
+          // Use saved IDs from package, fallback to ads table
+          const pkgObj = packages.find(p => p.id === pkgId)
+          const savedAdSetId = pkgObj?.meta_adset_ids || ''
+          const savedCampaignId = pkgObj?.meta_campaign_id || ''
 
           newPackageData[pkgId] = {
             copiesCount: copiesByPackage[pkgId] || 0,
             creativesCount: creatives.total,
             uploadedCreativesCount: creatives.uploaded,
-            campaignId: '', // Don't lookup on initial load - defer to user interaction
-            adSetId: ads.adSetId,
+            campaignId: savedCampaignId || '',
+            adSetId: savedAdSetId || ads.adSetId,
             campaignName: null,
-            adSetName: null, // Don't lookup on initial load - defer to user interaction
+            adSetName: null,
             adsActive: ads.hasActive,
             togglingAds: false,
           }
         }
 
         setPackageData(prev => ({ ...prev, ...newPackageData }))
+
+        // Auto-lookup names for adsets that already have IDs
+        for (const pkgId of unloadedIds) {
+          const adSetId = newPackageData[pkgId]?.adSetId
+          if (adSetId) {
+            // Lookup adset name + campaign info
+            fetch(`/api/meta/lookup?type=adset&id=${adSetId}`)
+              .then(res => res.json())
+              .then(data => {
+                if (data.found) {
+                  setPackageData(prev => ({
+                    ...prev,
+                    [pkgId]: {
+                      ...prev[pkgId],
+                      adSetName: data.name,
+                      campaignId: data.campaign_id || '',
+                    }
+                  }))
+                  // Now lookup campaign name
+                  if (data.campaign_id) {
+                    fetch(`/api/meta/lookup?type=campaign&id=${data.campaign_id}`)
+                      .then(res => res.json())
+                      .then(cData => {
+                        if (cData.found) {
+                          setPackageData(prev => ({
+                            ...prev,
+                            [pkgId]: {
+                              ...prev[pkgId],
+                              campaignName: cData.name,
+                            }
+                          }))
+                        }
+                      })
+                      .catch(() => {})
+                  }
+                }
+              })
+              .catch(() => {})
+          }
+        }
       } catch (error) {
         console.error('Error loading batched package data:', error)
       } finally {
@@ -497,6 +597,19 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           [type === 'campaign' ? 'campaignName' : 'adSetName']: data.found ? data.name : null
         }
       }))
+
+      // If we looked up an adset and found it, auto-fill the campaign
+      if (type === 'adset' && data.found && data.campaign_id) {
+        setPackageData(prev => ({
+          ...prev,
+          [packageId]: {
+            ...prev[packageId],
+            campaignId: data.campaign_id,
+          }
+        }))
+        // Now lookup campaign name
+        lookupMeta(packageId, 'campaign', data.campaign_id)
+      }
     } catch {
       setPackageData(prev => ({
         ...prev,
@@ -507,6 +620,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       }))
     }
   }
+
+  const saveTimersRef = useRef<Record<string, NodeJS.Timeout>>({})
 
   const updatePackageField = (packageId: number, field: keyof PackageRowData, value: string) => {
     setPackageData(prev => ({
@@ -521,6 +636,18 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     if (field === 'campaignId' || field === 'adSetId') {
       const type = field === 'campaignId' ? 'campaign' : 'adset'
       setTimeout(() => lookupMeta(packageId, type, value), 500)
+
+      // Auto-save to package with debounce
+      const timerKey = `${packageId}-${field}`
+      if (saveTimersRef.current[timerKey]) clearTimeout(saveTimersRef.current[timerKey])
+      saveTimersRef.current[timerKey] = setTimeout(() => {
+        const dbField = field === 'campaignId' ? 'meta_campaign_id' : 'meta_adset_ids'
+        fetch(`/api/packages/${packageId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [dbField]: value.trim() || null }),
+        }).catch(() => { /* silent save */ })
+      }, 1000)
     }
   }
 
@@ -539,6 +666,18 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }
 
+  const handleSort = useCallback((key: ColumnKey) => {
+    if (sortColumn === key) {
+      // Cycle: asc → desc → none
+      if (sortDir === 'asc') setSortDir('desc')
+      else if (sortDir === 'desc') { setSortColumn(null); setSortDir(null) }
+      else setSortDir('asc')
+    } else {
+      setSortColumn(key)
+      setSortDir('asc')
+    }
+  }, [sortColumn, sortDir])
+
   const filteredPackages = packages.filter((pkg) => {
     // Handle needs_update filter separately
     if (statusFilter === 'needs_update') {
@@ -556,7 +695,33 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     return true
   })
 
-  const pendingPackages = filteredPackages.filter(p => p.marketing_status === 'pending')
+  // Sort filtered packages
+  const sortedPackages = [...filteredPackages].sort((a, b) => {
+    if (!sortColumn || !sortDir) return 0
+    const dir = sortDir === 'asc' ? 1 : -1
+
+    const getValue = (pkg: Package): string | number => {
+      switch (sortColumn) {
+        case 'id': return pkg.tc_package_id
+        case 'paquete': return pkg.title.toLowerCase()
+        case 'creado': return pkg.created_at || ''
+        case 'rango': return pkg.date_range_start || ''
+        case 'vencimiento': return pkg.marketing_expiration_date || ''
+        case 'copies': return packageData[pkg.id]?.copiesCount || 0
+        case 'creativos': return packageData[pkg.id]?.uploadedCreativesCount || 0
+        case 'ads': return pkg.ads_created_count
+        default: return 0
+      }
+    }
+
+    const va = getValue(a)
+    const vb = getValue(b)
+    if (va < vb) return -1 * dir
+    if (va > vb) return 1 * dir
+    return 0
+  })
+
+  const pendingPackages = sortedPackages.filter(p => p.marketing_status === 'pending')
 
   const handleGenerateAllCopies = async () => {
     if (pendingPackages.length === 0) {
@@ -706,6 +871,102 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }
 
+  // Remove all ads for a package (delete from Meta + DB)
+  const handleRemoveAllAds = async (packageId: number) => {
+    setRemovingAds(prev => new Set(prev).add(packageId))
+    setConfirmRemovePackageId(null)
+
+    try {
+      const res = await fetch('/api/meta/ads', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_id: packageId, delete_from_meta: true }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error eliminando anuncios')
+      }
+
+      // Update local package state
+      setPackages(prev =>
+        prev.map(p =>
+          p.id === packageId
+            ? { ...p, ads_created_count: 0 }
+            : p
+        )
+      )
+
+      setPackageData(prev => ({
+        ...prev,
+        [packageId]: {
+          ...prev[packageId],
+          adsActive: false,
+        }
+      }))
+
+      toast.success(`${data.deleted_count} anuncios eliminados de Meta`)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error eliminando anuncios')
+    } finally {
+      setRemovingAds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(packageId)
+        return newSet
+      })
+    }
+  }
+
+  // Remove package from marketing (back to imported, also removes ads if any)
+  const handleRemoveFromMarketing = async (packageId: number) => {
+    setRemovingFromMarketing(prev => new Set(prev).add(packageId))
+    setConfirmRemoveFromMarketing(null)
+
+    try {
+      // If package has ads, delete them from Meta first
+      const pkg = packages.find(p => p.id === packageId)
+      if (pkg && pkg.ads_created_count > 0) {
+        await fetch('/api/meta/ads', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ package_id: packageId, delete_from_meta: true }),
+        })
+      }
+
+      // Update package status back to imported
+      const res = await fetch(`/api/packages/${packageId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'imported',
+          send_to_marketing: false,
+          marketing_completed: false,
+          marketing_status: null,
+          ads_created_count: 0,
+          ads_active_count: 0,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error quitando de marketing')
+      }
+
+      // Remove from local state
+      setPackages(prev => prev.filter(p => p.id !== packageId))
+      toast.success('Paquete quitado de marketing')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error quitando de marketing')
+    } finally {
+      setRemovingFromMarketing(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(packageId)
+        return newSet
+      })
+    }
+  }
+
   return (
     <div className="space-y-4">
       {/* Toolbar */}
@@ -772,7 +1033,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       </div>
 
       {/* Table */}
-      {filteredPackages.length === 0 ? (
+      {sortedPackages.length === 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <p>No hay paquetes en marketing</p>
           {searchQuery && (
@@ -783,21 +1044,22 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         <Table className="table-fixed">
           <TableHeader>
             <TableRow className="bg-muted/50">
-              <ResizableHeader label="ID" columnKey="id" width={columnWidths.id} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
-              <ResizableHeader label="Paquete" columnKey="paquete" width={columnWidths.paquete} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
-              <ResizableHeader label="Rango" columnKey="rango" width={columnWidths.rango} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
-              <ResizableHeader label="Vencimiento" columnKey="vencimiento" width={columnWidths.vencimiento} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
+              <ResizableHeader label="ID" columnKey="id" width={columnWidths.id} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} sortable sortDirection={sortColumn === 'id' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Paquete" columnKey="paquete" width={columnWidths.paquete} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} sortable sortDirection={sortColumn === 'paquete' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Creado" columnKey="creado" width={columnWidths.creado} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creado' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Rango" columnKey="rango" width={columnWidths.rango} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'rango' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Vencimiento" columnKey="vencimiento" width={columnWidths.vencimiento} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'vencimiento' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Campaign ID" columnKey="campaignId" width={columnWidths.campaignId} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
               <ResizableHeader label="AdSet ID" columnKey="adsetId" width={columnWidths.adsetId} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
-              <ResizableHeader label="Copies" columnKey="copies" width={columnWidths.copies} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
-              <ResizableHeader label="Creativos" columnKey="creativos" width={columnWidths.creativos} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
-              <ResizableHeader label="Ads" columnKey="ads" width={columnWidths.ads} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
+              <ResizableHeader label="Copies" columnKey="copies" width={columnWidths.copies} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'copies' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Creativos" columnKey="creativos" width={columnWidths.creativos} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creativos' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Ads" columnKey="ads" width={columnWidths.ads} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'ads' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="On/Off" columnKey="status" width={columnWidths.status} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
               <ResizableHeader label="" columnKey="actions" width={columnWidths.actions} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
             </TableRow>
           </TableHeader>
           <TableBody>
-            {filteredPackages.map((pkg) => {
+            {sortedPackages.map((pkg) => {
               const data = packageData[pkg.id] || {
                 copiesCount: 0,
                 creativesCount: 0,
@@ -829,9 +1091,15 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                     <TableCell style={{ width: columnWidths.paquete, minWidth: columnWidths.paquete, maxWidth: columnWidths.paquete }}>
                       <div className="flex flex-col overflow-hidden">
                         <div className="flex items-center gap-1.5">
-                          <span className="font-medium text-sm truncate" title={pkg.title}>
+                          <a
+                            href={buildPackageUrl(pkg.tc_package_id, pkg.title)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-sm truncate text-blue-600 hover:underline"
+                            title={pkg.title}
+                          >
                             {pkg.title}
-                          </span>
+                          </a>
                           {pkg.creative_update_needed && (
                             <button
                               onClick={(e) => {
@@ -855,6 +1123,15 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           )}
                         </span>
                       </div>
+                    </TableCell>
+
+                    {/* Created At */}
+                    <TableCell className="text-center text-xs" style={{ width: columnWidths.creado, minWidth: columnWidths.creado, maxWidth: columnWidths.creado }}>
+                      {pkg.created_at ? (
+                        <span>{formatShortDate(pkg.created_at)}</span>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
 
                     {/* Date Range */}
@@ -1045,27 +1322,73 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                       )}
                     </TableCell>
 
-                    {/* Expand Button */}
+                    {/* Actions */}
                     <TableCell style={{ width: columnWidths.actions, minWidth: columnWidths.actions, maxWidth: columnWidths.actions }}>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setExpandedPackageId(isExpanded ? null : pkg.id)}
-                        className="h-8 w-8 p-0"
-                      >
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" />
-                        )}
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={removingAds.has(pkg.id) || removingFromMarketing.has(pkg.id) || data.togglingAds}>
+                              {(removingAds.has(pkg.id) || removingFromMarketing.has(pkg.id)) ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <MoreVertical className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {pkg.ads_created_count > 0 && (
+                              <>
+                                <DropdownMenuItem
+                                  onClick={() => handleToggleAds(pkg.id, true)}
+                                  disabled={!data.adsActive}
+                                >
+                                  <CirclePause className="h-4 w-4 mr-2" />
+                                  Pausar anuncios
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => setConfirmRemovePackageId(pkg.id)}
+                                  className="text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Quitar anuncios
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            <DropdownMenuItem
+                              onClick={() => setImportAdsPkg(pkg)}
+                            >
+                              <Link2 className="h-4 w-4 mr-2" />
+                              Importar anuncios
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setConfirmRemoveFromMarketing(pkg.id)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Quitar de marketing
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setExpandedPackageId(isExpanded ? null : pkg.id)}
+                          className="h-8 w-8 p-0"
+                        >
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
 
                   {/* Expanded Row */}
                   {isExpanded && (
                     <TableRow key={`${pkg.id}-expanded`}>
-                      <TableCell colSpan={11} className="bg-muted/10 p-0">
+                      <TableCell colSpan={12} className="bg-muted/10 p-0">
                         <PackageRowExpanded
                           pkg={pkg}
                           campaignId={data.campaignId}
@@ -1109,6 +1432,75 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                   : p
               )
             )
+          }}
+        />
+      )}
+
+      {/* Confirm Remove Ads Dialog */}
+      <AlertDialog open={confirmRemovePackageId !== null} onOpenChange={(open) => { if (!open) setConfirmRemovePackageId(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Quitar anuncios</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción eliminará todos los anuncios de Meta para este paquete. Los anuncios serán removidos de la plataforma y no podrán reactivarse.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmRemovePackageId && handleRemoveAllAds(confirmRemovePackageId)}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Quitar anuncios
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Remove from Marketing Dialog */}
+      <AlertDialog open={confirmRemoveFromMarketing !== null} onOpenChange={(open) => { if (!open) setConfirmRemoveFromMarketing(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Quitar de marketing</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción quitará el paquete del módulo de marketing y lo devolverá al estado &quot;importado&quot;.
+              {packages.find(p => p.id === confirmRemoveFromMarketing)?.ads_created_count ? ' También se eliminarán todos los anuncios de Meta.' : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmRemoveFromMarketing && handleRemoveFromMarketing(confirmRemoveFromMarketing)}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Quitar de marketing
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Import Ads Modal */}
+      {importAdsPkg && (
+        <ImportAdsModal
+          open={!!importAdsPkg}
+          onClose={() => setImportAdsPkg(null)}
+          packageId={importAdsPkg.id}
+          packageTitle={importAdsPkg.title}
+          onSuccess={(adsCreatedCount) => {
+            setPackages(prev =>
+              prev.map(p =>
+                p.id === importAdsPkg.id
+                  ? { ...p, ads_created_count: adsCreatedCount }
+                  : p
+              )
+            )
+            setPackageData(prev => ({
+              ...prev,
+              [importAdsPkg.id]: {
+                ...prev[importAdsPkg.id],
+                adsActive: true,
+              }
+            }))
           }}
         />
       )}

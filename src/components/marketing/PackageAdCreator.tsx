@@ -35,6 +35,8 @@ interface Package {
   nights_count: number
   marketing_status: string
   ads_created_count: number
+  meta_campaign_id?: string | null
+  meta_adset_ids?: string | null
 }
 
 interface CopyVariant {
@@ -76,9 +78,9 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Campaign & AdSet IDs (simple text inputs - no API calls)
-  const [campaignId, setCampaignId] = useState<string>('')
-  const [adSetId, setAdSetId] = useState<string>('')
+  // Campaign & AdSet IDs - initialized from saved package data
+  const [campaignId, setCampaignId] = useState<string>(pkg.meta_campaign_id || '')
+  const [adSetId, setAdSetId] = useState<string>(pkg.meta_adset_ids || '')
 
   // Copies
   const [copies, setCopies] = useState<CopyVariant[]>([])
@@ -99,7 +101,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
 
   // Campaign & AdSet lookup (names from Meta)
   const [campaignName, setCampaignName] = useState<string | null>(null)
-  const [adSetName, setAdSetName] = useState<string | null>(null)
+  const [adSetNames, setAdSetNames] = useState<Record<string, string>>({})
   const [lookingUpCampaign, setLookingUpCampaign] = useState(false)
   const [lookingUpAdSet, setLookingUpAdSet] = useState(false)
 
@@ -128,30 +130,59 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
     return () => clearTimeout(timer)
   }, [campaignId])
 
-  // Debounced lookup for AdSet ID
+  // Parse comma-separated AdSet IDs
+  const adSetIds = adSetId.split(',').map(s => s.trim()).filter(Boolean)
+
+  // Debounced lookup for AdSet IDs (supports comma-separated)
   useEffect(() => {
-    if (!adSetId.trim()) {
-      setAdSetName(null)
+    if (adSetIds.length === 0) {
+      setAdSetNames({})
       return
     }
     const timer = setTimeout(async () => {
       setLookingUpAdSet(true)
+      const names: Record<string, string> = {}
       try {
-        const res = await fetch(`/api/meta/lookup?type=adset&id=${adSetId.trim()}`)
-        const data = await res.json()
-        if (data.found) {
-          setAdSetName(data.name)
-        } else {
-          setAdSetName(null)
-        }
-      } catch {
-        setAdSetName(null)
+        await Promise.all(adSetIds.map(async (id) => {
+          try {
+            const res = await fetch(`/api/meta/lookup?type=adset&id=${id}`)
+            const data = await res.json()
+            if (data.found) {
+              names[id] = data.name
+              // Auto-fill campaign ID from first adset
+              if (data.campaign_id && !campaignId) {
+                setCampaignId(data.campaign_id)
+              }
+            }
+          } catch { /* ignore individual failures */ }
+        }))
+        setAdSetNames(names)
       } finally {
         setLookingUpAdSet(false)
       }
-    }, 500) // 500ms debounce
+    }, 500)
     return () => clearTimeout(timer)
   }, [adSetId])
+
+  // Auto-save campaign ID and adset IDs to package when they change
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const newCampaignId = campaignId.trim() || null
+      const newAdsetIds = adSetId.trim() || null
+      // Only save if different from current pkg values
+      if (newCampaignId !== (pkg.meta_campaign_id || null) || newAdsetIds !== (pkg.meta_adset_ids || null)) {
+        fetch(`/api/packages/${pkg.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            meta_campaign_id: newCampaignId,
+            meta_adset_ids: newAdsetIds,
+          }),
+        }).catch(() => { /* silent save */ })
+      }
+    }, 1000)
+    return () => clearTimeout(timer)
+  }, [campaignId, adSetId])
 
   // Load data when opened - ONLY calls Drive + BD, NOT Meta API
   useEffect(() => {
@@ -311,7 +342,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
   }
 
   const handleCreateAds = async () => {
-    if (!adSetId.trim()) {
+    if (adSetIds.length === 0) {
       toast.error('Ingresa el ID del conjunto de anuncios')
       return
     }
@@ -332,17 +363,15 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
     setCreationProgress([])
 
     try {
-      // New simplified API format - no variants needed
-      // The API will automatically create 1 ad per uploaded creative variant
-      // Each ad will have all 5 copies as internal Meta variations
+      // Send one entry per adset ID — backend creates ads in each adset
       const res = await fetch('/api/meta/ads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          packages: [{
+          packages: adSetIds.map(id => ({
             package_id: pkg.id,
-            meta_adset_id: adSetId.trim(),
-          }],
+            meta_adset_id: id,
+          })),
         }),
       })
 
@@ -474,21 +503,31 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
               </div>
               <div className="relative flex flex-col items-center">
                 <Input
-                  placeholder="AdSet ID *"
+                  placeholder="AdSet IDs * (coma para varios)"
                   value={adSetId}
                   onChange={e => setAdSetId(e.target.value)}
-                  className={`w-[180px] h-10 text-sm text-center pr-8 font-mono ${adSetName ? 'border-green-500' : adSetId && !lookingUpAdSet ? 'border-red-500' : ''}`}
+                  className={`w-[220px] h-10 text-sm text-center pr-8 font-mono ${
+                    adSetIds.length > 0 && Object.keys(adSetNames).length === adSetIds.length
+                      ? 'border-green-500'
+                      : adSetId && !lookingUpAdSet
+                        ? 'border-red-500'
+                        : ''
+                  }`}
                   onClick={e => e.stopPropagation()}
-                  title={adSetName || 'Ingresa AdSet ID'}
+                  title={adSetIds.map(id => adSetNames[id] || id).join(', ') || 'Ingresa AdSet ID(s)'}
                 />
                 {lookingUpAdSet && (
                   <Loader2 className="h-4 w-4 animate-spin absolute right-2 top-3 text-muted-foreground" />
                 )}
-                {!lookingUpAdSet && adSetName && (
+                {!lookingUpAdSet && Object.keys(adSetNames).length > 0 && (
                   <Check className="h-4 w-4 absolute right-2 top-3 text-green-500" />
                 )}
-                {adSetName && (
-                  <span className="text-[10px] text-green-600 truncate max-w-[180px] mt-0.5">📦 {adSetName}</span>
+                {Object.keys(adSetNames).length > 0 && (
+                  <div className="flex flex-col items-center mt-0.5">
+                    {adSetIds.map(id => adSetNames[id] ? (
+                      <span key={id} className="text-[10px] text-green-600 truncate max-w-[220px]">📦 {adSetNames[id]}</span>
+                    ) : null)}
+                  </div>
                 )}
               </div>
             </div>
