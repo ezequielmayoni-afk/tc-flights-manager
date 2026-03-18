@@ -36,19 +36,18 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Deploy build to VPS
+      - name: Deploy standalone build to VPS
         run: |
           rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key" \
-            .next/ root@${{ secrets.VPS_HOST }}:/opt/hub/.next/
+            .next/standalone/ root@${{ secrets.VPS_HOST }}:/opt/hub/
+
+          rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key" \
+            .next/static/ root@${{ secrets.VPS_HOST }}:/opt/hub/.next/static/
 
           rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
             public/ root@${{ secrets.VPS_HOST }}:/opt/hub/public/
 
-          rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
-            package.json package-lock.json \
-            root@${{ secrets.VPS_HOST }}:/opt/hub/
-
-      - name: Install deps & restart PM2
+      - name: Restart PM2
         run: |
           ssh -i ~/.ssh/deploy_key root@${{ secrets.VPS_HOST }} \
-            "cd /opt/hub && npm ci --omit=dev --prefer-offline && pm2 restart hub"
+            "pm2 delete hub 2>/dev/null; cd /opt/hub && pm2 start server.js --name hub && pm2 save"
