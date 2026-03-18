@@ -39,16 +39,16 @@ jobs:
       - name: Deploy build to VPS
         run: |
           rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key" \
-            .next/ root@${{ secrets.VPS_HOST }}:/root/hub/.next/
+            .next/ root@${{ secrets.VPS_HOST }}:/opt/hub/.next/
 
           rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
-            public/ root@${{ secrets.VPS_HOST }}:/root/hub/public/
+            public/ root@${{ secrets.VPS_HOST }}:/opt/hub/public/
 
           rsync -avz -e "ssh -i ~/.ssh/deploy_key" \
             package.json package-lock.json \
-            root@${{ secrets.VPS_HOST }}:/root/hub/
+            root@${{ secrets.VPS_HOST }}:/opt/hub/
 
       - name: Install deps & restart PM2
         run: |
           ssh -i ~/.ssh/deploy_key root@${{ secrets.VPS_HOST }} \
-            "cd /root/hub && npm ci --omit=dev --prefer-offline && pm2 restart hub"
+            "cd /opt/hub && npm ci --omit=dev --prefer-offline && pm2 restart hub"
