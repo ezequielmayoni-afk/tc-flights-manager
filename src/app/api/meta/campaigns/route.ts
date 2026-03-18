@@ -66,6 +66,31 @@ export async function GET() {
     }))
 
     if (adsetRecords.length > 0) {
+      // Ensure all referenced campaigns exist (some adsets may reference campaigns not in the fetched list)
+      const syncedCampaignIds = new Set(campaignRecords.map(c => c.meta_campaign_id))
+      const missingCampaignIds = new Set<string>()
+      for (const adset of adsetRecords) {
+        if (adset.meta_campaign_id && !syncedCampaignIds.has(adset.meta_campaign_id)) {
+          missingCampaignIds.add(adset.meta_campaign_id)
+        }
+      }
+
+      if (missingCampaignIds.size > 0) {
+        console.log(`[Meta Campaigns] Inserting ${missingCampaignIds.size} missing campaign stubs for FK integrity...`)
+        const missingCampaignRecords = Array.from(missingCampaignIds).map(id => ({
+          meta_campaign_id: id,
+          name: `Campaign ${id}`,
+          status: 'UNKNOWN',
+          last_sync_at: syncedAt,
+        }))
+        const { error: stubError } = await db
+          .from('meta_campaigns')
+          .upsert(missingCampaignRecords, { onConflict: 'meta_campaign_id', ignoreDuplicates: true })
+        if (stubError) {
+          console.error('[Meta Campaigns] Error inserting campaign stubs:', stubError)
+        }
+      }
+
       // Batch in chunks of 500 to avoid payload limits
       for (let i = 0; i < adsetRecords.length; i += 500) {
         const batch = adsetRecords.slice(i, i + 500)

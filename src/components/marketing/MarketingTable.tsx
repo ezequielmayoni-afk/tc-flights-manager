@@ -89,8 +89,8 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   creado: 90,
   rango: 120,
   vencimiento: 110,
-  campaignId: 160,
-  adsetId: 160,
+  campaignId: 200,
+  adsetId: 200,
   copies: 70,
   creativos: 90,
   ads: 60,
@@ -282,6 +282,10 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [importAdsPkg, setImportAdsPkg] = useState<Package | null>(null)
   const [sortColumn, setSortColumn] = useState<ColumnKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>(null)
+  const [campaignFilter, setCampaignFilter] = useState<string>('all')
+  const [adsetFilter, setAdsetFilter] = useState<string>('all')
+  const [pendingRequests, setPendingRequests] = useState<Record<number, number>>({}) // package_id -> request_id
+  const [cancellingRequest, setCancellingRequest] = useState<Set<number>>(new Set())
 
   // Column widths state
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS)
@@ -525,43 +529,103 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
 
         setPackageData(prev => ({ ...prev, ...newPackageData }))
 
-        // Auto-lookup names for adsets that already have IDs
+        // Batch lookup: collect all unique adset IDs, then resolve names in ONE call
+        const adsetIdMap: Record<string, { pkgIds: number[]; rawId: string }> = {}
+        const campaignIdSet = new Set<string>()
+
         for (const pkgId of unloadedIds) {
-          const adSetId = newPackageData[pkgId]?.adSetId
-          if (adSetId) {
-            // Lookup adset name + campaign info
-            fetch(`/api/meta/lookup?type=adset&id=${adSetId}`)
-              .then(res => res.json())
-              .then(data => {
-                if (data.found) {
-                  setPackageData(prev => ({
-                    ...prev,
-                    [pkgId]: {
-                      ...prev[pkgId],
-                      adSetName: data.name,
-                      campaignId: data.campaign_id || '',
-                    }
-                  }))
-                  // Now lookup campaign name
-                  if (data.campaign_id) {
-                    fetch(`/api/meta/lookup?type=campaign&id=${data.campaign_id}`)
-                      .then(res => res.json())
-                      .then(cData => {
-                        if (cData.found) {
-                          setPackageData(prev => ({
-                            ...prev,
-                            [pkgId]: {
-                              ...prev[pkgId],
-                              campaignName: cData.name,
-                            }
-                          }))
-                        }
-                      })
-                      .catch(() => {})
+          const adSetIdRaw = newPackageData[pkgId]?.adSetId
+          if (adSetIdRaw) {
+            const firstAdSetId = adSetIdRaw.split(',')[0].trim()
+            if (!firstAdSetId) continue
+            if (!adsetIdMap[firstAdSetId]) {
+              adsetIdMap[firstAdSetId] = { pkgIds: [], rawId: adSetIdRaw }
+            }
+            adsetIdMap[firstAdSetId].pkgIds.push(pkgId)
+          }
+          const campId = newPackageData[pkgId]?.campaignId
+          if (campId) campaignIdSet.add(campId)
+        }
+
+        const uniqueAdsetIds = Object.keys(adsetIdMap)
+        if (uniqueAdsetIds.length > 0 || campaignIdSet.size > 0) {
+          try {
+            const batchRes = await fetch('/api/meta/lookup/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                adsetIds: uniqueAdsetIds,
+                campaignIds: Array.from(campaignIdSet),
+              }),
+            })
+            const batchData = await batchRes.json()
+            const { campaigns: campMap, adsets: adsetMap, needsSync } = batchData
+
+            // Also collect campaign IDs from adset results for a second resolve pass
+            const extraCampaignIds = new Set<string>()
+            for (const adsetId of uniqueAdsetIds) {
+              const adsetInfo = adsetMap[adsetId]
+              if (adsetInfo?.campaign_id && !campMap[adsetInfo.campaign_id]) {
+                extraCampaignIds.add(adsetInfo.campaign_id)
+              }
+            }
+
+            // If there are campaign IDs we got from adsets that weren't in the first batch, fetch them
+            if (extraCampaignIds.size > 0) {
+              const extraRes = await fetch('/api/meta/lookup/batch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ campaignIds: Array.from(extraCampaignIds), adsetIds: [] }),
+              })
+              const extraData = await extraRes.json()
+              Object.assign(campMap, extraData.campaigns || {})
+            }
+
+            // Apply results to package data
+            setPackageData(prev => {
+              const updated = { ...prev }
+              for (const [adsetId, { pkgIds, rawId }] of Object.entries(adsetIdMap)) {
+                const adsetInfo = adsetMap[adsetId]
+                if (!adsetInfo) continue
+
+                const adSetIds = rawId.split(',').map((s: string) => s.trim()).filter(Boolean)
+                const adSetLabel = adSetIds.length > 1
+                  ? `${adsetInfo.name} (+${adSetIds.length - 1})`
+                  : adsetInfo.name
+
+                for (const pkgId of pkgIds) {
+                  const campId = adsetInfo.campaign_id || updated[pkgId]?.campaignId
+                  const campInfo = campId ? campMap[campId] : null
+                  updated[pkgId] = {
+                    ...updated[pkgId],
+                    adSetName: adSetLabel,
+                    campaignId: updated[pkgId]?.campaignId || adsetInfo.campaign_id || '',
+                    campaignName: campInfo?.name || updated[pkgId]?.campaignName || null,
                   }
                 }
-              })
-              .catch(() => {})
+              }
+
+              // Also apply campaign names for packages that had campaignId but no adset
+              for (const pkgId of unloadedIds) {
+                const campId = updated[pkgId]?.campaignId
+                if (campId && campMap[campId] && !updated[pkgId]?.campaignName) {
+                  updated[pkgId] = {
+                    ...updated[pkgId],
+                    campaignName: campMap[campId].name,
+                  }
+                }
+              }
+
+              return updated
+            })
+
+            // If data is stale (>24h), trigger background sync
+            if (needsSync) {
+              console.log('[Marketing] Meta data stale, triggering background sync...')
+              fetch('/api/meta/campaigns').catch(() => {})
+            }
+          } catch (err) {
+            console.error('[Batch Lookup] Error:', err)
           }
         }
       } catch (error) {
@@ -573,6 +637,64 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
 
     loadPackageDataBatched()
   }, [packages])
+
+  // Load pending creative requests for all packages
+  useEffect(() => {
+    const loadPendingRequests = async () => {
+      try {
+        const res = await fetch('/api/creative-requests?status=pending')
+        if (!res.ok) return
+        const requests = await res.json()
+        const map: Record<number, number> = {}
+        for (const req of requests) {
+          // Keep the most recent request per package
+          if (!map[req.package_id]) {
+            map[req.package_id] = req.id
+          }
+        }
+        setPendingRequests(map)
+      } catch {
+        // ignore
+      }
+    }
+    loadPendingRequests()
+  }, [])
+
+  // Cancel a creative request
+  const handleCancelCreativeRequest = async (packageId: number) => {
+    const requestId = pendingRequests[packageId]
+    if (!requestId) return
+
+    setCancellingRequest(prev => new Set(prev).add(packageId))
+    try {
+      const res = await fetch(`/api/creative-requests?id=${requestId}&action=discard`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Error al cancelar')
+
+      // Remove from pending requests
+      setPendingRequests(prev => {
+        const next = { ...prev }
+        delete next[packageId]
+        return next
+      })
+
+      // Restore creative_update_needed so they can re-request
+      setPackages(prev =>
+        prev.map(p =>
+          p.id === packageId ? { ...p, creative_update_needed: true } : p
+        )
+      )
+
+      toast.success('Solicitud de diseño cancelada')
+    } catch {
+      toast.error('Error al cancelar la solicitud')
+    } finally {
+      setCancellingRequest(prev => {
+        const next = new Set(prev)
+        next.delete(packageId)
+        return next
+      })
+    }
+  }
 
   // Lookup campaign/adset names
   const lookupMeta = async (packageId: number, type: 'campaign' | 'adset', id: string) => {
@@ -588,13 +710,26 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
 
     try {
-      const res = await fetch(`/api/meta/lookup?type=${type}&id=${id.trim()}`)
+      // For adsets, support comma-separated IDs - lookup the first one
+      const lookupId = type === 'adset' ? id.split(',')[0].trim() : id.trim()
+      if (!lookupId) return
+
+      const res = await fetch(`/api/meta/lookup?type=${type}&id=${lookupId}`)
       const data = await res.json()
+
+      let displayName = data.found ? data.name : null
+      if (type === 'adset' && data.found) {
+        const adSetIds = id.split(',').map((s: string) => s.trim()).filter(Boolean)
+        if (adSetIds.length > 1) {
+          displayName = `${data.name} (+${adSetIds.length - 1})`
+        }
+      }
+
       setPackageData(prev => ({
         ...prev,
         [packageId]: {
           ...prev[packageId],
-          [type === 'campaign' ? 'campaignName' : 'adSetName']: data.found ? data.name : null
+          [type === 'campaign' ? 'campaignName' : 'adSetName']: displayName
         }
       }))
 
@@ -678,6 +813,36 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }, [sortColumn, sortDir])
 
+  // Build unique campaign/adset options for filters
+  const campaignOptions = (() => {
+    const map = new Map<string, string>() // id -> name
+    for (const pkg of packages) {
+      const data = packageData[pkg.id]
+      if (data?.campaignId) {
+        map.set(data.campaignId, data.campaignName || data.campaignId)
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ value: id, label: name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  })()
+
+  const adsetOptions = (() => {
+    const map = new Map<string, string>() // id -> name
+    for (const pkg of packages) {
+      const data = packageData[pkg.id]
+      if (data?.adSetId) {
+        const firstId = data.adSetId.split(',')[0].trim()
+        if (firstId) {
+          map.set(firstId, data.adSetName || firstId)
+        }
+      }
+    }
+    return Array.from(map.entries())
+      .map(([id, name]) => ({ value: id, label: name }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  })()
+
   const filteredPackages = packages.filter((pkg) => {
     // Handle needs_update filter separately
     if (statusFilter === 'needs_update') {
@@ -687,10 +852,21 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
     if (searchQuery) {
       const query = normalizeText(searchQuery)
-      return (
-        normalizeText(pkg.title).includes(query) ||
-        pkg.tc_package_id.toString().includes(searchQuery)
-      )
+      if (!normalizeText(pkg.title).includes(query) && !pkg.tc_package_id.toString().includes(searchQuery)) {
+        return false
+      }
+    }
+    // Campaign filter
+    if (campaignFilter !== 'all') {
+      const data = packageData[pkg.id]
+      if (!data?.campaignId || data.campaignId !== campaignFilter) return false
+    }
+    // AdSet filter
+    if (adsetFilter !== 'all') {
+      const data = packageData[pkg.id]
+      if (!data?.adSetId) return false
+      const adsetIds = data.adSetId.split(',').map((s: string) => s.trim())
+      if (!adsetIds.includes(adsetFilter)) return false
     }
     return true
   })
@@ -945,6 +1121,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           marketing_status: null,
           ads_created_count: 0,
           ads_active_count: 0,
+          send_to_design: false,
+          design_completed: false,
         }),
       })
 
@@ -1049,8 +1227,44 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               <ResizableHeader label="Creado" columnKey="creado" width={columnWidths.creado} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creado' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Rango" columnKey="rango" width={columnWidths.rango} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'rango' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Vencimiento" columnKey="vencimiento" width={columnWidths.vencimiento} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'vencimiento' ? sortDir : null} onSort={handleSort} />
-              <ResizableHeader label="Campaign ID" columnKey="campaignId" width={columnWidths.campaignId} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
-              <ResizableHeader label="AdSet ID" columnKey="adsetId" width={columnWidths.adsetId} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
+              <TableHead
+                className="relative group"
+                style={{ width: `${columnWidths.campaignId}px`, minWidth: `${columnWidths.campaignId}px`, maxWidth: `${columnWidths.campaignId}px` }}
+              >
+                <div className="flex flex-col gap-0.5 pr-2">
+                  <span className="text-xs text-center">Campaign</span>
+                  <select
+                    value={campaignFilter}
+                    onChange={(e) => setCampaignFilter(e.target.value)}
+                    className="w-full h-5 text-[10px] bg-transparent border border-border rounded px-1 text-center truncate focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="all">Todas</option>
+                    {campaignOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <ResizeHandle columnKey="campaignId" onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
+              </TableHead>
+              <TableHead
+                className="relative group"
+                style={{ width: `${columnWidths.adsetId}px`, minWidth: `${columnWidths.adsetId}px`, maxWidth: `${columnWidths.adsetId}px` }}
+              >
+                <div className="flex flex-col gap-0.5 pr-2">
+                  <span className="text-xs text-center">AdSet</span>
+                  <select
+                    value={adsetFilter}
+                    onChange={(e) => setAdsetFilter(e.target.value)}
+                    className="w-full h-5 text-[10px] bg-transparent border border-border rounded px-1 text-center truncate focus:outline-none focus:ring-1 focus:ring-ring"
+                  >
+                    <option value="all">Todos</option>
+                    {adsetOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <ResizeHandle columnKey="adsetId" onResize={handleColumnResize} onResizeEnd={handleResizeEnd} />
+              </TableHead>
               <ResizableHeader label="Copies" columnKey="copies" width={columnWidths.copies} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'copies' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Creativos" columnKey="creativos" width={columnWidths.creativos} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creativos' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Ads" columnKey="ads" width={columnWidths.ads} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'ads' ? sortDir : null} onSort={handleSort} />
@@ -1100,7 +1314,24 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           >
                             {pkg.title}
                           </a>
-                          {pkg.creative_update_needed && (
+                          {pendingRequests[pkg.id] ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCancelCreativeRequest(pkg.id)
+                              }}
+                              disabled={cancellingRequest.has(pkg.id)}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-800 shrink-0 hover:bg-red-100 hover:text-red-800 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Click para cancelar solicitud de diseño"
+                            >
+                              {cancellingRequest.has(pkg.id) ? (
+                                <Loader2 className="h-3 w-3 mr-0.5 animate-spin" />
+                              ) : (
+                                <AlertTriangle className="h-3 w-3 mr-0.5" />
+                              )}
+                              Cancelar solicitud
+                            </button>
+                          ) : pkg.creative_update_needed ? (
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -1112,7 +1343,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                               <AlertTriangle className="h-3 w-3 mr-0.5" />
                               Solicitar
                             </button>
-                          )}
+                          ) : null}
                         </div>
                         <span className="text-xs text-muted-foreground">
                           {formatPrice(pkg.current_price_per_pax, pkg.currency)} · {pkg.nights_count}N
@@ -1200,44 +1431,70 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                       </Popover>
                     </TableCell>
 
-                    {/* Campaign ID */}
+                    {/* Campaign */}
                     <TableCell style={{ width: columnWidths.campaignId, minWidth: columnWidths.campaignId, maxWidth: columnWidths.campaignId }}>
-                      <div className="flex flex-col items-center">
-                        <Input
-                          placeholder="Campaign ID"
-                          value={data.campaignId ?? ''}
-                          onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
-                          onFocus={() => handleFieldFocus(pkg.id, 'campaignId')}
-                          className={`w-full h-9 text-xs text-center font-mono ${
-                            data.campaignName ? 'border-green-500' :
-                            data.campaignId ? 'border-red-400' : ''
-                          }`}
-                        />
-                        {data.campaignName && (
-                          <span className="text-[10px] text-green-600 truncate w-full text-center mt-0.5">
-                            {data.campaignName}
-                          </span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        {data.campaignName ? (
+                          <>
+                            <span className="text-sm font-semibold text-foreground truncate w-full text-center leading-tight" title={data.campaignName}>
+                              {data.campaignName}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground truncate w-full text-center">
+                              {data.campaignId}
+                            </span>
+                          </>
+                        ) : data.campaignId ? (
+                          <>
+                            <span className="text-[10px] text-red-400 italic">No encontrada</span>
+                            <Input
+                              placeholder="Campaign ID"
+                              value={data.campaignId ?? ''}
+                              onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
+                              onFocus={() => handleFieldFocus(pkg.id, 'campaignId')}
+                              className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground border-red-400"
+                            />
+                          </>
+                        ) : (
+                          <Input
+                            placeholder="Campaign ID"
+                            value=""
+                            onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
+                            className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground"
+                          />
                         )}
                       </div>
                     </TableCell>
 
-                    {/* AdSet ID */}
+                    {/* AdSet */}
                     <TableCell style={{ width: columnWidths.adsetId, minWidth: columnWidths.adsetId, maxWidth: columnWidths.adsetId }}>
-                      <div className="flex flex-col items-center">
-                        <Input
-                          placeholder="AdSet ID *"
-                          value={data.adSetId ?? ''}
-                          onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
-                          onFocus={() => handleFieldFocus(pkg.id, 'adSetId')}
-                          className={`w-full h-9 text-xs text-center font-mono ${
-                            data.adSetName ? 'border-green-500' :
-                            data.adSetId ? 'border-red-400' : ''
-                          }`}
-                        />
-                        {data.adSetName && (
-                          <span className="text-[10px] text-green-600 truncate w-full text-center mt-0.5">
-                            {data.adSetName}
-                          </span>
+                      <div className="flex flex-col items-center gap-0.5">
+                        {data.adSetName ? (
+                          <>
+                            <span className="text-sm font-semibold text-foreground truncate w-full text-center leading-tight" title={data.adSetName}>
+                              {data.adSetName}
+                            </span>
+                            <span className="text-[10px] font-mono text-muted-foreground truncate w-full text-center">
+                              {data.adSetId?.split(',')[0]}
+                            </span>
+                          </>
+                        ) : data.adSetId ? (
+                          <>
+                            <span className="text-[10px] text-red-400 italic">No encontrado</span>
+                            <Input
+                              placeholder="AdSet ID *"
+                              value={data.adSetId ?? ''}
+                              onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
+                              onFocus={() => handleFieldFocus(pkg.id, 'adSetId')}
+                              className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground border-red-400"
+                            />
+                          </>
+                        ) : (
+                          <Input
+                            placeholder="AdSet ID *"
+                            value=""
+                            onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
+                            className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground"
+                          />
                         )}
                       </div>
                     </TableCell>
@@ -1423,7 +1680,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           open={!!creativeRequestPkg}
           onClose={() => setCreativeRequestPkg(null)}
           pkg={creativeRequestPkg}
-          onSuccess={() => {
+          onSuccess={(requestId: number) => {
             // Clear the creative_update_needed flag locally
             setPackages(prev =>
               prev.map(p =>
@@ -1432,6 +1689,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                   : p
               )
             )
+            // Track the pending request so "Cancelar solicitud" appears
+            setPendingRequests(prev => ({ ...prev, [creativeRequestPkg.id]: requestId }))
           }}
         />
       )}

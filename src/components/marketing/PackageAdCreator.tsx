@@ -133,7 +133,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
   // Parse comma-separated AdSet IDs
   const adSetIds = adSetId.split(',').map(s => s.trim()).filter(Boolean)
 
-  // Debounced lookup for AdSet IDs (supports comma-separated)
+  // Debounced batch lookup for AdSet IDs (supports comma-separated)
   useEffect(() => {
     if (adSetIds.length === 0) {
       setAdSetNames({})
@@ -141,22 +141,26 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
     }
     const timer = setTimeout(async () => {
       setLookingUpAdSet(true)
-      const names: Record<string, string> = {}
       try {
-        await Promise.all(adSetIds.map(async (id) => {
-          try {
-            const res = await fetch(`/api/meta/lookup?type=adset&id=${id}`)
-            const data = await res.json()
-            if (data.found) {
-              names[id] = data.name
-              // Auto-fill campaign ID from first adset
-              if (data.campaign_id && !campaignId) {
-                setCampaignId(data.campaign_id)
-              }
+        const res = await fetch('/api/meta/lookup/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adsetIds: adSetIds, campaignIds: [] }),
+        })
+        const data = await res.json()
+        const names: Record<string, string> = {}
+        for (const id of adSetIds) {
+          if (data.adsets[id]) {
+            names[id] = data.adsets[id].name
+            // Auto-fill campaign ID from first adset
+            if (data.adsets[id].campaign_id && !campaignId) {
+              setCampaignId(data.adsets[id].campaign_id)
             }
-          } catch { /* ignore individual failures */ }
-        }))
+          }
+        }
         setAdSetNames(names)
+      } catch {
+        setAdSetNames({})
       } finally {
         setLookingUpAdSet(false)
       }

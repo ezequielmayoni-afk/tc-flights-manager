@@ -293,6 +293,7 @@ export function PackageRowExpanded({
 
         if (hashes.length > 0 || videoIds.length > 0) {
           try {
+            console.log(`[Meta Images] Fetching URLs for ${hashes.length} hashes, ${videoIds.length} videos`)
             const imgRes = await fetch('/api/meta/images', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -300,12 +301,18 @@ export function PackageRowExpanded({
             })
             if (imgRes.ok) {
               const imgData = await imgRes.json()
+              console.log(`[Meta Images] Got ${Object.keys(imgData.urls || {}).length} image URLs, ${Object.keys(imgData.videoUrls || {}).length} video URLs`)
               setMetaImageUrls(imgData.urls || {})
               setMetaVideoUrls(imgData.videoUrls || {})
+            } else {
+              const errData = await imgRes.json().catch(() => ({}))
+              console.error(`[Meta Images] Failed HTTP ${imgRes.status}:`, errData)
             }
           } catch (err) {
-            console.error('Error fetching Meta media URLs:', err)
+            console.error('[Meta Images] Error fetching media URLs:', err)
           }
+        } else {
+          console.log(`[Meta Images] No hashes or videoIds to fetch for package ${pkg.id}`)
         }
       }
     } catch (error) {

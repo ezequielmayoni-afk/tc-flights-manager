@@ -45,7 +45,7 @@ interface CreativeRequestModalProps {
   open: boolean
   onClose: () => void
   pkg: Package
-  onSuccess?: () => void
+  onSuccess?: (requestId: number) => void
 }
 
 const REASON_OPTIONS = [
@@ -157,7 +157,7 @@ export function CreativeRequestModal({
       }
 
       toast.success('Solicitud de creativo enviada a Diseño')
-      onSuccess?.()
+      onSuccess?.(data.id)
       onClose()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error creando solicitud')

@@ -157,13 +157,36 @@ export class MetaAdsClient {
     }
 
     const fields = 'id,name,status,objective,daily_budget,lifetime_budget'
-    const response = await this.request<{ data: MetaAPICampaign[] }>(
-      `/${this.adAccountId}/campaigns?fields=${fields}&limit=100`
-    )
+    const allCampaigns: MetaAPICampaign[] = []
+
+    let url = `/${this.adAccountId}/campaigns?fields=${fields}&limit=500`
+
+    console.log('[Meta API] Fetching ALL campaigns with pagination...')
+
+    while (url) {
+      const response = await this.request<{
+        data: MetaAPICampaign[]
+        paging?: { next?: string }
+      }>(url)
+
+      allCampaigns.push(...response.data)
+      console.log(`[Meta API] Fetched ${allCampaigns.length} campaigns so far...`)
+
+      // Get next page URL if exists
+      url = response.paging?.next || ''
+      if (url) {
+        // Remove base URL since request() adds it
+        url = url.replace(META_API_BASE_URL, '')
+        // Remove access_token since request() adds it
+        url = url.replace(/&access_token=[^&]+/, '')
+      }
+    }
+
+    console.log(`[Meta API] Done! Total campaigns: ${allCampaigns.length}`)
 
     // Cache the result
-    metaCache.set(CACHE_KEYS.campaigns, response.data, CACHE_TTL.campaigns)
-    return response.data
+    metaCache.set(CACHE_KEYS.campaigns, allCampaigns, CACHE_TTL.campaigns)
+    return allCampaigns
   }
 
   async getCampaignById(campaignId: string): Promise<{ id: string; name: string; status: string; objective: string } | null> {
@@ -173,7 +196,8 @@ export class MetaAdsClient {
         `/${campaignId}?fields=${fields}`
       )
       return response
-    } catch {
+    } catch (error) {
+      console.error(`[Meta API] getCampaignById(${campaignId}) failed:`, error instanceof Error ? error.message : error)
       return null
     }
   }
@@ -214,7 +238,8 @@ export class MetaAdsClient {
         `/${adsetId}?fields=${fields}`
       )
       return response
-    } catch {
+    } catch (error) {
+      console.error(`[Meta API] getAdSetById(${adsetId}) failed:`, error instanceof Error ? error.message : error)
       return null
     }
   }
