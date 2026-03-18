@@ -274,6 +274,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [isGeneratingAll, setIsGeneratingAll] = useState(false)
   const [expandedPackageId, setExpandedPackageId] = useState<number | null>(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isSyncingMeta, setIsSyncingMeta] = useState(false)
   const [creativeRequestPkg, setCreativeRequestPkg] = useState<Package | null>(null)
   const [removingAds, setRemovingAds] = useState<Set<number>>(new Set())
   const [confirmRemovePackageId, setConfirmRemovePackageId] = useState<number | null>(null)
@@ -943,6 +944,88 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }
 
+  // Hard refresh: re-resolve all campaign/adset names
+  const handleSyncMetaNames = async () => {
+    setIsSyncingMeta(true)
+    try {
+      // Collect all unique campaign/adset IDs
+      const campaignIdSet = new Set<string>()
+      const adsetIdMap: Record<string, number[]> = {}
+
+      for (const pkg of packages) {
+        const data = packageData[pkg.id]
+        if (!data) continue
+        if (data.campaignId) campaignIdSet.add(data.campaignId)
+        if (data.adSetId) {
+          const firstId = data.adSetId.split(',')[0].trim()
+          if (firstId) {
+            if (!adsetIdMap[firstId]) adsetIdMap[firstId] = []
+            adsetIdMap[firstId].push(pkg.id)
+          }
+        }
+      }
+
+      if (campaignIdSet.size === 0 && Object.keys(adsetIdMap).length === 0) {
+        toast.info('No hay IDs para sincronizar')
+        return
+      }
+
+      const res = await fetch('/api/meta/lookup/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          campaignIds: Array.from(campaignIdSet),
+          adsetIds: Object.keys(adsetIdMap),
+        }),
+      })
+      const batchData = await res.json()
+      const { campaigns: campMap, adsets: adsetMap } = batchData
+
+      // Apply results
+      setPackageData(prev => {
+        const updated = { ...prev }
+        for (const pkg of packages) {
+          const data = updated[pkg.id]
+          if (!data) continue
+
+          // Update campaign name
+          if (data.campaignId && campMap[data.campaignId]) {
+            updated[pkg.id] = { ...updated[pkg.id], campaignName: campMap[data.campaignId].name }
+          }
+
+          // Update adset name
+          if (data.adSetId) {
+            const firstId = data.adSetId.split(',')[0].trim()
+            if (firstId && adsetMap[firstId]) {
+              const adSetIds = data.adSetId.split(',').map((s: string) => s.trim()).filter(Boolean)
+              const adSetLabel = adSetIds.length > 1
+                ? `${adsetMap[firstId].name} (+${adSetIds.length - 1})`
+                : adsetMap[firstId].name
+              updated[pkg.id] = {
+                ...updated[pkg.id],
+                adSetName: adSetLabel,
+                campaignId: updated[pkg.id].campaignId || adsetMap[firstId].campaign_id || '',
+              }
+              // Also fill campaign name from adset's campaign
+              const campId = adsetMap[firstId].campaign_id
+              if (campId && campMap[campId] && !updated[pkg.id].campaignName) {
+                updated[pkg.id] = { ...updated[pkg.id], campaignName: campMap[campId].name }
+              }
+            }
+          }
+        }
+        return updated
+      })
+
+      toast.success(`Nombres actualizados: ${Object.keys(campMap).length} campaigns, ${Object.keys(adsetMap).length} adsets`)
+    } catch (error) {
+      toast.error('Error sincronizando nombres')
+      console.error('[Sync Meta Names]', error)
+    } finally {
+      setIsSyncingMeta(false)
+    }
+  }
+
   const formatShortDate = (dateStr: string) => {
     const date = new Date(dateStr)
     return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
@@ -1199,6 +1282,22 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           )}
 
           <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSyncMetaNames}
+            disabled={isSyncingMeta}
+            type="button"
+            title="Sincronizar nombres de campaigns y adsets"
+          >
+            {isSyncingMeta ? (
+              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-1" />
+            )}
+            Sync Meta
+          </Button>
+
+          <Button
             variant="ghost"
             size="sm"
             onClick={handleRefresh}
@@ -1434,68 +1533,48 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                     {/* Campaign */}
                     <TableCell style={{ width: columnWidths.campaignId, minWidth: columnWidths.campaignId, maxWidth: columnWidths.campaignId }}>
                       <div className="flex flex-col items-center gap-0.5">
-                        {data.campaignName ? (
-                          <>
-                            <span className="text-sm font-semibold text-foreground truncate w-full text-center leading-tight" title={data.campaignName}>
-                              {data.campaignName}
-                            </span>
-                            <span className="text-[10px] font-mono text-muted-foreground truncate w-full text-center">
-                              {data.campaignId}
-                            </span>
-                          </>
-                        ) : data.campaignId ? (
-                          <>
-                            <span className="text-[10px] text-red-400 italic">No encontrada</span>
-                            <Input
-                              placeholder="Campaign ID"
-                              value={data.campaignId ?? ''}
-                              onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
-                              onFocus={() => handleFieldFocus(pkg.id, 'campaignId')}
-                              className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground border-red-400"
-                            />
-                          </>
-                        ) : (
-                          <Input
-                            placeholder="Campaign ID"
-                            value=""
-                            onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
-                            className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground"
-                          />
+                        {data.campaignName && (
+                          <span className="text-xs font-semibold text-green-700 truncate w-full text-center leading-tight" title={data.campaignName}>
+                            {data.campaignName}
+                          </span>
                         )}
+                        {data.campaignId && !data.campaignName && (
+                          <span className="text-[10px] text-red-400 italic">No encontrada</span>
+                        )}
+                        <Input
+                          placeholder="Campaign ID"
+                          value={data.campaignId ?? ''}
+                          onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
+                          onFocus={() => handleFieldFocus(pkg.id, 'campaignId')}
+                          className={`w-full h-6 text-[10px] text-center font-mono text-muted-foreground ${
+                            data.campaignName ? 'border-green-500' :
+                            data.campaignId ? 'border-red-400' : ''
+                          }`}
+                        />
                       </div>
                     </TableCell>
 
                     {/* AdSet */}
                     <TableCell style={{ width: columnWidths.adsetId, minWidth: columnWidths.adsetId, maxWidth: columnWidths.adsetId }}>
                       <div className="flex flex-col items-center gap-0.5">
-                        {data.adSetName ? (
-                          <>
-                            <span className="text-sm font-semibold text-foreground truncate w-full text-center leading-tight" title={data.adSetName}>
-                              {data.adSetName}
-                            </span>
-                            <span className="text-[10px] font-mono text-muted-foreground truncate w-full text-center">
-                              {data.adSetId?.split(',')[0]}
-                            </span>
-                          </>
-                        ) : data.adSetId ? (
-                          <>
-                            <span className="text-[10px] text-red-400 italic">No encontrado</span>
-                            <Input
-                              placeholder="AdSet ID *"
-                              value={data.adSetId ?? ''}
-                              onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
-                              onFocus={() => handleFieldFocus(pkg.id, 'adSetId')}
-                              className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground border-red-400"
-                            />
-                          </>
-                        ) : (
-                          <Input
-                            placeholder="AdSet ID *"
-                            value=""
-                            onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
-                            className="w-full h-6 text-[10px] text-center font-mono text-muted-foreground"
-                          />
+                        {data.adSetName && (
+                          <span className="text-xs font-semibold text-green-700 truncate w-full text-center leading-tight" title={data.adSetName}>
+                            {data.adSetName}
+                          </span>
                         )}
+                        {data.adSetId && !data.adSetName && (
+                          <span className="text-[10px] text-red-400 italic">No encontrado</span>
+                        )}
+                        <Input
+                          placeholder="AdSet ID *"
+                          value={data.adSetId ?? ''}
+                          onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
+                          onFocus={() => handleFieldFocus(pkg.id, 'adSetId')}
+                          className={`w-full h-6 text-[10px] text-center font-mono text-muted-foreground ${
+                            data.adSetName ? 'border-green-500' :
+                            data.adSetId ? 'border-red-400' : ''
+                          }`}
+                        />
                       </div>
                     </TableCell>
 
