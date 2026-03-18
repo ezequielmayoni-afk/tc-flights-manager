@@ -50,4 +50,4 @@ jobs:
       - name: Restart PM2
         run: |
           ssh -i ~/.ssh/deploy_key root@${{ secrets.VPS_HOST }} \
-            "pm2 delete hub 2>/dev/null; cd /opt/hub && pm2 start server.js --name hub && pm2 save"
+            "pm2 delete hub 2>/dev/null; cd /opt/hub && PORT=3001 pm2 start server.js --name hub && pm2 save"
