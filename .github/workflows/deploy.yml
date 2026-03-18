@@ -38,7 +38,7 @@ jobs:
 
       - name: Deploy standalone build to VPS
         run: |
-          rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key" \
+          rsync -avz --delete --exclude='.env' --exclude='.env.local' -e "ssh -i ~/.ssh/deploy_key" \
             .next/standalone/ root@${{ secrets.VPS_HOST }}:/opt/hub/
 
           rsync -avz --delete -e "ssh -i ~/.ssh/deploy_key" \
