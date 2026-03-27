@@ -15,10 +15,11 @@ function buildPackageUrl(packageId: number, title: string): string {
 export async function GET() {
   const db = createAdminClient()
 
-  // All packages in Hub are active/relevant - include all
+  // Only packages with in_sitemap = true
   const { data: packages } = await db
     .from('packages')
     .select('tc_package_id, title, updated_at, created_at')
+    .eq('in_sitemap', true)
     .order('updated_at', { ascending: false })
 
   const urls = (packages || []).map(pkg => {
