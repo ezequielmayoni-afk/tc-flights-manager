@@ -15,11 +15,11 @@ function buildPackageUrl(packageId: number, title: string): string {
 export async function GET() {
   const db = createAdminClient()
 
-  // Only packages with in_sitemap = true
+  // Only packages marked for sitemap in the SEO page
   const { data: packages } = await db
     .from('packages')
     .select('tc_package_id, title, updated_at, created_at')
-    .eq('in_sitemap', true)
+    .eq('include_sitemap', true)
     .order('updated_at', { ascending: false })
 
   const urls = (packages || []).map(pkg => {
