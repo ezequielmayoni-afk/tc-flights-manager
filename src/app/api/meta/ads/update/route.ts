@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    const ad_account_id = body.ad_account_id as string | undefined
     let ads: UpdateAdRequest[]
 
     // Support simple package_id mode - automatically get all ads for the package
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, data })}\n\n`))
         }
 
-        const metaClient = getMetaAdsClient()
+        const metaClient = getMetaAdsClient(ad_account_id)
         let totalUpdated = 0
         let totalErrors = 0
 
@@ -238,7 +239,7 @@ export async function POST(request: NextRequest) {
                   })
 
                   // Upload 4x5 creative from Drive
-                  const upload4x5 = await uploadCreativeToMeta(creative4x5)
+                  const upload4x5 = await uploadCreativeToMeta(creative4x5, ad_account_id)
                   if (!upload4x5.success) {
                     sendEvent('error', {
                       package_id,
@@ -278,7 +279,7 @@ export async function POST(request: NextRequest) {
                       step: `Uploading 9x16 ${creative9x16.creativeType === 'VIDEO' ? 'video' : 'image'} to Meta`,
                     })
 
-                    const upload9x16 = await uploadCreativeToMeta(creative9x16)
+                    const upload9x16 = await uploadCreativeToMeta(creative9x16, ad_account_id)
                     if (upload9x16.success) {
                       if (creative9x16.creativeType === 'VIDEO') {
                         videoId9x16 = upload9x16.metaVideoId

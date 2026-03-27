@@ -72,9 +72,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { packageIds, variants } = body as {
+    const { packageIds, variants, ad_account_id } = body as {
       packageIds: number[]
       variants?: number[]
+      ad_account_id?: string
     }
 
     if (!packageIds || !Array.isArray(packageIds) || packageIds.length === 0) {
@@ -120,7 +121,7 @@ export async function POST(request: NextRequest) {
             })
 
             // Upload creatives
-            const results = await uploadPackageCreativesToMeta(pkg.tc_package_id, variants)
+            const results = await uploadPackageCreativesToMeta(pkg.tc_package_id, variants, ad_account_id)
 
             // Save results to database
             for (const result of results) {

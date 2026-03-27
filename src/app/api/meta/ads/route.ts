@@ -35,13 +35,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { packages, campaign_id } = body as {
+    const { packages, campaign_id, ad_account_id } = body as {
       packages: Array<{
         package_id: number
         meta_adset_id: string // AdSet to create ads in
         variants?: number[] // Optional: specific variants to create (1-5). If not provided, creates all available.
       }>
       campaign_id?: string
+      ad_account_id?: string // Optional: override default ad account
     }
 
     if (!packages || !Array.isArray(packages) || packages.length === 0) {
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type, data })}\n\n`))
         }
 
-        const metaClient = getMetaAdsClient()
+        const metaClient = getMetaAdsClient(ad_account_id)
         let totalCreated = 0
         let totalErrors = 0
 
@@ -456,10 +457,11 @@ export async function DELETE(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { ad_ids, package_id, delete_from_meta = false } = body as {
+    const { ad_ids, package_id, delete_from_meta = false, ad_account_id } = body as {
       ad_ids?: number[]
       package_id?: number
       delete_from_meta?: boolean
+      ad_account_id?: string
     }
 
     let adsToDelete: { id: number; meta_ad_id: string; package_id: number }[] | null = null
@@ -510,7 +512,7 @@ export async function DELETE(request: NextRequest) {
 
     // If delete_from_meta is true, also delete from Meta
     if (delete_from_meta) {
-      const metaClient = getMetaAdsClient()
+      const metaClient = getMetaAdsClient(ad_account_id)
 
       for (const ad of adsToDelete) {
         if (ad.meta_ad_id) {

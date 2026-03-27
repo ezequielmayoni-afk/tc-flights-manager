@@ -89,6 +89,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'title',
       'meta_campaign_id',
       'meta_adset_ids',
+      'meta_ad_account_id',
     ]
 
     // Filter updates to only allowed fields

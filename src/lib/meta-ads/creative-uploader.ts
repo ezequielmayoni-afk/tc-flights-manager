@@ -302,7 +302,8 @@ export async function getPackageCreatives(tcPackageId: number): Promise<DriveCre
  * Uses retry with exponential backoff and file validation
  */
 export async function uploadCreativeToMeta(
-  creative: DriveCreativeInfo
+  creative: DriveCreativeInfo,
+  adAccountId?: string
 ): Promise<UploadResult> {
   try {
     console.log(`[Creative Uploader] Downloading ${creative.fileName} from Drive...`)
@@ -329,7 +330,7 @@ export async function uploadCreativeToMeta(
     }
 
     // Upload to Meta with retry
-    const metaClient = getMetaAdsClient()
+    const metaClient = getMetaAdsClient(adAccountId)
 
     if (creative.creativeType === 'IMAGE') {
       console.log(`[Creative Uploader] Uploading image to Meta...`)
@@ -383,7 +384,8 @@ export async function uploadCreativeToMeta(
  */
 export async function uploadPackageCreativesToMeta(
   tcPackageId: number,
-  variantsFilter?: number[]
+  variantsFilter?: number[],
+  adAccountId?: string
 ): Promise<UploadResult[]> {
   console.log(`[Creative Uploader] Starting upload for package ${tcPackageId}`)
 
@@ -406,7 +408,7 @@ export async function uploadPackageCreativesToMeta(
   const results: UploadResult[] = []
 
   for (const creative of filteredCreatives) {
-    const result = await uploadCreativeToMeta(creative)
+    const result = await uploadCreativeToMeta(creative, adAccountId)
     results.push(result)
 
     // Small delay between uploads to avoid rate limiting

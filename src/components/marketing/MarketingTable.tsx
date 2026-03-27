@@ -81,7 +81,7 @@ function normalizeText(text: string): string {
 }
 
 // Column configuration for resizable columns
-type ColumnKey = 'id' | 'paquete' | 'creado' | 'rango' | 'vencimiento' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
+type ColumnKey = 'id' | 'paquete' | 'creado' | 'rango' | 'vencimiento' | 'adAccountId' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   id: 90,
@@ -89,6 +89,7 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   creado: 90,
   rango: 120,
   vencimiento: 110,
+  adAccountId: 160,
   campaignId: 200,
   adsetId: 200,
   copies: 70,
@@ -237,6 +238,7 @@ interface Package {
   created_at?: string | null
   meta_campaign_id?: string | null
   meta_adset_ids?: string | null
+  meta_ad_account_id?: string | null
 }
 
 interface MarketingTableProps {
@@ -258,6 +260,7 @@ interface PackageRowData {
   copiesCount: number
   creativesCount: number
   uploadedCreativesCount: number
+  adAccountId: string
   campaignId: string
   adSetId: string
   campaignName: string | null
@@ -514,11 +517,13 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           const pkgObj = packages.find(p => p.id === pkgId)
           const savedAdSetId = pkgObj?.meta_adset_ids || ''
           const savedCampaignId = pkgObj?.meta_campaign_id || ''
+          const savedAdAccountId = pkgObj?.meta_ad_account_id || ''
 
           newPackageData[pkgId] = {
             copiesCount: copiesByPackage[pkgId] || 0,
             creativesCount: creatives.total,
             uploadedCreativesCount: creatives.uploaded,
+            adAccountId: savedAdAccountId,
             campaignId: savedCampaignId || '',
             adSetId: savedAdSetId || ads.adSetId,
             campaignName: null,
@@ -772,12 +777,19 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     if (field === 'campaignId' || field === 'adSetId') {
       const type = field === 'campaignId' ? 'campaign' : 'adset'
       setTimeout(() => lookupMeta(packageId, type, value), 500)
+    }
 
-      // Auto-save to package with debounce
+    // Auto-save to package with debounce
+    if (field === 'adAccountId' || field === 'campaignId' || field === 'adSetId') {
       const timerKey = `${packageId}-${field}`
       if (saveTimersRef.current[timerKey]) clearTimeout(saveTimersRef.current[timerKey])
       saveTimersRef.current[timerKey] = setTimeout(() => {
-        const dbField = field === 'campaignId' ? 'meta_campaign_id' : 'meta_adset_ids'
+        const dbFieldMap: Record<string, string> = {
+          adAccountId: 'meta_ad_account_id',
+          campaignId: 'meta_campaign_id',
+          adSetId: 'meta_adset_ids',
+        }
+        const dbField = dbFieldMap[field]
         fetch(`/api/packages/${packageId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -1326,6 +1338,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               <ResizableHeader label="Creado" columnKey="creado" width={columnWidths.creado} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creado' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Rango" columnKey="rango" width={columnWidths.rango} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'rango' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Vencimiento" columnKey="vencimiento" width={columnWidths.vencimiento} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'vencimiento' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Cuenta" columnKey="adAccountId" width={columnWidths.adAccountId} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
               <TableHead
                 className="relative group"
                 style={{ width: `${columnWidths.campaignId}px`, minWidth: `${columnWidths.campaignId}px`, maxWidth: `${columnWidths.campaignId}px` }}
@@ -1377,6 +1390,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                 copiesCount: 0,
                 creativesCount: 0,
                 uploadedCreativesCount: 0,
+                adAccountId: '',
                 campaignId: '',
                 adSetId: '',
                 campaignName: null,
@@ -1528,6 +1542,20 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           )}
                         </PopoverContent>
                       </Popover>
+                    </TableCell>
+
+                    {/* Ad Account */}
+                    <TableCell style={{ width: columnWidths.adAccountId, minWidth: columnWidths.adAccountId, maxWidth: columnWidths.adAccountId }}>
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Input
+                          placeholder="act_..."
+                          value={data.adAccountId ?? ''}
+                          onChange={(e) => updatePackageField(pkg.id, 'adAccountId', e.target.value)}
+                          className={`w-full h-6 text-[10px] text-center font-mono text-muted-foreground ${
+                            data.adAccountId ? 'border-blue-500' : ''
+                          }`}
+                        />
+                      </div>
                     </TableCell>
 
                     {/* Campaign */}
@@ -1724,9 +1752,10 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                   {/* Expanded Row */}
                   {isExpanded && (
                     <TableRow key={`${pkg.id}-expanded`}>
-                      <TableCell colSpan={12} className="bg-muted/10 p-0">
+                      <TableCell colSpan={13} className="bg-muted/10 p-0">
                         <PackageRowExpanded
                           pkg={pkg}
+                          adAccountId={data.adAccountId}
                           campaignId={data.campaignId}
                           adSetId={data.adSetId}
                           onUpdate={() => {

@@ -70,8 +70,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Manual Upload] File size: ${buffer.length} bytes, type: ${file.type}`)
 
-    // Upload to Meta
-    const metaClient = getMetaAdsClient()
+    // Upload to Meta (use custom ad account if provided)
+    const adAccountIdOverride = formData.get('ad_account_id') as string | null
+    const metaClient = getMetaAdsClient(adAccountIdOverride || undefined)
     let metaHash: string | undefined
     let metaVideoId: string | undefined
 

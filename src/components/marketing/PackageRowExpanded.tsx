@@ -68,9 +68,27 @@ interface ExistingAd {
   id: number
   variant: number
   meta_ad_id: string
+  ad_name?: string | null
   status: string
   meta_status?: string | null
   last_synced_at?: string | null
+  thumbnail_url?: string | null
+}
+
+interface AdSetAd {
+  meta_ad_id: string
+  name: string
+  status: string
+  created_time: string
+  in_db: boolean
+  db_package_id: number | null
+  db_variant: number | null
+  thumbnail_url: string | null
+  preview_text: {
+    body?: string
+    title?: string
+    description?: string
+  } | null
 }
 
 // Status color mapping for Meta ad statuses
@@ -87,6 +105,7 @@ const AD_STATUS_CONFIG: Record<string, { color: string; bgColor: string; icon: t
 
 interface PackageRowExpandedProps {
   pkg: Package
+  adAccountId: string
   campaignId: string
   adSetId: string
   onUpdate: () => void
@@ -104,6 +123,7 @@ const VARIANT_LABELS: Record<number, { name: string; focus: string }> = {
 
 export function PackageRowExpanded({
   pkg,
+  adAccountId,
   campaignId,
   adSetId,
   onUpdate,
@@ -145,6 +165,11 @@ export function PackageRowExpanded({
   // Drive loading state
   const [loadingDriveCreatives, setLoadingDriveCreatives] = useState(false)
   const [driveChecked, setDriveChecked] = useState(false)
+
+  // AdSet ads from Meta (all ads in the adset, with in_db flag)
+  const [adsetAds, setAdsetAds] = useState<AdSetAd[]>([])
+  const [loadingAdsetAds, setLoadingAdsetAds] = useState(false)
+  const [importingAds, setImportingAds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     loadData()
@@ -233,6 +258,106 @@ export function PackageRowExpanded({
       console.error('Error syncing ads with Meta:', error)
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  // Load all ads from Meta for this adset
+  const loadAdsetAds = async () => {
+    const firstAdSetId = adSetId?.split(',')[0]?.trim()
+    if (!firstAdSetId) return
+
+    setLoadingAdsetAds(true)
+    try {
+      const res = await fetch(`/api/meta/ads/by-adset?adset_id=${firstAdSetId}&package_id=${pkg.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAdsetAds(data.ads || [])
+      }
+    } catch (error) {
+      console.error('Error loading adset ads:', error)
+    } finally {
+      setLoadingAdsetAds(false)
+    }
+  }
+
+  // Import a single ad from Meta into our DB
+  const importSingleAd = async (metaAdId: string) => {
+    const firstAdSetId = adSetId?.split(',')[0]?.trim()
+    if (!firstAdSetId) return
+
+    setImportingAds(prev => new Set(prev).add(metaAdId))
+    try {
+      const res = await fetch('/api/meta/ads/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package_id: pkg.id,
+          meta_adset_id: firstAdSetId,
+          meta_ad_ids: [metaAdId],
+        }),
+      })
+      const data = await res.json()
+      if (data.imported?.length > 0) {
+        toast.success(`Anuncio importado: ${data.imported[0].ad_name}`)
+        // Mark as in_db locally
+        setAdsetAds(prev => prev.map(ad =>
+          ad.meta_ad_id === metaAdId ? { ...ad, in_db: true, db_package_id: pkg.id } : ad
+        ))
+        // Reload existing ads
+        await loadExistingAds()
+        onUpdate()
+      }
+      if (data.errors?.length > 0) {
+        toast.error(`Error: ${data.errors[0].error}`)
+      }
+    } catch (error) {
+      toast.error('Error importando anuncio')
+    } finally {
+      setImportingAds(prev => {
+        const next = new Set(prev)
+        next.delete(metaAdId)
+        return next
+      })
+    }
+  }
+
+  // Import all ads not in DB
+  const importAllMissingAds = async () => {
+    const missing = adsetAds.filter(a => !a.in_db)
+    if (missing.length === 0) return
+
+    const firstAdSetId = adSetId?.split(',')[0]?.trim()
+    if (!firstAdSetId) return
+
+    const allIds = missing.map(a => a.meta_ad_id)
+    setImportingAds(new Set(allIds))
+
+    try {
+      const res = await fetch('/api/meta/ads/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package_id: pkg.id,
+          meta_adset_id: firstAdSetId,
+          meta_ad_ids: allIds,
+        }),
+      })
+      const data = await res.json()
+      if (data.imported?.length > 0) {
+        toast.success(`${data.imported.length} anuncios importados`)
+        setAdsetAds(prev => prev.map(ad =>
+          allIds.includes(ad.meta_ad_id) ? { ...ad, in_db: true, db_package_id: pkg.id } : ad
+        ))
+        await loadExistingAds()
+        onUpdate()
+      }
+      if (data.errors?.length > 0) {
+        toast.error(`${data.errors.length} errores al importar`)
+      }
+    } catch (error) {
+      toast.error('Error importando anuncios')
+    } finally {
+      setImportingAds(new Set())
     }
   }
 
@@ -397,6 +522,7 @@ export function PackageRowExpanded({
         body: JSON.stringify({
           packageIds: [pkg.id],
           variants,
+          ...(adAccountId ? { ad_account_id: adAccountId } : {}),
         }),
       })
 
@@ -550,6 +676,7 @@ export function PackageRowExpanded({
             update_copy: true,
             force_reupload: true, // Always get fresh creative from Drive
           }],
+          ...(adAccountId ? { ad_account_id: adAccountId } : {}),
         }),
       })
 
@@ -622,7 +749,8 @@ export function PackageRowExpanded({
     if (selectedVariants.length === 5) {
       setSelectedVariants([])
     } else {
-      setSelectedVariants([1, 2, 3, 4, 5])
+      const extraVariants = existingAds.map(a => a.variant).filter(v => v > 5)
+      setSelectedVariants([...new Set([1, 2, 3, 4, 5, ...extraVariants])])
     }
   }
 
@@ -700,6 +828,7 @@ export function PackageRowExpanded({
             update_copy: true,
             force_reupload: true, // Always get fresh creative from Drive
           })),
+          ...(adAccountId ? { ad_account_id: adAccountId } : {}),
         }),
       })
 
@@ -801,6 +930,7 @@ export function PackageRowExpanded({
           body: JSON.stringify({
             packageIds: [pkg.id],
             variants: variantsNeedingUpload,
+            ...(adAccountId ? { ad_account_id: adAccountId } : {}),
           }),
         })
 
@@ -853,6 +983,7 @@ export function PackageRowExpanded({
             meta_adset_id: adSetId?.trim(),
             variants: selectedWithDriveCreatives, // Only create ads for selected variants
           }],
+          ...(adAccountId ? { ad_account_id: adAccountId } : {}),
         }),
       })
 
@@ -1016,6 +1147,157 @@ export function PackageRowExpanded({
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* All Ads in AdSet from Meta */}
+      {adSetId && (
+        <div className="bg-white border rounded-lg p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <RefreshCw className="h-4 w-4 text-purple-600" />
+              <span>Anuncios en AdSet (Meta)</span>
+              {adsetAds.length > 0 && (
+                <Badge variant="outline" className="text-xs">
+                  {adsetAds.filter(a => !a.in_db).length} sin importar
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {adsetAds.filter(a => !a.in_db).length > 0 && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={importAllMissingAds}
+                  disabled={importingAds.size > 0}
+                  className="h-7 px-3 text-xs"
+                >
+                  {importingAds.size > 0 ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <PlusCircle className="h-3 w-3 mr-1" />
+                  )}
+                  Importar todos ({adsetAds.filter(a => !a.in_db).length})
+                </Button>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={loadAdsetAds}
+                disabled={loadingAdsetAds}
+                className="h-7 px-2 text-xs"
+              >
+                <RefreshCw className={`h-3 w-3 mr-1 ${loadingAdsetAds ? 'animate-spin' : ''}`} />
+                {adsetAds.length > 0 ? 'Actualizar' : 'Cargar ads del AdSet'}
+              </Button>
+            </div>
+          </div>
+
+          {loadingAdsetAds && (
+            <div className="flex items-center justify-center py-4 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Cargando anuncios desde Meta...
+            </div>
+          )}
+
+          {!loadingAdsetAds && adsetAds.length > 0 && (
+            <div className="grid gap-3">
+              {adsetAds.map(ad => {
+                const statusKey = ad.status || 'DEFAULT'
+                const statusConfig = AD_STATUS_CONFIG[statusKey] || AD_STATUS_CONFIG.DEFAULT
+                const StatusIcon = statusConfig.icon
+
+                return (
+                  <div
+                    key={ad.meta_ad_id}
+                    className={`border rounded-lg p-3 ${!ad.in_db ? 'border-amber-300 bg-amber-50/30' : 'bg-white'}`}
+                  >
+                    <div className="flex gap-3">
+                      {/* Thumbnail */}
+                      {ad.thumbnail_url ? (
+                        <img
+                          src={ad.thumbnail_url}
+                          alt={ad.name}
+                          className="w-16 h-16 rounded object-cover shrink-0 border"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded bg-muted flex items-center justify-center shrink-0 border">
+                          <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                        </div>
+                      )}
+
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium truncate" title={ad.name}>{ad.name}</p>
+                            <p className="text-[10px] font-mono text-muted-foreground">{ad.meta_ad_id}</p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
+                              <StatusIcon className="h-3 w-3" />
+                              {statusConfig.label}
+                            </div>
+                            {ad.in_db ? (
+                              <Badge variant="outline" className="text-xs text-green-700 border-green-300 bg-green-50">
+                                <Check className="h-3 w-3 mr-1" />
+                                En BD
+                              </Badge>
+                            ) : (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => importSingleAd(ad.meta_ad_id)}
+                                disabled={importingAds.has(ad.meta_ad_id)}
+                                className="h-7 px-3 text-xs"
+                              >
+                                {importingAds.has(ad.meta_ad_id) ? (
+                                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                ) : (
+                                  <Plus className="h-3 w-3 mr-1" />
+                                )}
+                                Importar
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Copy preview */}
+                        {ad.preview_text && (
+                          <div className="mt-2 space-y-0.5">
+                            {ad.preview_text.title && (
+                              <p className="text-xs">
+                                <span className="font-semibold text-muted-foreground">Título:</span>{' '}
+                                <span className="text-foreground">{ad.preview_text.title}</span>
+                              </p>
+                            )}
+                            {ad.preview_text.body && (
+                              <p className="text-xs line-clamp-2">
+                                <span className="font-semibold text-muted-foreground">Texto:</span>{' '}
+                                <span className="text-foreground">{ad.preview_text.body}</span>
+                              </p>
+                            )}
+                            {ad.preview_text.description && (
+                              <p className="text-xs">
+                                <span className="font-semibold text-muted-foreground">Desc:</span>{' '}
+                                <span className="text-foreground">{ad.preview_text.description}</span>
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {!loadingAdsetAds && adsetAds.length === 0 && (
+            <p className="text-xs text-muted-foreground text-center py-2">
+              Hacé click en &quot;Cargar ads del AdSet&quot; para ver todos los anuncios
+            </p>
+          )}
         </div>
       )}
 
@@ -1188,7 +1470,14 @@ export function PackageRowExpanded({
           )}
         </div>
 
-        {[1, 2, 3, 4, 5].map(variant => {
+        {(() => {
+          // Include variants 1-5 plus any extra variants from imported ads
+          const extraVariants = existingAds
+            .map(a => a.variant)
+            .filter(v => v > 5)
+          const allVariants = [...new Set([1, 2, 3, 4, 5, ...extraVariants])].sort((a, b) => a - b)
+          return allVariants
+        })().map(variant => {
           const variantCreatives = creatives.filter(c => c.variant === variant)
           const creative4x5 = variantCreatives.find(c => c.aspect_ratio === '4x5')
           const creative9x16 = variantCreatives.find(c => c.aspect_ratio === '9x16')
@@ -1219,6 +1508,9 @@ export function PackageRowExpanded({
           const isVideo9x16 = creative9x16?.creative_type === 'VIDEO'
           const hasCreatives = drive4x5 || drive9x16 || creative4x5 || creative9x16 || localPreview4x5 || localPreview9x16
           const isSelected = selectedVariants.includes(variant)
+          // For imported ads (variant > 5), use the thumbnail from Meta
+          const importedThumbnail = existingAd?.thumbnail_url
+          const isImportedAd = variant > 5 && !hasCreatives && existingAd
 
           return (
             <div
@@ -1226,6 +1518,8 @@ export function PackageRowExpanded({
               className={`border rounded-lg p-4 transition-colors ${
                 isSelected
                   ? 'border-blue-400 bg-blue-50/50 ring-1 ring-blue-400'
+                  : isImportedAd
+                  ? 'border-purple-300 bg-purple-50/30'
                   : isUploaded
                   ? 'border-green-300 bg-green-50/30'
                   : 'border-border'
@@ -1241,6 +1535,34 @@ export function PackageRowExpanded({
                   />
                 </div>
 
+                {/* For imported ads without creatives, show the Meta thumbnail */}
+                {isImportedAd ? (
+                  <div className="flex-shrink-0 w-[230px]">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Badge variant="default" className="text-xs bg-purple-600">
+                        V{variant}
+                      </Badge>
+                      <span className="text-[10px] font-medium text-purple-600">IMPORTADO</span>
+                    </div>
+                    {importedThumbnail ? (
+                      <div className="relative w-full h-[140px] rounded-lg overflow-hidden border bg-muted">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={importedThumbnail} alt={existingAd.ad_name || `V${variant}`} className="w-full h-full object-cover" />
+                      </div>
+                    ) : (
+                      <div className="w-full h-[140px] rounded-lg bg-muted flex flex-col items-center justify-center border">
+                        <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground mt-1">Sin preview</span>
+                      </div>
+                    )}
+                    {existingAd.ad_name && (
+                      <p className="text-[10px] text-muted-foreground mt-1 truncate" title={existingAd.ad_name}>
+                        {existingAd.ad_name}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                <>
                 {/* META Column - Uploaded creatives with manual upload */}
                 <div className="flex-shrink-0 w-[230px]">
                   <div className="flex items-center gap-2 mb-3">
@@ -1491,16 +1813,18 @@ export function PackageRowExpanded({
                     </div>
                   </div>
                 </div>
+                </>
+                )}
 
                 {/* Copy Column */}
                 <div className="flex-1 min-w-0">
                   {/* Variant Label Header */}
                   <div className="flex items-center gap-2 mb-3">
                     <span className="text-sm font-semibold text-foreground">
-                      {VARIANT_LABELS[variant]?.name}
+                      {VARIANT_LABELS[variant]?.name || (variant > 5 ? 'Importado' : '')}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {VARIANT_LABELS[variant]?.focus}
+                      {VARIANT_LABELS[variant]?.focus || (variant > 5 ? 'Anuncio importado de Meta' : '')}
                     </span>
                   </div>
                   {copy ? (

@@ -40,7 +40,8 @@ export default async function MarketingPage() {
       price_at_creative_creation,
       created_at,
       meta_campaign_id,
-      meta_adset_ids
+      meta_adset_ids,
+      meta_ad_account_id
     `)
     .eq('send_to_marketing', true)
     .order('created_at', { ascending: false })

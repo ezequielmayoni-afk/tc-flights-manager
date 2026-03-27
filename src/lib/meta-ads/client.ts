@@ -20,19 +20,31 @@ const ACCESS_TOKEN = process.env.META_ACCESS_TOKEN!
 const AD_ACCOUNT_ID = process.env.META_AD_ACCOUNT_ID!
 const PAGE_ID = process.env.META_PAGE_ID!
 
-// Singleton instance
+// Singleton instance (default account)
 let clientInstance: MetaAdsClient | null = null
 
-export function getMetaAdsClient(): MetaAdsClient {
+/**
+ * Get a MetaAdsClient instance.
+ * If adAccountId is provided, creates a new client for that account.
+ * Otherwise returns the singleton using the default env var account.
+ */
+export function getMetaAdsClient(adAccountId?: string): MetaAdsClient {
+  if (!ACCESS_TOKEN) {
+    throw new Error('META_ACCESS_TOKEN environment variable is required')
+  }
+  if (!PAGE_ID) {
+    throw new Error('META_PAGE_ID environment variable is required')
+  }
+
+  // If a custom ad account is specified, create a fresh client for it
+  if (adAccountId) {
+    return new MetaAdsClient(ACCESS_TOKEN, adAccountId, PAGE_ID)
+  }
+
+  // Default singleton
   if (!clientInstance) {
-    if (!ACCESS_TOKEN) {
-      throw new Error('META_ACCESS_TOKEN environment variable is required')
-    }
     if (!AD_ACCOUNT_ID) {
       throw new Error('META_AD_ACCOUNT_ID environment variable is required')
-    }
-    if (!PAGE_ID) {
-      throw new Error('META_PAGE_ID environment variable is required')
     }
     clientInstance = new MetaAdsClient(ACCESS_TOKEN, AD_ACCOUNT_ID, PAGE_ID)
   }
@@ -948,25 +960,65 @@ export class MetaAdsClient {
     name: string
     status: string
     effective_status: string
-    creative: { id: string } | null
+    creative: { id: string; thumbnail_url?: string; image_url?: string } | null
     created_time: string
+    preview_text?: { body?: string; title?: string; description?: string }
   }>> {
-    const fields = 'id,name,status,effective_status,creative{id},created_time'
+    const fields = 'id,name,status,effective_status,creative{id,thumbnail_url,image_url,effective_object_story_spec,asset_feed_spec},created_time'
     const response = await this.request<{
       data: Array<{
         id: string
         name: string
         status: string
         effective_status: string
-        creative?: { id: string }
+        creative?: {
+          id: string
+          thumbnail_url?: string
+          image_url?: string
+          effective_object_story_spec?: {
+            link_data?: { message?: string; name?: string; description?: string }
+            video_data?: { message?: string; title?: string }
+          }
+          asset_feed_spec?: {
+            bodies?: Array<{ text: string }>
+            titles?: Array<{ text: string }>
+            descriptions?: Array<{ text: string }>
+          }
+        }
         created_time: string
       }>
     }>(`/${adsetId}/ads?fields=${fields}&limit=100`)
 
-    return response.data.map(ad => ({
-      ...ad,
-      creative: ad.creative || null
-    }))
+    return response.data.map(ad => {
+      // Extract preview text from creative
+      let previewText: { body?: string; title?: string; description?: string } | undefined
+      const creative = ad.creative
+      if (creative) {
+        // Try asset_feed_spec first (dynamic creative)
+        if (creative.asset_feed_spec) {
+          previewText = {
+            body: creative.asset_feed_spec.bodies?.[0]?.text,
+            title: creative.asset_feed_spec.titles?.[0]?.text,
+            description: creative.asset_feed_spec.descriptions?.[0]?.text,
+          }
+        }
+        // Fallback to effective_object_story_spec (single creative)
+        else if (creative.effective_object_story_spec) {
+          const spec = creative.effective_object_story_spec
+          previewText = {
+            body: spec.link_data?.message || spec.video_data?.message,
+            title: spec.link_data?.name || spec.video_data?.title,
+            description: spec.link_data?.description,
+          }
+        }
+      }
+
+      return {
+        ...ad,
+        creative: creative ? { id: creative.id, thumbnail_url: creative.thumbnail_url, image_url: creative.image_url } : null,
+        preview_text: previewText,
+      }
+    })
   }
 
   /**
