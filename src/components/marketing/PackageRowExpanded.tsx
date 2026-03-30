@@ -24,6 +24,8 @@ import {
   Trash2,
   Plus,
   UploadCloud,
+  Pencil,
+  X,
 } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 
@@ -146,6 +148,10 @@ export function PackageRowExpanded({
   // Selection state for variant actions
   const [selectedVariants, setSelectedVariants] = useState<number[]>([])
   const [deletingAds, setDeletingAds] = useState(false)
+  // Inline edit state for ad IDs
+  const [editingAdId, setEditingAdId] = useState<number | null>(null)
+  const [editAdIdValue, setEditAdIdValue] = useState('')
+  const [savingAdId, setSavingAdId] = useState<number | null>(null)
 
   // Manual upload state
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -790,6 +796,59 @@ export function PackageRowExpanded({
     }
   }
 
+  // Save edited Ad ID to database
+  const handleSaveAdId = async (adDbId: number, newMetaAdId: string) => {
+    setSavingAdId(adDbId)
+    try {
+      const res = await fetch('/api/meta/ads', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: adDbId, meta_ad_id: newMetaAdId.trim() }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error actualizando Ad ID')
+      }
+
+      setExistingAds(prev =>
+        prev.map(ad => ad.id === adDbId ? { ...ad, meta_ad_id: newMetaAdId.trim() } : ad)
+      )
+      setEditingAdId(null)
+      toast.success('Ad ID actualizado')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error actualizando Ad ID')
+    } finally {
+      setSavingAdId(null)
+    }
+  }
+
+  // Delete a single ad from database
+  const handleDeleteSingleAd = async (adDbId: number, variant: number) => {
+    if (!confirm(`¿Eliminar anuncio V${variant} de la base de datos?`)) return
+    setSavingAdId(adDbId)
+    try {
+      const res = await fetch('/api/meta/ads', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ad_ids: [adDbId], delete_from_meta: false }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Error eliminando anuncio')
+      }
+
+      setExistingAds(prev => prev.filter(ad => ad.id !== adDbId))
+      toast.success(`Anuncio V${variant} eliminado de la BD`)
+      onUpdate()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error eliminando anuncio')
+    } finally {
+      setSavingAdId(null)
+    }
+  }
+
   // Update selected ads with new creatives and copies
   const handleUpdateSelectedAds = async () => {
     // Get ads that match selected variants
@@ -1096,6 +1155,7 @@ export function PackageRowExpanded({
                   <th className="text-left px-3 py-2 font-medium">Variante</th>
                   <th className="text-left px-3 py-2 font-medium">Ad ID</th>
                   <th className="text-left px-3 py-2 font-medium">Estado en Meta</th>
+                  <th className="text-right px-3 py-2 font-medium w-24">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -1103,6 +1163,7 @@ export function PackageRowExpanded({
                   const statusKey = ad.meta_status || ad.status || 'DEFAULT'
                   const statusConfig = AD_STATUS_CONFIG[statusKey] || AD_STATUS_CONFIG.DEFAULT
                   const StatusIcon = statusConfig.icon
+                  const isEditing = editingAdId === ad.id
 
                   return (
                     <tr key={ad.id} className={ad.meta_status === 'DELETED' ? 'bg-red-50/50' : ''}>
@@ -1112,12 +1173,94 @@ export function PackageRowExpanded({
                         </Badge>
                       </td>
                       <td className="px-3 py-2 font-mono text-xs">
-                        {ad.meta_ad_id}
+                        {isEditing ? (
+                          <Input
+                            value={editAdIdValue}
+                            onChange={(e) => setEditAdIdValue(e.target.value)}
+                            className="h-7 text-xs font-mono w-48"
+                            placeholder="Meta Ad ID"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                handleSaveAdId(ad.id, editAdIdValue)
+                              } else if (e.key === 'Escape') {
+                                setEditingAdId(null)
+                              }
+                            }}
+                          />
+                        ) : (
+                          <span
+                            className="cursor-pointer hover:text-blue-600 hover:underline"
+                            onClick={() => {
+                              setEditingAdId(ad.id)
+                              setEditAdIdValue(ad.meta_ad_id || '')
+                            }}
+                            title="Click para editar"
+                          >
+                            {ad.meta_ad_id || '—'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-2">
                         <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
                           <StatusIcon className="h-3 w-3" />
                           {statusConfig.label}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex items-center justify-end gap-1">
+                          {isEditing ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                onClick={() => handleSaveAdId(ad.id, editAdIdValue)}
+                                disabled={savingAdId === ad.id}
+                                title="Guardar"
+                              >
+                                {savingAdId === ad.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <Check className="h-3 w-3" />
+                                )}
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-gray-500 hover:text-gray-700"
+                                onClick={() => setEditingAdId(null)}
+                                title="Cancelar"
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600"
+                                onClick={() => {
+                                  setEditingAdId(ad.id)
+                                  setEditAdIdValue(ad.meta_ad_id || '')
+                                }}
+                                title="Editar Ad ID"
+                              >
+                                <Pencil className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                                onClick={() => handleDeleteSingleAd(ad.id, ad.variant)}
+                                disabled={savingAdId === ad.id}
+                                title="Eliminar de BD"
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

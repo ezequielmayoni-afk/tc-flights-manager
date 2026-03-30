@@ -578,3 +578,61 @@ export async function DELETE(request: NextRequest) {
     return errorResponse(error)
   }
 }
+
+/**
+ * PATCH /api/meta/ads
+ * Update ad fields in the database (meta_ad_id, meta_adset_id, variant, status)
+ *
+ * Body: { id: number, meta_ad_id?: string, meta_adset_id?: string, variant?: number, status?: string }
+ */
+export async function PATCH(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('marketing')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  const db = createAdminClient()
+
+  try {
+    const body = await request.json()
+    const { id, meta_ad_id, meta_adset_id, variant, status } = body as {
+      id: number
+      meta_ad_id?: string
+      meta_adset_id?: string
+      variant?: number
+      status?: string
+    }
+
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'id is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const updates: Record<string, unknown> = { updated_at: new Date().toISOString() }
+    if (meta_ad_id !== undefined) updates.meta_ad_id = meta_ad_id || null
+    if (meta_adset_id !== undefined) updates.meta_adset_id = meta_adset_id
+    if (variant !== undefined) updates.variant = variant
+    if (status !== undefined) updates.status = status
+
+    const { data, error } = await db
+      .from('meta_ads')
+      .update(updates)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('[Meta Ads PATCH] Error:', error)
+      throw error
+    }
+
+    console.log(`[Meta Ads PATCH] Updated ad ${id}:`, updates)
+
+    return new Response(JSON.stringify({ success: true, ad: data }), {
+      headers: { 'Content-Type': 'application/json' },
+    })
+  } catch (error) {
+    console.error('[Meta Ads PATCH] Error:', error)
+    return errorResponse(error)
+  }
+}
