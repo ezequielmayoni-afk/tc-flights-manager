@@ -130,7 +130,7 @@ export default async function MarketingPage() {
     pendingRequests: pendingRequestsCount || 0,
     totalAds: packages?.reduce((sum, p) => sum + (p.ads_created_count || 0), 0) || 0,
     expiringCount: expiringPackages.length,
-    expiringIds: expiringPackages.map(p => p.tc_package_id),
+    expiringPackages: expiringPackages.map(p => ({ id: p.tc_package_id, title: p.title })),
   }
 
   return (
@@ -236,7 +236,23 @@ export default async function MarketingPage() {
                 {stats.expiringCount} paquete{stats.expiringCount > 1 ? 's' : ''} vence{stats.expiringCount > 1 ? 'n' : ''} en los próximos 15 días
               </p>
               <p className="text-sm text-orange-700 mt-1">
-                IDs: {stats.expiringIds.join(', ')}
+                IDs:{' '}
+                {stats.expiringPackages.map((p, i) => {
+                  const slug = p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+                  return (
+                    <span key={p.id}>
+                      {i > 0 && ', '}
+                      <a
+                        href={`https://www.siviajo.com/es/idea/${p.id}/${slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline font-medium"
+                      >
+                        {p.id}
+                      </a>
+                    </span>
+                  )
+                })}
               </p>
             </div>
           </div>
