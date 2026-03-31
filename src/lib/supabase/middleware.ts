@@ -21,15 +21,16 @@ const SECTION_ROUTES: Record<string, string> = {
   '/packages/seo': 'seo',
   '/packages': 'productos',
   '/rendimiento': 'rendimiento',
+  '/vendedores': 'vendedores',
 }
 
 // Role permissions (must match client-side config)
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote'],
   diseño: ['productos', 'diseño', 'seo'],
-  ventas: ['productos', 'comercial'],
+  ventas: ['productos', 'comercial', 'vendedores'],
 }
 
 function isAdminRole(role: UserRole): boolean {

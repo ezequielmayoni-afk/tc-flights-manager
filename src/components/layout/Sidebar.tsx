@@ -52,11 +52,11 @@ const productosItems: NavItem[] = [
 
 // Role permissions - must match middleware
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote'],
   diseño: ['productos', 'diseño', 'seo'],
-  ventas: ['productos', 'comercial'],
+  ventas: ['productos', 'comercial', 'vendedores'],
 }
 
 // Static shell component - no hooks, no state, just static JSX
@@ -296,6 +296,22 @@ export function Sidebar() {
           >
             <BarChart3 className="h-5 w-5" />
             Rendimiento
+          </Link>
+        )}
+
+        {/* Vendedores */}
+        {canAccessSection('vendedores') && (
+          <Link
+            href="/vendedores"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              pathname === '/vendedores'
+                ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
+                : 'text-white/70 hover:bg-[#283593] hover:text-white'
+            )}
+          >
+            <Users className="h-5 w-5" />
+            Vendedores
           </Link>
         )}
 
