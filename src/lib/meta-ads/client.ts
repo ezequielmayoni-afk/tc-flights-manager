@@ -572,6 +572,50 @@ export class MetaAdsClient {
     return response.id
   }
 
+  /**
+   * Wait for a video to finish processing on Meta's side.
+   * Videos uploaded via /advideos need time to be encoded before they can be used in creatives.
+   * Returns the thumbnail URL once ready.
+   */
+  async waitForVideoReady(
+    videoId: string,
+    options: { maxWaitMs?: number; pollIntervalMs?: number } = {}
+  ): Promise<{ ready: boolean; thumbnailUrl?: string }> {
+    const { maxWaitMs = 120_000, pollIntervalMs = 3_000 } = options
+    const startTime = Date.now()
+
+    while (Date.now() - startTime < maxWaitMs) {
+      try {
+        const response = await this.request<{
+          status: { video_status: string }
+          thumbnails?: { data: Array<{ uri: string }> }
+        }>(`/${videoId}?fields=status,thumbnails`)
+
+        const videoStatus = response.status?.video_status
+        console.log(`[Meta API] Video ${videoId} status: ${videoStatus}`)
+
+        if (videoStatus === 'ready') {
+          const thumbnailUrl = response.thumbnails?.data?.[0]?.uri
+          return { ready: true, thumbnailUrl: thumbnailUrl || undefined }
+        }
+
+        if (videoStatus === 'error') {
+          console.error(`[Meta API] Video ${videoId} processing failed`)
+          return { ready: false }
+        }
+
+        // Still processing, wait and retry
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      } catch (error) {
+        console.warn(`[Meta API] Error checking video ${videoId} status:`, error)
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
+      }
+    }
+
+    console.warn(`[Meta API] Timed out waiting for video ${videoId} to be ready`)
+    return { ready: false }
+  }
+
   // ============================================
   // AD CREATIVE METHODS
   // ============================================
@@ -732,6 +776,9 @@ export class MetaAdsClient {
     // Video support (id-based)
     videoId4x5?: string        // Square/Feed video
     videoId9x16?: string       // Vertical/Stories video (optional)
+    // Video thumbnails (required for video creatives)
+    thumbnailUrl4x5?: string   // Thumbnail for 4x5 video
+    thumbnailUrl9x16?: string  // Thumbnail for 9x16 video
     copies: Array<{
       primary_text: string
       headline: string
@@ -780,13 +827,14 @@ export class MetaAdsClient {
 
     // Build media arrays - can have both images and videos
     const images: Array<{ hash: string; adlabels: Array<{ name: string }> }> = []
-    const videos: Array<{ video_id: string; adlabels: Array<{ name: string }> }> = []
+    const videos: Array<{ video_id: string; adlabels: Array<{ name: string }>; thumbnail_url?: string }> = []
 
     // 4x5 media (feed)
     if (is4x5Video) {
       videos.push({
         video_id: options.videoId4x5!,
-        adlabels: [{ name: feedLabel }]
+        adlabels: [{ name: feedLabel }],
+        ...(options.thumbnailUrl4x5 && { thumbnail_url: options.thumbnailUrl4x5 }),
       })
     } else if (options.imageHash4x5) {
       images.push({
@@ -799,7 +847,8 @@ export class MetaAdsClient {
     if (is9x16Video) {
       videos.push({
         video_id: options.videoId9x16!,
-        adlabels: [{ name: storiesLabel }]
+        adlabels: [{ name: storiesLabel }],
+        ...(options.thumbnailUrl9x16 && { thumbnail_url: options.thumbnailUrl9x16 }),
       })
     } else if (options.imageHash9x16) {
       images.push({

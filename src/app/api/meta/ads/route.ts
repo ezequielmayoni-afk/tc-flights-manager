@@ -281,6 +281,38 @@ export async function POST(request: NextRequest) {
                   step: `Creating ad creative for V${variant} (${creative9x16 ? '4x5 + 9x16' : '4x5 only'})`,
                 })
 
+                // Wait for video processing if needed and get thumbnails
+                let thumbnailUrl4x5: string | undefined
+                let thumbnailUrl9x16: string | undefined
+
+                if (creative4x5.meta_video_id) {
+                  const result4x5 = await metaClient.waitForVideoReady(creative4x5.meta_video_id)
+                  if (!result4x5.ready) {
+                    sendEvent('error', {
+                      package_id,
+                      creative_variant: variant,
+                      error: 'Video 4x5 failed to process on Meta',
+                    })
+                    totalErrors++
+                    continue
+                  }
+                  thumbnailUrl4x5 = result4x5.thumbnailUrl
+                }
+
+                if (creative9x16?.meta_video_id) {
+                  const result9x16 = await metaClient.waitForVideoReady(creative9x16.meta_video_id)
+                  if (!result9x16.ready) {
+                    sendEvent('error', {
+                      package_id,
+                      creative_variant: variant,
+                      error: 'Video 9x16 failed to process on Meta',
+                    })
+                    totalErrors++
+                    continue
+                  }
+                  thumbnailUrl9x16 = result9x16.thumbnailUrl
+                }
+
                 // Create the ad creative with placement customization
                 const adCreativeName = `${pkg.title} - ${pkg.tc_package_id} - V${variant}`
 
@@ -290,6 +322,8 @@ export async function POST(request: NextRequest) {
                   imageHash9x16: creative9x16?.meta_image_hash,
                   videoId4x5: creative4x5.meta_video_id,
                   videoId9x16: creative9x16?.meta_video_id,
+                  thumbnailUrl4x5,
+                  thumbnailUrl9x16,
                   copies: copyVariations,
                   waMessageTemplate,
                   tcPackageId: pkg.tc_package_id,

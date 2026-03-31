@@ -323,6 +323,48 @@ export async function POST(request: NextRequest) {
                   continue
                 }
 
+                // Wait for video processing if we have videos
+                let thumbnailUrl4x5: string | undefined
+                let thumbnailUrl9x16: string | undefined
+
+                if (videoId4x5) {
+                  sendEvent('updating', {
+                    package_id,
+                    variant: ad.variant,
+                    step: `Waiting for 4x5 video to finish processing...`,
+                  })
+                  const result4x5 = await metaClient.waitForVideoReady(videoId4x5)
+                  if (!result4x5.ready) {
+                    sendEvent('error', {
+                      package_id,
+                      variant: ad.variant,
+                      error: 'Video 4x5 failed to process on Meta',
+                    })
+                    totalErrors++
+                    continue
+                  }
+                  thumbnailUrl4x5 = result4x5.thumbnailUrl
+                }
+
+                if (videoId9x16) {
+                  sendEvent('updating', {
+                    package_id,
+                    variant: ad.variant,
+                    step: `Waiting for 9x16 video to finish processing...`,
+                  })
+                  const result9x16 = await metaClient.waitForVideoReady(videoId9x16)
+                  if (!result9x16.ready) {
+                    sendEvent('error', {
+                      package_id,
+                      variant: ad.variant,
+                      error: 'Video 9x16 failed to process on Meta',
+                    })
+                    totalErrors++
+                    continue
+                  }
+                  thumbnailUrl9x16 = result9x16.thumbnailUrl
+                }
+
                 sendEvent('updating', {
                   package_id,
                   variant: ad.variant,
@@ -340,6 +382,9 @@ export async function POST(request: NextRequest) {
                   // Video parameters (only passed if we have videos)
                   videoId4x5: videoId4x5,
                   videoId9x16: videoId9x16,
+                  // Video thumbnails
+                  thumbnailUrl4x5,
+                  thumbnailUrl9x16,
                   copies: copyVariations,
                   waMessageTemplate,
                   tcPackageId: pkg.tc_package_id,
