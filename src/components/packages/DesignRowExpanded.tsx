@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Upload, X, Check, ExternalLink, Play, RefreshCw } from 'lucide-react'
+import { Loader2, Upload, X, Check, ExternalLink, Play, RefreshCw, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { getVariantLabel } from '@/lib/creatives/variants'
 
 type AspectRatio = '4x5' | '9x16'
 
@@ -38,15 +39,19 @@ interface DesignRowExpandedProps {
   onCreativesChange?: (count: number) => void
 }
 
-const VARIANTS = [1, 2, 3, 4, 5]
+const BASE_VARIANTS = [1, 2, 3, 4, 5]
 const ASPECT_RATIOS: { key: AspectRatio; label: string }[] = [
   { key: '4x5', label: '4:5' },
   { key: '9x16', label: '9:16' },
 ]
 
 export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, requestedVariants, onCreativesChange }: DesignRowExpandedProps) {
-  // Use requested variants if provided, otherwise show all
-  const displayVariants = requestedVariants && requestedVariants.length > 0 ? requestedVariants.sort((a, b) => a - b) : VARIANTS
+  const [extraVariants, setExtraVariants] = useState<number[]>([])
+  // Use requested variants if provided, otherwise show all (base + extras from Drive)
+  const allVariants = requestedVariants && requestedVariants.length > 0
+    ? requestedVariants.sort((a, b) => a - b)
+    : [...new Set([...BASE_VARIANTS, ...extraVariants])].sort((a, b) => a - b)
+  const displayVariants = allVariants
   const [creatives, setCreatives] = useState<Record<number, VariantCreatives>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -83,6 +88,12 @@ export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, reques
       }
       setCreatives(grouped)
 
+      // Expand variants list if Drive has variants beyond base 5
+      const driveVariants = Object.keys(grouped).map(Number).filter(v => v > 5)
+      if (driveVariants.length > 0) {
+        setExtraVariants(driveVariants)
+      }
+
       // Notify parent of creative count
       if (onCreativesChangeRef.current) {
         onCreativesChangeRef.current(data.creatives?.length || 0)
@@ -100,9 +111,9 @@ export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, reques
     }
   }, [packageId])
 
-  useEffect(() => {
-    loadCreatives()
-  }, [loadCreatives])
+  // Load creatives once on mount (packageId is stable)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadCreatives() }, [packageId])
 
   useEffect(() => {
     return () => {

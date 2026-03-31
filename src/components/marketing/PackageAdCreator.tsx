@@ -66,6 +66,8 @@ interface PackageAdCreatorProps {
   onUpdate?: () => void
 }
 
+import { getVariantLabel } from '@/lib/creatives/variants'
+
 const VARIANT_LABELS: Record<number, { name: string; focus: string }> = {
   1: { name: 'Precio/Oferta', focus: 'Urgencia y ahorro' },
   2: { name: 'Experiencia', focus: 'Emocional' },
@@ -641,7 +643,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
                           Cada anuncio tendrá los {copies.length || 5} copys como variaciones internas.
                         </div>
                       )}
-                      {[1, 2, 3, 4, 5].map(variant => {
+                      {[...new Set(creatives.map(c => c.variant))].sort((a, b) => a - b).map(variant => {
                         const variantCreatives = getCreativesByVariant(variant)
                         if (variantCreatives.length === 0) return null
                         const isUploaded = variantCreatives.some(c => c.upload_status === 'uploaded')
@@ -660,7 +662,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
                                 V{variant}
                               </Badge>
                               <span className="text-xs font-medium">
-                                {VARIANT_LABELS[variant]?.name}
+                                {VARIANT_LABELS[variant]?.name || getVariantLabel(variant)}
                               </span>
                               {isUploaded && (
                                 <Badge variant="secondary" className="text-xs text-green-600">
@@ -788,7 +790,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
                               <div className="flex items-center gap-2 mb-2">
                                 <Badge variant="outline" className="text-xs">Copy {copy.variant}</Badge>
                                 <span className="text-xs font-medium">
-                                  {VARIANT_LABELS[copy.variant]?.name}
+                                  {VARIANT_LABELS[copy.variant]?.name || getVariantLabel(copy.variant)}
                                 </span>
                               </div>
 

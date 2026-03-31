@@ -38,6 +38,7 @@ export default async function MarketingPage() {
       creative_update_needed,
       creative_update_reason,
       price_at_creative_creation,
+      original_price_per_pax,
       created_at,
       meta_campaign_id,
       meta_adset_ids,

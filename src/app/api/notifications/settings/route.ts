@@ -37,7 +37,7 @@ export async function GET() {
         notify_creative_completed: true,
         notify_ad_underperforming: true,
         notify_needs_manual_quote: true,
-        price_change_threshold_pct: 5.0,
+        price_change_threshold_pct: 10.0,
         ctr_threshold_pct: 0.5,
         cpl_threshold: 10.0,
       }), {

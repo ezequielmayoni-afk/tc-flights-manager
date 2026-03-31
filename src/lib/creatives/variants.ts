@@ -63,6 +63,29 @@ export const VARIANTS: Record<VariantNumber, VariantDefinition> = {
 }
 
 /**
+ * Base variant numbers (the 5 strategic variants used by AI generation)
+ */
+export const BASE_VARIANTS: number[] = [1, 2, 3, 4, 5]
+
+/**
+ * Labels for all variants. Base 5 have strategic names, extras are generic.
+ */
+export const VARIANT_LABELS: Record<number, string> = {
+  1: 'Precio/Oferta',
+  2: 'Experiencia',
+  3: 'Destino',
+  4: 'Conveniencia',
+  5: 'Escasez',
+}
+
+/**
+ * Get label for any variant number
+ */
+export function getVariantLabel(n: number): string {
+  return VARIANT_LABELS[n] || `Extra ${n}`
+}
+
+/**
  * Obtener variante por número
  */
 export function getVariant(number: VariantNumber): VariantDefinition {

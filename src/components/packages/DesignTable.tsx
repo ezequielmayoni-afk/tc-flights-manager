@@ -160,16 +160,19 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
 
   // Debounce ref for realtime updates
   const refreshTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const routerRef = useRef(router)
+  routerRef.current = router
 
-  // Debounced refresh function - prevents multiple rapid refreshes
+  // Debounced refresh function - stable reference, no deps
   const debouncedRefresh = useCallback(() => {
     if (refreshTimeoutRef.current) {
       clearTimeout(refreshTimeoutRef.current)
     }
     refreshTimeoutRef.current = setTimeout(() => {
-      router.refresh()
-    }, 500) // 500ms debounce
-  }, [router])
+      routerRef.current.refresh()
+    }, 2000) // 2s debounce to prevent cascading refreshes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Memoized date calculations for all packages (avoids recalculating on every render)
   const packageDateInfo = useMemo(() => {
@@ -327,7 +330,7 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
     }
   }
 
-  // Realtime subscription with debouncing
+  // Realtime subscription - stable, runs once on mount
   useEffect(() => {
     const supabase = createClient()
 
@@ -341,7 +344,6 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
           table: 'packages',
         },
         () => {
-          // Use debounced refresh to prevent cascading refreshes
           debouncedRefresh()
         }
       )
@@ -349,12 +351,12 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
 
     return () => {
       supabase.removeChannel(channel)
-      // Clean up any pending timeout on unmount
       if (refreshTimeoutRef.current) {
         clearTimeout(refreshTimeoutRef.current)
       }
     }
-  }, [debouncedRefresh])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {

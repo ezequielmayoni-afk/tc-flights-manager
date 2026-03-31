@@ -12,7 +12,7 @@ import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 
 
-// Allow large file uploads (videos) - 500MB max
+// Allow large file uploads (videos) - no size limit
 export const maxDuration = 300 // 5 minutes timeout for large uploads
 
 // Use Node.js runtime for large file handling
@@ -63,7 +63,6 @@ async function parseMultipartForm(request: NextRequest): Promise<ParsedFormData>
   return new Promise((resolve, reject) => {
     const busboy = Busboy({
       headers: { 'content-type': contentType },
-      limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit
     })
 
     const fields: Record<string, string> = {}
@@ -89,10 +88,6 @@ async function parseMultipartForm(request: NextRequest): Promise<ParsedFormData>
       file.on('end', () => {
         fileBuffer = Buffer.concat(chunks)
         console.log('[Creatives] File parsed, size:', fileBuffer.length)
-      })
-
-      file.on('limit', () => {
-        reject(new Error('File size exceeds 500MB limit'))
       })
 
       file.on('error', (err) => {

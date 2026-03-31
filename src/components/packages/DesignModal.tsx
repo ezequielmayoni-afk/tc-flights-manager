@@ -9,8 +9,9 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Upload, X, Check, ExternalLink, Trash2, Play, FolderOpen } from 'lucide-react'
+import { Loader2, Upload, X, Check, ExternalLink, Trash2, Play, FolderOpen, Plus } from 'lucide-react'
 import { toast } from 'sonner'
+import { getVariantLabel } from '@/lib/creatives/variants'
 
 type AspectRatio = '4x5' | '9x16'
 
@@ -49,14 +50,7 @@ interface DesignModalProps {
   onOpenChange: (open: boolean) => void
 }
 
-const VARIANTS = [1, 2, 3, 4, 5]
-const VARIANT_LABELS: Record<number, string> = {
-  1: 'Precio/Oferta',
-  2: 'Experiencia',
-  3: 'Destino',
-  4: 'Conveniencia',
-  5: 'Escasez',
-}
+const BASE_VARIANTS = [1, 2, 3, 4, 5]
 const ASPECT_RATIOS: { key: AspectRatio; label: string }[] = [
   { key: '4x5', label: '4:5' },
   { key: '9x16', label: '9:16' },
@@ -69,7 +63,13 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
   const [pendingFiles, setPendingFiles] = useState<Record<string, PendingFile>>({})
   const [uploadProgress, setUploadProgress] = useState<Record<string, UploadProgress>>({})
   const [isUploading, setIsUploading] = useState(false)
+  const [variants, setVariants] = useState<number[]>(BASE_VARIANTS)
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({})
+
+  const addVariant = () => {
+    const nextVariant = Math.max(...variants) + 1
+    setVariants(prev => [...prev, nextVariant])
+  }
 
   const loadCreatives = useCallback(async () => {
     if (!packageId) return
@@ -88,6 +88,14 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
           grouped[creative.variant][creative.aspectRatio] = creative
         }
         setCreatives(grouped)
+
+        // Expand variants list if Drive has variants beyond base 5
+        const driveVariants = Object.keys(grouped).map(Number)
+        const maxDriveVariant = driveVariants.length > 0 ? Math.max(...driveVariants) : 5
+        if (maxDriveVariant > 5) {
+          const allVariants = Array.from({ length: maxDriveVariant }, (_, i) => i + 1)
+          setVariants(allVariants)
+        }
       }
 
       if (data.folders) {
@@ -100,13 +108,15 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
     }
   }, [packageId])
 
+  // Load creatives when modal opens (not on every render)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (open) {
       loadCreatives()
       setPendingFiles({})
       setUploadProgress({})
     }
-  }, [open, loadCreatives])
+  }, [open])
 
   useEffect(() => {
     return () => {
@@ -308,9 +318,9 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
 
   const getCompletionCount = () => {
     let completed = 0
-    const total = VARIANTS.length * ASPECT_RATIOS.length
+    const total = variants.length * ASPECT_RATIOS.length
 
-    for (const variant of VARIANTS) {
+    for (const variant of variants) {
       for (const ar of ASPECT_RATIOS) {
         if (creatives[variant]?.[ar.key]) {
           completed++
@@ -466,12 +476,12 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
           )}
 
           {/* Horizontal layout: all variants side by side */}
-          <div className="flex gap-4 justify-center">
-            {VARIANTS.map((variant) => (
+          <div className="flex gap-4 justify-center flex-wrap">
+            {variants.map((variant) => (
               <div key={variant} className="flex flex-col items-center gap-2">
                 <div className="text-center">
                   <span className="text-sm font-medium text-muted-foreground">V{variant}</span>
-                  <p className="text-[10px] text-muted-foreground/70">{VARIANT_LABELS[variant]}</p>
+                  <p className="text-[10px] text-muted-foreground/70">{getVariantLabel(variant)}</p>
                   {folders.variantFolders[variant] && (
                     <a
                       href={`https://drive.google.com/drive/folders/${folders.variantFolders[variant]}`}
@@ -493,6 +503,20 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
                 </div>
               </div>
             ))}
+            {/* Add variant button */}
+            <div className="flex flex-col items-center gap-2">
+              <div className="text-center">
+                <span className="text-sm font-medium text-transparent">+</span>
+                <p className="text-[10px] text-transparent">add</p>
+              </div>
+              <button
+                onClick={addVariant}
+                className="w-[100px] h-[268px] border-2 border-dashed rounded-lg flex flex-col items-center justify-center hover:border-primary hover:bg-white transition-colors border-gray-300 bg-white cursor-pointer"
+              >
+                <Plus className="h-6 w-6 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground mt-1">Agregar V{Math.max(...variants) + 1}</span>
+              </button>
+            </div>
           </div>
 
           {/* Legend */}

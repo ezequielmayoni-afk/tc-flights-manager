@@ -73,7 +73,7 @@ export function AdCreationModal({ package: pkg, open, onClose }: AdCreationModal
   const [selectedAdSet, setSelectedAdSet] = useState<string>('')
   const [copies, setCopies] = useState<CopyVariant[]>([])
   const [existingAds, setExistingAds] = useState<ExistingAd[]>([])
-  const [selectedVariants, setSelectedVariants] = useState<Set<number>>(new Set([1, 2, 3, 4, 5]))
+  const [selectedVariants, setSelectedVariants] = useState<Set<number>>(new Set())
   const [isLoading, setIsLoading] = useState(false)
   const [creationProgress, setCreationProgress] = useState<string[]>([])
   const [creationResult, setCreationResult] = useState<{ created: number; errors: number } | null>(null)
@@ -94,18 +94,29 @@ export function AdCreationModal({ package: pkg, open, onClose }: AdCreationModal
       setCampaigns(campaignsData.campaigns || [])
 
       // Load copies for this package
+      let loadedCopies: CopyVariant[] = []
       const copiesRes = await fetch(`/api/meta/copy/${pkg.id}`)
       if (copiesRes.ok) {
         const copiesData = await copiesRes.json()
-        setCopies(copiesData.copies || [])
+        loadedCopies = copiesData.copies || []
+        setCopies(loadedCopies)
       }
 
       // Load existing ads for this package
+      let loadedAds: ExistingAd[] = []
       const adsRes = await fetch(`/api/meta/ads?package_id=${pkg.id}`)
       if (adsRes.ok) {
         const adsData = await adsRes.json()
-        setExistingAds(adsData.ads || [])
+        loadedAds = adsData.ads || []
+        setExistingAds(loadedAds)
       }
+
+      // Select all available variants (from copies + existing ads)
+      const allVars = [...new Set([
+        ...loadedCopies.map(c => c.variant),
+        ...loadedAds.map(a => a.variant),
+      ])]
+      setSelectedVariants(new Set(allVars))
     } catch (error) {
       toast.error('Error cargando datos')
     } finally {
@@ -277,7 +288,7 @@ export function AdCreationModal({ package: pkg, open, onClose }: AdCreationModal
       <div className="space-y-2">
         <label className="text-sm font-medium">Variantes a crear</label>
         <div className="space-y-2">
-          {[1, 2, 3, 4, 5].map((variant) => {
+          {[...new Set([...copies.map(c => c.variant), ...existingAds.map(a => a.variant)])].sort((a, b) => a - b).map((variant) => {
             const copy = copies.find((c) => c.variant === variant)
             const existingAd = existingAds.find((a) => a.variant === variant)
             return (

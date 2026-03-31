@@ -547,8 +547,13 @@ export class MetaAdsClient {
     filename: string,
     onProgress?: (progress: number) => void
   ): Promise<string> {
-    // For videos, we need to use the resumable upload API for large files
-    // or direct upload for smaller files (<100MB)
+    const fileSizeMB = videoBuffer.length / (1024 * 1024)
+
+    // Use chunked upload for files > 80MB, direct upload for smaller
+    if (fileSizeMB > 80) {
+      console.log(`[Meta API] Video ${filename} is ${fileSizeMB.toFixed(1)}MB, using chunked upload`)
+      return this.uploadVideoChunked(videoBuffer, filename, onProgress)
+    }
 
     const formData = new FormData()
     const blob = new Blob([new Uint8Array(videoBuffer)], { type: 'video/mp4' })
@@ -564,12 +569,96 @@ export class MetaAdsClient {
       throw new Error('Failed to get video ID from Meta API response')
     }
 
-    // If progress callback provided, call it with 100% as video is uploaded
-    if (onProgress) {
-      onProgress(100)
+    if (onProgress) onProgress(100)
+    return response.id
+  }
+
+  /**
+   * Upload large videos using Meta's chunked upload protocol.
+   * 1. Start session → get upload_session_id
+   * 2. Upload chunks (4MB each)
+   * 3. Finish session → get video_id
+   */
+  private async uploadVideoChunked(
+    videoBuffer: Buffer,
+    filename: string,
+    onProgress?: (progress: number) => void
+  ): Promise<string> {
+    const fileSize = videoBuffer.length
+    const CHUNK_SIZE = 4 * 1024 * 1024 // 4MB chunks
+
+    // Step 1: Start upload session
+    const startForm = new FormData()
+    startForm.append('upload_phase', 'start')
+    startForm.append('file_size', String(fileSize))
+    startForm.append('access_token', this.accessToken)
+
+    const startRes = await fetch(
+      `${META_API_BASE_URL}/${this.adAccountId}/advideos`,
+      { method: 'POST', body: startForm }
+    )
+    if (!startRes.ok) {
+      const err = await startRes.json().catch(() => ({}))
+      throw new Error(`Chunked upload start failed: ${err.error?.message || startRes.statusText}`)
+    }
+    const { upload_session_id, video_id } = await startRes.json() as { upload_session_id: string; video_id: string }
+    console.log(`[Meta API] Chunked upload started: session=${upload_session_id}, video_id=${video_id}`)
+
+    // Step 2: Upload chunks
+    let offset = 0
+    while (offset < fileSize) {
+      const end = Math.min(offset + CHUNK_SIZE, fileSize)
+      const chunk = videoBuffer.subarray(offset, end)
+
+      const chunkForm = new FormData()
+      chunkForm.append('upload_phase', 'transfer')
+      chunkForm.append('upload_session_id', upload_session_id)
+      chunkForm.append('start_offset', String(offset))
+      chunkForm.append('video_file_chunk', new Blob([new Uint8Array(chunk)], { type: 'video/mp4' }), filename)
+      chunkForm.append('access_token', this.accessToken)
+
+      const chunkRes = await fetch(
+        `${META_API_BASE_URL}/${this.adAccountId}/advideos`,
+        { method: 'POST', body: chunkForm }
+      )
+      if (!chunkRes.ok) {
+        const err = await chunkRes.json().catch(() => ({}))
+        throw new Error(`Chunk upload failed at offset ${offset}: ${err.error?.message || chunkRes.statusText}`)
+      }
+
+      const chunkData = await chunkRes.json() as { start_offset: string }
+      offset = parseInt(chunkData.start_offset, 10)
+
+      if (onProgress) {
+        onProgress(Math.round((offset / fileSize) * 100))
+      }
+      console.log(`[Meta API] Chunk uploaded: ${Math.round((offset / fileSize) * 100)}%`)
     }
 
-    return response.id
+    // Step 3: Finish upload
+    const finishForm = new FormData()
+    finishForm.append('upload_phase', 'finish')
+    finishForm.append('upload_session_id', upload_session_id)
+    finishForm.append('title', filename)
+    finishForm.append('access_token', this.accessToken)
+
+    const finishRes = await fetch(
+      `${META_API_BASE_URL}/${this.adAccountId}/advideos`,
+      { method: 'POST', body: finishForm }
+    )
+    if (!finishRes.ok) {
+      const err = await finishRes.json().catch(() => ({}))
+      throw new Error(`Chunked upload finish failed: ${err.error?.message || finishRes.statusText}`)
+    }
+
+    const finishData = await finishRes.json() as { success: boolean }
+    if (!finishData.success) {
+      throw new Error('Chunked upload finish returned success=false')
+    }
+
+    console.log(`[Meta API] Chunked upload complete: video_id=${video_id}`)
+    if (onProgress) onProgress(100)
+    return video_id
   }
 
   /**
@@ -810,16 +899,26 @@ export class MetaAdsClient {
 
     // Build bodies with THE SAME adlabel (for rotation)
     // Format: headline + 2 line breaks + primary_text
-    const bodies = options.copies.map((copy) => ({
-      text: `${copy.headline}\n\n${copy.primary_text}`,
-      adlabels: [{ name: bodyLabel }]
-    }))
+    // Deduplicate: Meta rejects duplicate text values in asset_feed_spec
+    const seenBodies = new Set<string>()
+    const bodies: Array<{ text: string; adlabels: Array<{ name: string }> }> = []
+    for (const copy of options.copies) {
+      const text = `${copy.headline}\n\n${copy.primary_text}`
+      if (!seenBodies.has(text)) {
+        seenBodies.add(text)
+        bodies.push({ text, adlabels: [{ name: bodyLabel }] })
+      }
+    }
 
     // Build titles with THE SAME adlabel (for rotation)
-    const titles = options.copies.map((copy) => ({
-      text: copy.headline,
-      adlabels: [{ name: titleLabel }]
-    }))
+    const seenTitles = new Set<string>()
+    const titles: Array<{ text: string; adlabels: Array<{ name: string }> }> = []
+    for (const copy of options.copies) {
+      if (!seenTitles.has(copy.headline)) {
+        seenTitles.add(copy.headline)
+        titles.push({ text: copy.headline, adlabels: [{ name: titleLabel }] })
+      }
+    }
 
     // Labels for media (feed and stories) - use appropriate prefix based on media type
     const feedLabel = generateLabel(is4x5Video ? 'vid_feed' : 'img_feed', 0)
@@ -1013,7 +1112,7 @@ export class MetaAdsClient {
     created_time: string
     preview_text?: { body?: string; title?: string; description?: string }
   }>> {
-    const fields = 'id,name,status,effective_status,creative{id,thumbnail_url,image_url,effective_object_story_spec,asset_feed_spec},created_time'
+    const fields = 'id,name,status,effective_status,creative{id,thumbnail_url,image_url,object_story_spec,asset_feed_spec},created_time'
     const response = await this.request<{
       data: Array<{
         id: string
@@ -1024,7 +1123,7 @@ export class MetaAdsClient {
           id: string
           thumbnail_url?: string
           image_url?: string
-          effective_object_story_spec?: {
+          object_story_spec?: {
             link_data?: { message?: string; name?: string; description?: string }
             video_data?: { message?: string; title?: string }
           }
@@ -1051,9 +1150,9 @@ export class MetaAdsClient {
             description: creative.asset_feed_spec.descriptions?.[0]?.text,
           }
         }
-        // Fallback to effective_object_story_spec (single creative)
-        else if (creative.effective_object_story_spec) {
-          const spec = creative.effective_object_story_spec
+        // Fallback to object_story_spec (single creative)
+        else if (creative.object_story_spec) {
+          const spec = creative.object_story_spec
           previewText = {
             body: spec.link_data?.message || spec.video_data?.message,
             title: spec.link_data?.name || spec.video_data?.title,

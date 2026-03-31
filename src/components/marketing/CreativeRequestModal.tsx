@@ -62,13 +62,7 @@ const PRIORITY_OPTIONS = [
   { value: 'low', label: 'Baja', description: 'Puede esperar' },
 ]
 
-const VARIANT_LABELS: Record<number, string> = {
-  1: 'Precio/Oferta',
-  2: 'Experiencia',
-  3: 'Destino',
-  4: 'Conveniencia',
-  5: 'Escasez',
-}
+import { getVariantLabel } from '@/lib/creatives/variants'
 
 export function CreativeRequestModal({
   open,
@@ -115,11 +109,17 @@ export function CreativeRequestModal({
     )
   }
 
+  // Derive available variants from creatives
+  const availableVariants = [...new Set([
+    1, 2, 3, 4, 5,
+    ...driveCreatives.map(c => c.variant),
+  ])].sort((a, b) => a - b)
+
   const selectAllVariants = () => {
-    if (selectedVariants.length === 5) {
+    if (selectedVariants.length === availableVariants.length) {
       setSelectedVariants([])
     } else {
-      setSelectedVariants([1, 2, 3, 4, 5])
+      setSelectedVariants([...availableVariants])
     }
   }
 
@@ -230,7 +230,7 @@ export function CreativeRequestModal({
                 onClick={selectAllVariants}
                 className="text-xs text-blue-600 hover:text-blue-800"
               >
-                {selectedVariants.length === 5 ? 'Deseleccionar todas' : 'Seleccionar todas'}
+                {selectedVariants.length === availableVariants.length ? 'Deseleccionar todas' : 'Seleccionar todas'}
               </button>
             </div>
 
@@ -240,7 +240,7 @@ export function CreativeRequestModal({
               </div>
             ) : (
               <div className="space-y-2">
-                {[1, 2, 3, 4, 5].map(variant => {
+                {availableVariants.map(variant => {
                   const isSelected = selectedVariants.includes(variant)
                   const creative4x5 = getCreative(variant, '4x5')
                   const creative9x16 = getCreative(variant, '9x16')
@@ -266,7 +266,7 @@ export function CreativeRequestModal({
                         <div className="flex items-center gap-2">
                           <span className="font-medium text-sm">V{variant}</span>
                           <span className="text-xs text-muted-foreground">
-                            {VARIANT_LABELS[variant]}
+                            {getVariantLabel(variant)}
                           </span>
                           {isSelected && (
                             <span className="text-[10px] bg-blue-500 text-white px-1.5 py-0.5 rounded">

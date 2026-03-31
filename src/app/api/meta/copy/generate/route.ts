@@ -119,8 +119,8 @@ export async function POST(request: NextRequest) {
 
     // Validate requested variants if provided
     const variantsToSave = requestedVariants && requestedVariants.length > 0
-      ? requestedVariants.filter(v => v >= 1 && v <= 5)
-      : [1, 2, 3, 4, 5]  // Default: all variants
+      ? requestedVariants.filter(v => v >= 1)
+      : [1, 2, 3, 4, 5]  // Default: base variants (extras must be explicitly requested)
 
     // Get prompt template
     const { data: configData } = await db
@@ -234,15 +234,21 @@ export async function POST(request: NextRequest) {
         }
 
         // Build prompt
-        const prompt = buildPrompt(configData.prompt_template, packageData)
+        let prompt = buildPrompt(configData.prompt_template, packageData)
 
-        console.log(`[Copy Generate] Generating copy for package ${packageId}...`)
+        // If extra variants (>5) are requested, add instruction to generate them
+        const extraVariants = variantsToSave.filter(v => v > 5)
+        if (extraVariants.length > 0) {
+          prompt += `\n\nADEMAS de las variantes base, genera también las siguientes variantes extra con enfoques creativos diferentes (mezcla de los anteriores enfoques, nuevos angulos, otra emocion): ${extraVariants.map(v => `Variante ${v}`).join(', ')}. Usa el mismo formato JSON para cada una.`
+        }
+
+        console.log(`[Copy Generate] Generating copy for package ${packageId} (variants: ${variantsToSave.join(', ')})...`)
 
         // Call OpenAI
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
           temperature: 0.7,
-          max_tokens: 2000,
+          max_tokens: extraVariants.length > 0 ? 3000 : 2000,
           messages: [
             {
               role: 'system',

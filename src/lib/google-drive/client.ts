@@ -186,6 +186,96 @@ export async function uploadCreative(
   }
 }
 
+/**
+ * Create a resumable upload session URL for direct browser upload to Google Drive.
+ * Returns the session URI that the client can PUT file data to directly.
+ */
+export async function createResumableUploadSession(
+  variantFolderId: string,
+  aspectRatio: AspectRatio,
+  mimeType: string,
+  originalFileName?: string
+): Promise<{ uploadUrl: string; fileName: string }> {
+  const drive = getDrive()
+  const auth = getAuth()
+  await auth.authorize()
+  const accessToken = (await auth.getAccessToken()).token
+
+  // Get extension from mime type or original filename
+  let extension = getExtensionFromMimeType(mimeType)
+  if (originalFileName) {
+    const extFromName = originalFileName.split('.').pop()?.toLowerCase()
+    if (extFromName) extension = extFromName
+  }
+  const fileName = `${aspectRatio}.${extension}`
+
+  // Delete existing files with same aspect ratio
+  const existing = await drive.files.list({
+    q: `name contains '${aspectRatio}.' and '${variantFolderId}' in parents and trashed=false`,
+    fields: 'files(id, name)',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+  })
+  if (existing.data.files && existing.data.files.length > 0) {
+    for (const existingFile of existing.data.files) {
+      await drive.files.delete({ fileId: existingFile.id!, supportsAllDrives: true })
+    }
+  }
+
+  // Initiate resumable upload session via Google Drive API
+  const res = await fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: fileName,
+        parents: [variantFolderId],
+      }),
+    }
+  )
+
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Failed to create resumable upload session: ${err}`)
+  }
+
+  const uploadUrl = res.headers.get('Location')
+  if (!uploadUrl) {
+    throw new Error('No upload URL returned from Google Drive')
+  }
+
+  return { uploadUrl, fileName }
+}
+
+/**
+ * Finalize an uploaded file: set public permissions and return file info.
+ */
+export async function finalizeUpload(fileId: string): Promise<{ id: string; webViewLink: string }> {
+  const drive = getDrive()
+
+  // Make publicly viewable
+  await drive.permissions.create({
+    fileId,
+    requestBody: { role: 'reader', type: 'anyone' },
+    supportsAllDrives: true,
+  })
+
+  const file = await drive.files.get({
+    fileId,
+    fields: 'id, webViewLink',
+    supportsAllDrives: true,
+  })
+
+  return {
+    id: file.data.id!,
+    webViewLink: file.data.webViewLink!,
+  }
+}
+
 export type PackageCreativesResult = {
   creatives: {
     variant: number

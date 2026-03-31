@@ -265,7 +265,12 @@ export function UploadToMetaModal({
   const getMetaThumbnail = (hash: string) =>
     metaImageUrls[hash] || ''
 
-  const variants = [1, 2, 3, 4, 5]
+  // Derive variants from available creatives (base 5 + any extras from Drive)
+  const allCreativeVariants = [
+    ...driveCreatives.map(c => c.variant),
+    ...metaCreatives.map(c => c.variant),
+  ]
+  const variants = [...new Set([1, 2, 3, 4, 5, ...allCreativeVariants])].sort((a, b) => a - b)
 
   // Summary counts
   const metaCount = metaCreatives.length

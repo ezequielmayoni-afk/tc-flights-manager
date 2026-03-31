@@ -42,6 +42,7 @@ import {
   ArrowDown,
   ArrowUpDown,
   Link2,
+  X,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -235,6 +236,7 @@ interface Package {
   creative_update_needed?: boolean
   creative_update_reason?: string | null
   price_at_creative_creation?: number | null
+  original_price_per_pax?: number | null
   created_at?: string | null
   meta_campaign_id?: string | null
   meta_adset_ids?: string | null
@@ -290,6 +292,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [adsetFilter, setAdsetFilter] = useState<string>('all')
   const [pendingRequests, setPendingRequests] = useState<Record<number, number>>({}) // package_id -> request_id
   const [cancellingRequest, setCancellingRequest] = useState<Set<number>>(new Set())
+  const [dismissingUpdate, setDismissingUpdate] = useState<Set<number>>(new Set())
 
   // Column widths state
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS)
@@ -695,6 +698,29 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       toast.error('Error al cancelar la solicitud')
     } finally {
       setCancellingRequest(prev => {
+        const next = new Set(prev)
+        next.delete(packageId)
+        return next
+      })
+    }
+  }
+
+  const handleDismissUpdate = async (packageId: number) => {
+    setDismissingUpdate(prev => new Set(prev).add(packageId))
+    try {
+      const res = await fetch(`/api/packages/${packageId}/dismiss-update`, { method: 'POST' })
+      if (!res.ok) throw new Error('Error al descartar')
+
+      setPackages(prev =>
+        prev.map(p =>
+          p.id === packageId ? { ...p, creative_update_needed: false, creative_update_reason: null } : p
+        )
+      )
+      toast.success('Solicitud descartada')
+    } catch {
+      toast.error('Error al descartar la solicitud')
+    } finally {
+      setDismissingUpdate(prev => {
         const next = new Set(prev)
         next.delete(packageId)
         return next
@@ -1445,26 +1471,48 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                               Cancelar solicitud
                             </button>
                           ) : pkg.creative_update_needed ? (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setCreativeRequestPkg(pkg)
-                              }}
-                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 shrink-0 hover:bg-amber-200 transition-colors cursor-pointer"
-                              title="Click para solicitar nuevos creativos"
-                            >
-                              <AlertTriangle className="h-3 w-3 mr-0.5" />
-                              Solicitar
-                            </button>
+                            <span className="inline-flex items-center gap-1 shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setCreativeRequestPkg(pkg)
+                                }}
+                                className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-800 hover:bg-amber-200 transition-colors cursor-pointer"
+                                title="Click para solicitar nuevos creativos"
+                              >
+                                <AlertTriangle className="h-3 w-3 mr-0.5" />
+                                Solicitar
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDismissUpdate(pkg.id)
+                                }}
+                                disabled={dismissingUpdate.has(pkg.id)}
+                                className="inline-flex items-center p-0.5 rounded text-[10px] text-muted-foreground hover:bg-red-100 hover:text-red-600 transition-colors cursor-pointer disabled:opacity-50"
+                                title="Descartar — no necesita actualización"
+                              >
+                                {dismissingUpdate.has(pkg.id) ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <X className="h-3 w-3" />
+                                )}
+                              </button>
+                            </span>
                           ) : null}
                         </div>
                         <span className="text-xs text-muted-foreground">
                           {formatPrice(pkg.current_price_per_pax, pkg.currency)} · {pkg.nights_count}N
-                          {pkg.creative_update_needed && pkg.price_at_creative_creation && (
-                            <span className="text-amber-600 ml-1">
-                              (era {formatPrice(pkg.price_at_creative_creation, pkg.currency)})
-                            </span>
-                          )}
+                          {(() => {
+                            const oldPrice = pkg.price_at_creative_creation || pkg.original_price_per_pax
+                            if (!pkg.creative_update_needed || !oldPrice || oldPrice === pkg.current_price_per_pax) return null
+                            const pctChange = Math.round(((pkg.current_price_per_pax - oldPrice) / oldPrice) * 100)
+                            return (
+                              <span className="text-amber-600 ml-1">
+                                (era {formatPrice(oldPrice, pkg.currency)} · {pctChange > 0 ? '↑' : '↓'}{Math.abs(pctChange)}%)
+                              </span>
+                            )
+                          })()}
                         </span>
                       </div>
                     </TableCell>

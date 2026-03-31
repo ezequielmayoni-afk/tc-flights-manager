@@ -50,18 +50,6 @@ function validateCreativeFile(
   filename: string,
   expectedType: 'IMAGE' | 'VIDEO'
 ): FileValidation {
-  // Size limits
-  const maxImageSize = 30 * 1024 * 1024  // 30MB for images
-  const maxVideoSize = 4 * 1024 * 1024 * 1024  // 4GB for videos
-  const maxSize = expectedType === 'IMAGE' ? maxImageSize : maxVideoSize
-
-  if (buffer.length > maxSize) {
-    return {
-      valid: false,
-      error: `File too large: ${(buffer.length / 1024 / 1024).toFixed(2)}MB (max: ${maxSize / 1024 / 1024}MB)`
-    }
-  }
-
   if (buffer.length === 0) {
     return { valid: false, error: 'Empty file' }
   }
@@ -235,7 +223,7 @@ export async function getPackageCreatives(tcPackageId: number): Promise<DriveCre
     if (!variantMatch) continue
 
     const variant = parseInt(variantMatch[1], 10)
-    if (variant < 1 || variant > 5) continue
+    if (variant < 1) continue
 
     // List files in variant folder
     const filesResult = await drive.files.list({

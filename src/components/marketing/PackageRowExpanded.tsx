@@ -140,6 +140,7 @@ export function PackageRowExpanded({
   const [isSyncing, setIsSyncing] = useState(false)
   const [generatingCopy, setGeneratingCopy] = useState(false)
   const [uploadingCreatives, setUploadingCreatives] = useState(false)
+  const [uploadCreativesProgress, setUploadCreativesProgress] = useState({ current: 0, total: 0 })
   const [creatingAds, setCreatingAds] = useState(false)
   const [editingCopy, setEditingCopy] = useState<number | null>(null)
   const [savingCopy, setSavingCopy] = useState<number | null>(null)
@@ -510,16 +511,25 @@ export function PackageRowExpanded({
   }
 
   const handleUploadCreatives = async () => {
-    const pendingCreatives = creatives.filter(c => c.upload_status !== 'uploaded')
-    if (pendingCreatives.length === 0) {
+    // Get variants that need uploading: from meta_creatives DB (not uploaded) + Drive-only variants
+    const metaPending = creatives.filter(c => c.upload_status !== 'uploaded')
+    const driveOnlyVariants = [...new Set(driveCreatives.map(c => c.variant))]
+      .filter(v => !creatives.some(c => c.variant === v && c.upload_status === 'uploaded'))
+    const variants = [...new Set([...metaPending.map(c => c.variant), ...driveOnlyVariants])].sort((a, b) => a - b)
+
+    if (variants.length === 0) {
       toast.info('Todos los creativos ya estan subidos')
       return
     }
 
-    const variants = [...new Set(pendingCreatives.map(c => c.variant))]
+    // Count total creatives to upload (each variant can have 4x5 + 9x16)
+    const totalToUpload = variants.reduce((count, v) => {
+      return count + driveCreatives.filter(c => c.variant === v).length
+    }, 0)
 
     setUploadingCreatives(true)
-    setCreationProgress([`Subiendo ${pendingCreatives.length} creativos a Meta...`])
+    setUploadCreativesProgress({ current: 0, total: totalToUpload })
+    setCreationProgress([])
 
     try {
       const res = await fetch('/api/meta/creatives', {
@@ -540,6 +550,7 @@ export function PackageRowExpanded({
       const reader = res.body?.getReader()
       if (!reader) throw new Error('No response')
 
+      let uploadedCount = 0
       const decoder = new TextDecoder()
       while (true) {
         const { done, value } = await reader.read()
@@ -552,12 +563,16 @@ export function PackageRowExpanded({
           try {
             const data = JSON.parse(line.slice(6))
             if (data.type === 'progress') {
-              setCreationProgress(prev => [...prev, `V${data.data.variant} ${data.data.aspect_ratio}: ${data.data.status}`])
+              if (data.data.variant && data.data.status === 'uploaded') {
+                uploadedCount++
+                setUploadCreativesProgress({ current: uploadedCount, total: totalToUpload })
+              }
             } else if (data.type === 'complete') {
-              toast.success(`Subidos ${data.data.uploaded} creativos`)
+              setUploadCreativesProgress({ current: totalToUpload, total: totalToUpload })
+              toast.success(`Subidos ${data.data.uploaded} creativos a Meta`)
               await loadCreatives()
             } else if (data.type === 'error') {
-              toast.error(`Error V${data.data.variant}: ${data.data.error}`)
+              toast.error(`Error${data.data.variant ? ` V${data.data.variant}` : ''}: ${data.data.error}`)
             }
           } catch {
             // Ignore parse errors
@@ -752,11 +767,17 @@ export function PackageRowExpanded({
 
   // Select/deselect all variants
   const toggleSelectAll = () => {
-    if (selectedVariants.length === 5) {
+    const allVariants = [...new Set([
+      1, 2, 3, 4, 5,
+      ...existingAds.map(a => a.variant),
+      ...driveCreatives.map(c => c.variant),
+      ...creatives.map(c => c.variant),
+      ...copies.map(c => c.variant),
+    ])].sort((a, b) => a - b)
+    if (selectedVariants.length === allVariants.length) {
       setSelectedVariants([])
     } else {
-      const extraVariants = existingAds.map(a => a.variant).filter(v => v > 5)
-      setSelectedVariants([...new Set([1, 2, 3, 4, 5, ...extraVariants])])
+      setSelectedVariants(allVariants)
     }
   }
 
@@ -1013,11 +1034,13 @@ export function PackageRowExpanded({
               try {
                 const data = JSON.parse(line.slice(6))
                 if (data.type === 'progress') {
-                  setCreationProgress(prev => [...prev, `V${data.data.variant} ${data.data.aspect_ratio}: ${data.data.status}`])
+                  if (data.data.variant) {
+                    setCreationProgress(prev => [...prev, `V${data.data.variant} ${data.data.aspect_ratio}: ${data.data.status}`])
+                  }
                 } else if (data.type === 'complete') {
                   setCreationProgress(prev => [...prev, `Creativos subidos: ${data.data.uploaded}`])
                 } else if (data.type === 'error') {
-                  setCreationProgress(prev => [...prev, `Error V${data.data.variant}: ${data.data.error}`])
+                  setCreationProgress(prev => [...prev, `Error${data.data.variant ? ` V${data.data.variant}` : ''}: ${data.data.error}`])
                 }
               } catch {
                 // Ignore parse errors
@@ -1097,9 +1120,16 @@ export function PackageRowExpanded({
     ...creatives.map(c => c.variant),
     ...driveCreatives.map(c => c.variant),
   ])
-  const pendingCreatives = creatives.filter(c => c.upload_status !== 'uploaded')
   const uploadedCreatives = creatives.filter(c => c.upload_status === 'uploaded')
   const uploadedVariants = [...new Set(uploadedCreatives.map(c => c.variant))]
+  // Drive creatives that don't have a corresponding uploaded meta_creative
+  const driveVariantsNotUploaded = [...new Set(driveCreatives.map(c => c.variant))]
+    .filter(v => !uploadedVariants.includes(v))
+  const pendingCreatives = [
+    ...creatives.filter(c => c.upload_status !== 'uploaded'),
+    // Also count Drive creatives without any meta_creatives entry
+    ...driveCreatives.filter(c => !creatives.some(mc => mc.variant === c.variant && mc.aspect_ratio === c.aspectRatio)),
+  ]
   const totalCreativesCount = driveCreatives.length || creatives.length
 
   if (isLoading) {
@@ -1463,7 +1493,7 @@ export function PackageRowExpanded({
           </h3>
           <h3 className="font-medium flex items-center gap-2">
             <Wand2 className="h-4 w-4" />
-            Copies ({copies.length}/5)
+            Copies ({copies.length})
           </h3>
         </div>
         <div className="flex items-center gap-2">
@@ -1473,7 +1503,7 @@ export function PackageRowExpanded({
               Solicitar Creativos
             </Button>
           )}
-          {pendingCreatives.length > 0 && (
+          {(pendingCreatives.length > 0 || uploadingCreatives) && (
             <Button
               variant="default"
               size="sm"
@@ -1481,11 +1511,16 @@ export function PackageRowExpanded({
               disabled={uploadingCreatives}
             >
               {uploadingCreatives ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  Subiendo... {uploadCreativesProgress.current}/{uploadCreativesProgress.total} ({uploadCreativesProgress.total > 0 ? Math.round((uploadCreativesProgress.current / uploadCreativesProgress.total) * 100) : 0}%)
+                </>
               ) : (
-                <Upload className="h-4 w-4 mr-1" />
+                <>
+                  <Upload className="h-4 w-4 mr-1" />
+                  Subir a Meta ({pendingCreatives.length})
+                </>
               )}
-              Subir a Meta ({pendingCreatives.length})
             </Button>
           )}
           <Button
@@ -1517,15 +1552,13 @@ export function PackageRowExpanded({
         <div className="flex items-center justify-between bg-muted/30 rounded-lg p-3">
           <div className="flex items-center gap-3">
             <Checkbox
-              checked={selectedVariants.length === 5}
+              checked={selectedVariants.length > 0 && selectedVariants.length === [...new Set([1, 2, 3, 4, 5, ...existingAds.map(a => a.variant), ...driveCreatives.map(c => c.variant), ...creatives.map(c => c.variant), ...copies.map(c => c.variant)])].length}
               onCheckedChange={toggleSelectAll}
               id="select-all"
             />
             <label htmlFor="select-all" className="text-sm cursor-pointer">
               {selectedVariants.length === 0
                 ? 'Seleccionar variantes'
-                : selectedVariants.length === 5
-                ? 'Todas seleccionadas'
                 : `${selectedVariants.length} seleccionada${selectedVariants.length > 1 ? 's' : ''}`}
             </label>
           </div>
@@ -1614,11 +1647,14 @@ export function PackageRowExpanded({
         </div>
 
         {(() => {
-          // Include variants 1-5 plus any extra variants from imported ads
-          const extraVariants = existingAds
-            .map(a => a.variant)
-            .filter(v => v > 5)
-          const allVariants = [...new Set([1, 2, 3, 4, 5, ...extraVariants])].sort((a, b) => a - b)
+          // Include variants 1-5 plus any extra variants from Drive, Meta creatives, or imported ads
+          const allVariants = [...new Set([
+            1, 2, 3, 4, 5,
+            ...existingAds.map(a => a.variant),
+            ...driveCreatives.map(c => c.variant),
+            ...creatives.map(c => c.variant),
+            ...copies.map(c => c.variant),
+          ])].sort((a, b) => a - b)
           return allVariants
         })().map(variant => {
           const variantCreatives = creatives.filter(c => c.variant === variant)
@@ -1964,10 +2000,10 @@ export function PackageRowExpanded({
                   {/* Variant Label Header */}
                   <div className="flex items-center gap-2 mb-3">
                     <span className="text-sm font-semibold text-foreground">
-                      {VARIANT_LABELS[variant]?.name || (variant > 5 ? 'Importado' : '')}
+                      {VARIANT_LABELS[variant]?.name || `Extra ${variant}`}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {VARIANT_LABELS[variant]?.focus || (variant > 5 ? 'Anuncio importado de Meta' : '')}
+                      {VARIANT_LABELS[variant]?.focus || 'Variante adicional'}
                     </span>
                   </div>
                   {copy ? (
