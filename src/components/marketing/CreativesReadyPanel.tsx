@@ -135,12 +135,29 @@ export function CreativesReadyPanel({ requests: initialRequests }: CreativesRead
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge variant="outline" className="font-mono">
+                      <Badge
+                        variant="outline"
+                        className="font-mono cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors"
+                        onClick={() => {
+                          const row = document.getElementById(`pkg-row-${request.package_id}`)
+                          if (row) {
+                            row.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                            row.click()
+                          }
+                        }}
+                        title="Ir al paquete en la tabla"
+                      >
                         {request.tc_package_id}
                       </Badge>
-                      <span className="font-medium truncate">
+                      <a
+                        href={`https://drive.google.com/drive/search?q=${request.tc_package_id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium truncate text-blue-600 hover:underline"
+                        title="Abrir carpeta en Drive"
+                      >
                         {request.packages?.title || 'Paquete'}
-                      </span>
+                      </a>
                       <Badge className="bg-green-100 text-green-800 border-green-200">
                         <Palette className="h-3 w-3 mr-1" />
                         Creativos listos

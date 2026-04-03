@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
-import { Loader2, Upload, X, Check, ExternalLink, Play, RefreshCw, Plus } from 'lucide-react'
+import { Loader2, Upload, X, Check, ExternalLink, Play, RefreshCw, Plus, PlusCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { getVariantLabel } from '@/lib/creatives/variants'
 
@@ -47,11 +47,17 @@ const ASPECT_RATIOS: { key: AspectRatio; label: string }[] = [
 
 export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, requestedVariants, onCreativesChange }: DesignRowExpandedProps) {
   const [extraVariants, setExtraVariants] = useState<number[]>([])
-  // Use requested variants if provided, otherwise show all (base + extras from Drive)
-  const allVariants = requestedVariants && requestedVariants.length > 0
-    ? requestedVariants.sort((a, b) => a - b)
-    : [...new Set([...BASE_VARIANTS, ...extraVariants])].sort((a, b) => a - b)
+  // Merge requested variants with extras from Drive + manually added
+  const baseSet = requestedVariants && requestedVariants.length > 0
+    ? requestedVariants
+    : BASE_VARIANTS
+  const allVariants = [...new Set([...baseSet, ...extraVariants])].sort((a, b) => a - b)
   const displayVariants = allVariants
+
+  const addVariant = () => {
+    const maxVariant = Math.max(...allVariants, 5)
+    setExtraVariants(prev => [...new Set([...prev, maxVariant + 1])])
+  }
   const [creatives, setCreatives] = useState<Record<number, VariantCreatives>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -555,18 +561,46 @@ export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, reques
             </span>
           </div>
           <div className="flex gap-3">
-            {displayVariants.map((variant) => (
-              <div key={variant} className="flex flex-col items-center gap-1.5">
-                <span className="text-[10px] font-medium text-muted-foreground">V{variant}</span>
-                <div className="flex flex-col gap-1.5">
-                  {ASPECT_RATIOS.map((ar) => (
-                    <div key={ar.key}>
-                      {renderUploadSlot(variant, ar)}
-                    </div>
-                  ))}
+            {displayVariants.map((variant) => {
+              const isExtra = extraVariants.includes(variant)
+              const hasCreatives = creatives[variant] && Object.keys(creatives[variant]).length > 0
+              const canRemove = isExtra && !hasCreatives
+              return (
+                <div key={variant} className="flex flex-col items-center gap-1.5">
+                  <span className="text-[10px] font-medium text-muted-foreground flex items-center gap-0.5">
+                    V{variant}
+                    {canRemove && (
+                      <button
+                        onClick={() => setExtraVariants(prev => prev.filter(v => v !== variant))}
+                        className="text-muted-foreground/50 hover:text-red-500 transition-colors"
+                        title={`Quitar V${variant}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
+                  <div className="flex flex-col gap-1.5">
+                    {ASPECT_RATIOS.map((ar) => (
+                      <div key={ar.key}>
+                        {renderUploadSlot(variant, ar)}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
+            {/* Add variant button */}
+            <div className="flex flex-col items-center gap-1.5">
+              <span className="text-[10px] font-medium text-transparent">+</span>
+              <button
+                onClick={addVariant}
+                className="w-[60px] h-full min-h-[120px] border-2 border-dashed rounded-lg flex flex-col items-center justify-center hover:border-primary hover:bg-white transition-colors border-gray-300 bg-white/50 cursor-pointer"
+                title={`Agregar V${Math.max(...allVariants, 5) + 1}`}
+              >
+                <PlusCircle className="h-5 w-5 text-muted-foreground" />
+                <span className="text-[9px] text-muted-foreground mt-1">V{Math.max(...allVariants, 5) + 1}</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>

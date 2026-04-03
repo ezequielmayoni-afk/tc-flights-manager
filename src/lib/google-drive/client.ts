@@ -324,7 +324,7 @@ export async function listPackageCreatives(packageId: number): Promise<PackageCr
     if (!variantFolders.data.files) return { creatives, folders }
 
     for (const variantFolder of variantFolders.data.files) {
-      const variantMatch = variantFolder.name?.match(/^v(\d+)$/)
+      const variantMatch = variantFolder.name?.match(/^v(\d+)$/i)
       if (!variantMatch) continue
 
       const variant = parseInt(variantMatch[1], 10)
@@ -341,29 +341,30 @@ export async function listPackageCreatives(packageId: number): Promise<PackageCr
       if (!files.data.files) continue
 
       for (const file of files.data.files) {
-        // Check if file starts with known aspect ratios (any extension)
-        if (file.name?.startsWith('4x5.')) {
+        const fileName = file.name?.toLowerCase() || ''
+        // Check if file starts with known aspect ratios (any extension, case-insensitive)
+        if (fileName.startsWith('4x5.')) {
           creatives.push({
             variant,
             aspectRatio: '4x5',
             fileId: file.id!,
             webViewLink: file.webViewLink!,
           })
-        } else if (file.name?.startsWith('9x16.')) {
+        } else if (fileName.startsWith('9x16.')) {
           creatives.push({
             variant,
             aspectRatio: '9x16',
             fileId: file.id!,
             webViewLink: file.webViewLink!,
           })
-        } else if (file.name?.startsWith('1080.')) {
+        } else if (fileName.startsWith('1080.')) {
           creatives.push({
             variant,
             aspectRatio: '1080',
             fileId: file.id!,
             webViewLink: file.webViewLink!,
           })
-        } else if (file.name?.startsWith('1920.')) {
+        } else if (fileName.startsWith('1920.')) {
           creatives.push({
             variant,
             aspectRatio: '1920',

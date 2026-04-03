@@ -1431,7 +1431,9 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               return (
                 <Fragment key={pkg.id}>
                   <TableRow
-                    className={`hover:bg-muted/30 ${isExpanded ? 'bg-muted/20' : ''}`}
+                    id={`pkg-row-${pkg.id}`}
+                    className={`hover:bg-muted/30 cursor-pointer ${isExpanded ? 'bg-muted/20' : ''}`}
+                    onClick={() => setExpandedPackageId(isExpanded ? null : pkg.id)}
                   >
                     {/* TC Package ID */}
                     <TableCell style={{ width: columnWidths.id, minWidth: columnWidths.id, maxWidth: columnWidths.id }}>

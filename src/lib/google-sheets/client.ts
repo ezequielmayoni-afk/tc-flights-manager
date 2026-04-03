@@ -35,6 +35,8 @@ export interface Vendedor {
   nombre: string
   equipo: 'Comercial' | 'Sports' | 'Plus'
   monthlyData: VendedorMonthData[]
+  fechaAlta?: string | null   // YYYY-MM-DD
+  fechaBaja?: string | null   // YYYY-MM-DD
 }
 
 export interface TeamSummary {

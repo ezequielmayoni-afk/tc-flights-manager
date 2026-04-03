@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { RefreshCw, TrendingUp, TrendingDown, DollarSign, Users, Target, MessageSquare, X, Send, Trophy, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -56,9 +56,25 @@ export function VendedoresDashboard({ initialData }: Props) {
   const [data, setData] = useState(initialData)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedMonth, setSelectedMonth] = useState(data.availableMonths[data.availableMonths.length - 1])
+  const [rangeFrom, setRangeFrom] = useState(data.availableMonths[data.availableMonths.length - 1])
+  const [rangeTo, setRangeTo] = useState(data.availableMonths[data.availableMonths.length - 1])
   const [activeTab, setActiveTab] = useState<TabKey>('Comercial')
   const [trendFrom, setTrendFrom] = useState(data.availableMonths[0])
   const [trendTo, setTrendTo] = useState(data.availableMonths[data.availableMonths.length - 1])
+  // Table sorting
+  type SortCol = 'nombre' | 'objetivo' | 'producido' | 'porcentaje' | 'qVentas' | 'qChicas' | 'alta' | 'baja'
+  const [tableSortCol, setTableSortCol] = useState<SortCol>('producido')
+  const [tableSortDir, setTableSortDir] = useState<'asc' | 'desc'>('desc')
+
+  const toggleTableSort = (col: SortCol) => {
+    if (tableSortCol === col) {
+      setTableSortDir(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setTableSortCol(col)
+      setTableSortDir('desc')
+    }
+  }
+
   const [chatOpen, setChatOpen] = useState(false)
   const [chatMessages, setChatMessages] = useState<{ role: 'user' | 'assistant'; content: string }[]>([])
   const [chatInput, setChatInput] = useState('')
@@ -72,6 +88,37 @@ export function VendedoresDashboard({ initialData }: Props) {
     })
     return initial
   })
+
+  // Vendedor dates (fecha alta/baja) from Supabase
+  const [vendedorDates, setVendedorDates] = useState<Record<string, { fecha_alta: string | null; fecha_baja: string | null }>>({})
+
+  const loadDates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/vendedores/dates')
+      if (res.ok) {
+        const { dates } = await res.json()
+        const map: Record<string, { fecha_alta: string | null; fecha_baja: string | null }> = {}
+        for (const d of dates) {
+          map[d.nombre] = { fecha_alta: d.fecha_alta, fecha_baja: d.fecha_baja }
+        }
+        setVendedorDates(map)
+      }
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadDates() }, [loadDates])
+
+  const saveDate = async (nombre: string, field: 'fecha_alta' | 'fecha_baja', value: string) => {
+    const current = vendedorDates[nombre] || { fecha_alta: null, fecha_baja: null }
+    const updated = { ...current, [field]: value || null }
+    setVendedorDates(prev => ({ ...prev, [nombre]: updated }))
+
+    await fetch('/api/vendedores/dates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, ...updated }),
+    })
+  }
 
   const toggleVendedor = (nombre: string) => {
     setCheckedVendedores(prev => {
@@ -101,33 +148,45 @@ export function VendedoresDashboard({ initialData }: Props) {
     [data.vendedores, activeTab]
   )
 
-  // Get data for selected month
+  // Get data for selected month (used by table)
   const getMonthData = (md: VendedorMonthData[]) =>
     md.find(m => m.month === selectedMonth)
 
-  // Stats for selected month - based on checked vendedores
+  // Get aggregated data across a range of months
+  const getRangeData = (md: VendedorMonthData[]) => {
+    const months = md.filter(m => m.month >= rangeFrom && m.month <= rangeTo)
+    const objetivo = months.reduce((sum, m) => sum + m.objetivo, 0)
+    const producido = months.reduce((sum, m) => sum + m.producido, 0)
+    const porcentaje = objetivo > 0 ? (producido / objetivo) * 100 : 0
+    return { objetivo, producido, porcentaje }
+  }
+
+  const isRangeMode = rangeFrom !== rangeTo
+  const rangeMonthCount = data.availableMonths.filter(m => m >= rangeFrom && m <= rangeTo).length
+
+  // Stats for range - based on checked vendedores
   const stats = useMemo(() => {
     const checkedTeamVendedores = teamVendedores.filter(v => checkedVendedores.has(v.nombre))
 
-    // Calculate totals from checked vendedores only
     let totalObjetivo = 0
     let totalProducido = 0
 
     checkedTeamVendedores.forEach(v => {
-      const md = getMonthData(v.monthlyData)
-      if (md) {
-        totalObjetivo += md.objetivo
-        totalProducido += md.producido
-      }
+      const rd = getRangeData(v.monthlyData)
+      totalObjetivo += rd.objetivo
+      totalProducido += rd.producido
     })
 
     const porcentaje = totalObjetivo > 0 ? (totalProducido / totalObjetivo) * 100 : 0
 
-    const vendedoresMonth = checkedTeamVendedores
-      .map(v => ({ nombre: v.nombre, ...getMonthData(v.monthlyData) }))
-      .filter(v => v.objetivo && v.objetivo > 0)
+    const vendedoresRange = checkedTeamVendedores
+      .map(v => {
+        const rd = getRangeData(v.monthlyData)
+        return { nombre: v.nombre, ...rd }
+      })
+      .filter(v => v.objetivo > 0)
 
-    const sorted = [...vendedoresMonth].sort((a, b) => (b.porcentaje || 0) - (a.porcentaje || 0))
+    const sorted = [...vendedoresRange].sort((a, b) => b.porcentaje - a.porcentaje)
     const topPerformer = sorted[0]
     const bottomPerformer = sorted[sorted.length - 1]
 
@@ -143,24 +202,24 @@ export function VendedoresDashboard({ initialData }: Props) {
       bottomPerformer: bottomPerformer?.nombre || '-',
       bottomPct: bottomPerformer?.porcentaje || 0,
     }
-  }, [data, activeTab, selectedMonth, teamVendedores, checkedVendedores])
+  }, [data, activeTab, rangeFrom, rangeTo, teamVendedores, checkedVendedores])
 
-  // Chart data: vendedores bar chart (only checked)
+  // Chart data: vendedores bar chart (only checked, aggregated by range)
   const barChartData = useMemo(() =>
     teamVendedores
       .filter(v => checkedVendedores.has(v.nombre))
       .map(v => {
-        const md = getMonthData(v.monthlyData)
+        const rd = getRangeData(v.monthlyData)
         return {
           nombre: formatFullName(v.nombre),
-          producido: md?.producido || 0,
-          objetivo: md?.objetivo || 0,
-          porcentaje: md?.porcentaje || 0,
+          producido: rd.producido,
+          objetivo: rd.objetivo,
+          porcentaje: rd.porcentaje,
         }
       })
       .filter(v => v.objetivo > 0)
       .sort((a, b) => b.porcentaje - a.porcentaje),
-    [teamVendedores, selectedMonth, checkedVendedores]
+    [teamVendedores, rangeFrom, rangeTo, checkedVendedores]
   )
 
   // Line chart: monthly trend (filtered by range)
@@ -259,15 +318,39 @@ export function VendedoresDashboard({ initialData }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <select
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="border rounded-lg px-3 py-2 text-sm bg-white"
-          >
-            {data.availableMonths.map(m => (
-              <option key={m} value={m}>{formatMonth(m)}</option>
-            ))}
-          </select>
+          <div className="flex items-center gap-1.5 text-sm">
+            <select
+              value={rangeFrom}
+              onChange={(e) => {
+                setRangeFrom(e.target.value)
+                if (e.target.value > rangeTo) setRangeTo(e.target.value)
+                setSelectedMonth(e.target.value)
+              }}
+              className="border rounded-lg px-2 py-2 text-sm bg-white"
+            >
+              {data.availableMonths.map(m => (
+                <option key={m} value={m}>{formatMonth(m)}</option>
+              ))}
+            </select>
+            <span className="text-muted-foreground">a</span>
+            <select
+              value={rangeTo}
+              onChange={(e) => {
+                setRangeTo(e.target.value)
+                if (e.target.value < rangeFrom) setRangeFrom(e.target.value)
+              }}
+              className="border rounded-lg px-2 py-2 text-sm bg-white"
+            >
+              {data.availableMonths.filter(m => m >= rangeFrom).map(m => (
+                <option key={m} value={m}>{formatMonth(m)}</option>
+              ))}
+            </select>
+            {isRangeMode && (
+              <span className="text-xs text-muted-foreground bg-gray-100 px-2 py-1 rounded">
+                {rangeMonthCount} meses
+              </span>
+            )}
+          </div>
           <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             Actualizar
@@ -343,7 +426,9 @@ export function VendedoresDashboard({ initialData }: Props) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Bar Chart - Individual Performance */}
         <div className="bg-white rounded-lg border p-4">
-          <h3 className="font-semibold mb-4">Rendimiento Individual - {formatMonth(selectedMonth)}</h3>
+          <h3 className="font-semibold mb-4">
+            Rendimiento Individual - {isRangeMode ? `${formatMonth(rangeFrom)} a ${formatMonth(rangeTo)}` : formatMonth(rangeFrom)}
+          </h3>
           <div style={{ height: Math.max(300, barChartData.length * 35) }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={barChartData} layout="vertical" margin={{ left: 80, right: 40 }}>
@@ -429,19 +514,69 @@ export function VendedoresDashboard({ initialData }: Props) {
                   className="h-4 w-4 rounded border-gray-300 cursor-pointer"
                 />
               </th>
-              <th className="text-left px-4 py-3 font-medium">Vendedor</th>
-              <th className="text-right px-4 py-3 font-medium">Objetivo</th>
-              <th className="text-right px-4 py-3 font-medium">Producido</th>
-              <th className="text-center px-4 py-3 font-medium">%</th>
-              <th className="text-center px-4 py-3 font-medium">Q Ventas</th>
-              <th className="text-center px-4 py-3 font-medium">Q Chicas</th>
+              {([
+                { col: 'nombre' as SortCol, label: 'Vendedor', align: 'text-left' },
+                { col: 'objetivo' as SortCol, label: 'Objetivo', align: 'text-right' },
+                { col: 'producido' as SortCol, label: 'Producido', align: 'text-right' },
+                { col: 'porcentaje' as SortCol, label: '%', align: 'text-center' },
+                { col: 'qVentas' as SortCol, label: 'Q Ventas', align: 'text-center' },
+                { col: 'qChicas' as SortCol, label: 'Q Chicas', align: 'text-center' },
+              ]).map(({ col, label, align }) => (
+                <th
+                  key={col}
+                  className={`${align} px-4 py-3 font-medium cursor-pointer hover:bg-gray-100 select-none`}
+                  onClick={() => toggleTableSort(col)}
+                >
+                  {label} {tableSortCol === col ? (tableSortDir === 'desc' ? '↓' : '↑') : ''}
+                </th>
+              ))}
               <th className="text-center px-4 py-3 font-medium">Activa</th>
+              <th
+                className="text-center px-3 py-3 font-medium cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => toggleTableSort('alta')}
+              >
+                Alta {tableSortCol === 'alta' ? (tableSortDir === 'desc' ? '↓' : '↑') : ''}
+              </th>
+              <th
+                className="text-center px-3 py-3 font-medium cursor-pointer hover:bg-gray-100 select-none"
+                onClick={() => toggleTableSort('baja')}
+              >
+                Baja {tableSortCol === 'baja' ? (tableSortDir === 'desc' ? '↓' : '↑') : ''}
+              </th>
             </tr>
           </thead>
           <tbody>
-            {teamVendedores.map(v => {
+            {[...teamVendedores]
+              .filter(v => {
+                const md = getMonthData(v.monthlyData)
+                return md && (md.objetivo > 0 || md.producido > 0)
+              })
+              .sort((a, b) => {
+                const mdA = getMonthData(a.monthlyData)
+                const mdB = getMonthData(b.monthlyData)
+                let valA: number | string = 0
+                let valB: number | string = 0
+
+                switch (tableSortCol) {
+                  case 'nombre': valA = a.nombre; valB = b.nombre; break
+                  case 'objetivo': valA = mdA?.objetivo || 0; valB = mdB?.objetivo || 0; break
+                  case 'producido': valA = mdA?.producido || 0; valB = mdB?.producido || 0; break
+                  case 'porcentaje': valA = mdA?.porcentaje || 0; valB = mdB?.porcentaje || 0; break
+                  case 'qVentas': valA = mdA?.qVentas || 0; valB = mdB?.qVentas || 0; break
+                  case 'qChicas': valA = mdA?.qChicas || 0; valB = mdB?.qChicas || 0; break
+                  case 'alta': valA = vendedorDates[a.nombre]?.fecha_alta || ''; valB = vendedorDates[b.nombre]?.fecha_alta || ''; break
+                  case 'baja': valA = vendedorDates[a.nombre]?.fecha_baja || ''; valB = vendedorDates[b.nombre]?.fecha_baja || ''; break
+                }
+
+                if (typeof valA === 'string') {
+                  const cmp = valA.localeCompare(valB as string)
+                  return tableSortDir === 'asc' ? cmp : -cmp
+                }
+                return tableSortDir === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number)
+              })
+              .map(v => {
               const md = getMonthData(v.monthlyData)
-              if (!md || (md.objetivo === 0 && md.producido === 0)) return null
+              if (!md) return null
               const isChecked = checkedVendedores.has(v.nombre)
               return (
                 <tr key={v.nombre} className={`border-b hover:bg-gray-50 ${!isChecked ? 'opacity-40' : ''}`}>
@@ -467,6 +602,22 @@ export function VendedoresDashboard({ initialData }: Props) {
                     {md.cuenta !== undefined ? (
                       <span className={`h-2.5 w-2.5 rounded-full inline-block ${md.cuenta ? 'bg-green-500' : 'bg-gray-300'}`} />
                     ) : '-'}
+                  </td>
+                  <td className="px-1 py-1 text-center">
+                    <input
+                      type="date"
+                      value={vendedorDates[v.nombre]?.fecha_alta || ''}
+                      onChange={(e) => saveDate(v.nombre, 'fecha_alta', e.target.value)}
+                      className="border rounded px-1.5 py-1 text-xs w-[115px] bg-white"
+                    />
+                  </td>
+                  <td className="px-1 py-1 text-center">
+                    <input
+                      type="date"
+                      value={vendedorDates[v.nombre]?.fecha_baja || ''}
+                      onChange={(e) => saveDate(v.nombre, 'fecha_baja', e.target.value)}
+                      className="border rounded px-1.5 py-1 text-xs w-[115px] bg-white"
+                    />
                   </td>
                 </tr>
               )

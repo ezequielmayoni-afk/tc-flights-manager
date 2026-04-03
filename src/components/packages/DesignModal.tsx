@@ -477,10 +477,23 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
 
           {/* Horizontal layout: all variants side by side */}
           <div className="flex gap-4 justify-center flex-wrap">
-            {variants.map((variant) => (
+            {variants.map((variant) => {
+              const isExtra = variant > 5 && !creatives[variant]
+              return (
               <div key={variant} className="flex flex-col items-center gap-2">
                 <div className="text-center">
-                  <span className="text-sm font-medium text-muted-foreground">V{variant}</span>
+                  <span className="text-sm font-medium text-muted-foreground flex items-center gap-0.5 justify-center">
+                    V{variant}
+                    {isExtra && (
+                      <button
+                        onClick={() => setVariants(prev => prev.filter(v => v !== variant))}
+                        className="text-muted-foreground/50 hover:text-red-500 transition-colors"
+                        title={`Quitar V${variant}`}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    )}
+                  </span>
                   <p className="text-[10px] text-muted-foreground/70">{getVariantLabel(variant)}</p>
                   {folders.variantFolders[variant] && (
                     <a
@@ -502,7 +515,8 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
                   ))}
                 </div>
               </div>
-            ))}
+              )
+            })}
             {/* Add variant button */}
             <div className="flex flex-col items-center gap-2">
               <div className="text-center">
