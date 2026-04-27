@@ -659,7 +659,7 @@ async function importSinglePackage(
 
         // Start SEO upload bot in background
         try {
-          const botPath = path.resolve(process.cwd(), '..', 'tc-requote-bot')
+          const botPath = '/root/tc-requote-bot'
           const botProcess = spawn('npm', ['run', 'seo:manual', '--', String(packageId)], {
             cwd: botPath,
             shell: true,

@@ -766,7 +766,7 @@ export async function POST(request: NextRequest) {
 
         // Automatically upload SEO to TC using the bot (run in background)
         try {
-          const botPath = path.resolve(process.cwd(), '..', 'tc-requote-bot')
+          const botPath = '/root/tc-requote-bot'
           console.log(`[Import Single] Starting SEO upload bot for package ${packageId}...`)
 
           const botProcess = spawn('npm', ['run', 'seo:manual', '--', String(packageId)], {

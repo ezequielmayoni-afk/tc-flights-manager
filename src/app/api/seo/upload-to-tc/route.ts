@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       sendEvent('info', `Iniciando bot para ${packageIds.length} paquetes...`)
 
       // Path to the bot project
-      const botPath = path.resolve(process.cwd(), '..', 'tc-requote-bot')
+      const botPath = '/root/tc-requote-bot'
 
       // Spawn the bot process
       const botProcess = spawn('npm', ['run', 'seo:manual', '--', ...packageIds.map(String)], {
