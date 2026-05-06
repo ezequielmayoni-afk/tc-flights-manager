@@ -832,11 +832,6 @@ export class MetaAdsClient {
       creative: {
         creative_id: options.creativeId,
       },
-      degrees_of_freedom_spec: {
-        creative_features_spec: {
-          standard_enhancements: { enroll_status: 'OPT_OUT' },
-        },
-      },
       status: options.status || 'ACTIVE',
     }
 
@@ -1084,7 +1079,12 @@ export class MetaAdsClient {
     const params = {
       name: options.name,
       object_story_spec: objectStorySpec,
-      asset_feed_spec: assetFeedSpec
+      asset_feed_spec: assetFeedSpec,
+      degrees_of_freedom_spec: {
+        creative_features_spec: {
+          standard_enhancements: { enroll_status: 'OPT_OUT' },
+        },
+      },
     }
 
     const mediaType = videos.length > 0 && images.length > 0 ? 'MIXED' : (videos.length > 0 ? 'VIDEO' : 'IMAGE')
