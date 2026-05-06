@@ -1,20 +1,50 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
 import type { AdCopyVariant, GeneratedCopyResponse } from '@/lib/meta-ads/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 
-
 let openaiClient: OpenAI | null = null
+let anthropicClient: Anthropic | null = null
 
 function getOpenAIClient(): OpenAI {
   if (!openaiClient) {
-    openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
-    })
+    openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! })
   }
   return openaiClient
+}
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropicClient) {
+    anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! })
+  }
+  return anthropicClient
+}
+
+async function callAI(prompt: string, provider: string, maxTokens: number): Promise<string> {
+  if (provider === 'claude') {
+    const client = getAnthropicClient()
+    const msg = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: maxTokens,
+      system: 'Eres un experto en marketing digital para agencias de viajes en Argentina. Genera contenido persuasivo y emocional.',
+      messages: [{ role: 'user', content: prompt }],
+    })
+    return (msg.content[0] as { type: string; text: string }).text
+  }
+  const client = getOpenAIClient()
+  const completion = await client.chat.completions.create({
+    model: 'gpt-4o-mini',
+    temperature: 0.7,
+    max_tokens: maxTokens,
+    messages: [
+      { role: 'system', content: 'Eres un experto en marketing digital para agencias de viajes en Argentina. Genera contenido persuasivo y emocional.' },
+      { role: 'user', content: prompt },
+    ],
+  })
+  return completion.choices[0]?.message?.content || ''
 }
 
 /**
@@ -105,10 +135,12 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { packageIds, variants: requestedVariants } = body as {
+    const { packageIds, variants: requestedVariants, ai_provider } = body as {
       packageIds: number[]
-      variants?: number[]  // Optional: only regenerate specific variants (1-5)
+      variants?: number[]
+      ai_provider?: string
     }
+    const provider = ai_provider === 'claude' ? 'claude' : 'openai'
 
     if (!packageIds || !Array.isArray(packageIds) || packageIds.length === 0) {
       return NextResponse.json(
@@ -138,7 +170,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const openai = getOpenAIClient()
     const results: Array<{
       package_id: number
       variants: AdCopyVariant[]
@@ -242,26 +273,9 @@ export async function POST(request: NextRequest) {
           prompt += `\n\nADEMAS de las variantes base, genera también las siguientes variantes extra con enfoques creativos diferentes (mezcla de los anteriores enfoques, nuevos angulos, otra emocion): ${extraVariants.map(v => `Variante ${v}`).join(', ')}. Usa el mismo formato JSON para cada una.`
         }
 
-        console.log(`[Copy Generate] Generating copy for package ${packageId} (variants: ${variantsToSave.join(', ')})...`)
+        console.log(`[Copy Generate] Generating copy for package ${packageId} (variants: ${variantsToSave.join(', ')}, provider: ${provider})...`)
 
-        // Call OpenAI
-        const completion = await openai.chat.completions.create({
-          model: 'gpt-4o-mini',
-          temperature: 0.7,
-          max_tokens: extraVariants.length > 0 ? 3000 : 2000,
-          messages: [
-            {
-              role: 'system',
-              content: 'Eres un experto en marketing digital para agencias de viajes en Argentina. Genera contenido persuasivo y emocional.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-        })
-
-        const responseContent = completion.choices[0]?.message?.content
+        const responseContent = await callAI(prompt, provider, extraVariants.length > 0 ? 3000 : 2000)
         if (!responseContent) {
           throw new Error('Empty response from AI')
         }

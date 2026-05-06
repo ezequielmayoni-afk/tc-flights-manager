@@ -80,7 +80,7 @@ export function CopyEditor({
       const res = await fetch('/api/meta/copy/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_ids: [packageId] }),
+        body: JSON.stringify({ packageIds: [packageId], ai_provider: localStorage.getItem('meta_copy_ai_provider') || 'openai' }),
       })
 
       const data = await res.json()

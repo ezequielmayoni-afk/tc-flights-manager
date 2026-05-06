@@ -466,6 +466,7 @@ export function PackageRowExpanded({
         body: JSON.stringify({
           packageIds: [pkg.id],
           variants: variantsToGenerate,
+          ai_provider: localStorage.getItem('meta_copy_ai_provider') || 'openai',
         }),
       })
 
@@ -727,6 +728,9 @@ export function PackageRowExpanded({
               setCreationProgress(prev => [...prev, `V${variant}: Anuncio actualizado`])
               toast.success(`V${variant} actualizado en Meta`)
               await loadExistingAds()
+            } else if (data.type === 'skipped') {
+              setCreationProgress(prev => [...prev, `V${variant}: Omitido — ${data.data.reason}`])
+              toast.warning(`V${variant} omitido: ${data.data.reason}`)
             } else if (data.type === 'error') {
               const errorMsg = data.data.error || 'Error desconocido'
               setCreationProgress(prev => [...prev, `Error V${variant}: ${errorMsg}`])
@@ -940,6 +944,8 @@ export function PackageRowExpanded({
             } else if (data.type === 'updated') {
               successCount++
               setCreationProgress(prev => [...prev, `V${data.data.variant}: Anuncio actualizado`])
+            } else if (data.type === 'skipped') {
+              setCreationProgress(prev => [...prev, `V${data.data.variant}: Omitido — ${data.data.reason}`])
             } else if (data.type === 'error') {
               errorCount++
               const errorMsg = data.data.error || 'Error desconocido'

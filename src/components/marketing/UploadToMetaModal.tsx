@@ -146,7 +146,7 @@ export function UploadToMetaModal({
       const res = await fetch('/api/meta/copy/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_id: packageId }),
+        body: JSON.stringify({ packageIds: [packageId], ai_provider: localStorage.getItem('meta_copy_ai_provider') || 'openai' }),
       })
 
       if (!res.ok) throw new Error('Error generando copies')
@@ -234,6 +234,8 @@ export function UploadToMetaModal({
               if (data.type === 'progress' || data.type === 'updating' || data.type === 'uploading') {
                 const msg = data.data.step || data.data.status || `V${data.data.variant}`
                 setProgress(prev => [...prev, msg])
+              } else if (data.type === 'skipped') {
+                setProgress(prev => [...prev, `V${data.data.variant}: Omitido — ${data.data.reason}`])
               } else if (data.type === 'complete') {
                 const count = data.data.updated || data.data.uploaded || 0
                 setProgress(prev => [...prev, `${type === 'upload' ? 'Subidos' : 'Actualizados'}: ${count}`])

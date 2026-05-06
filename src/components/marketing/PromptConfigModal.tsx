@@ -14,6 +14,9 @@ import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { Loader2, Save, RotateCcw, Info } from 'lucide-react'
 
+type AIProvider = 'openai' | 'claude'
+const AI_PROVIDER_KEY = 'meta_copy_ai_provider'
+
 interface PromptConfigModalProps {
   open: boolean
   onClose: () => void
@@ -129,9 +132,12 @@ export function PromptConfigModal({ open, onClose }: PromptConfigModalProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [showPlaceholders, setShowPlaceholders] = useState(false)
+  const [aiProvider, setAiProvider] = useState<AIProvider>('openai')
 
   useEffect(() => {
     if (open) {
+      const saved = localStorage.getItem(AI_PROVIDER_KEY) as AIProvider | null
+      if (saved === 'openai' || saved === 'claude') setAiProvider(saved)
       loadConfig()
     }
   }, [open])
@@ -166,6 +172,7 @@ export function PromptConfigModal({ open, onClose }: PromptConfigModalProps) {
 
     setIsSaving(true)
     try {
+      localStorage.setItem(AI_PROVIDER_KEY, aiProvider)
       const res = await fetch('/api/meta/copy/config', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -208,6 +215,28 @@ export function PromptConfigModal({ open, onClose }: PromptConfigModalProps) {
           </div>
         ) : (
           <div className="flex-1 overflow-hidden flex flex-col gap-4">
+            {/* AI Provider selector */}
+            <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+              <span className="text-sm font-medium">Modelo IA:</span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setAiProvider('openai')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border ${aiProvider === 'openai' ? 'bg-background border-foreground/30 shadow-sm' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                >
+                  GPT-4o mini
+                </button>
+                <button
+                  onClick={() => setAiProvider('claude')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors border ${aiProvider === 'claude' ? 'bg-background border-foreground/30 shadow-sm' : 'border-transparent text-muted-foreground hover:text-foreground'}`}
+                >
+                  Claude Haiku
+                </button>
+              </div>
+              <span className="text-xs text-muted-foreground ml-auto">
+                {aiProvider === 'openai' ? 'OpenAI GPT-4o mini' : 'Anthropic Claude Haiku 4.5'}
+              </span>
+            </div>
+
             {/* Placeholders info */}
             <div className="flex items-center justify-between">
               <Button
