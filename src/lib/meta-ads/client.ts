@@ -831,10 +831,10 @@ export class MetaAdsClient {
       adset_id: options.adsetId,
       creative: {
         creative_id: options.creativeId,
-        degrees_of_freedom_spec: {
-          creative_features_spec: {
-            standard_enhancements: { enroll_status: 'OPT_OUT' },
-          },
+      },
+      degrees_of_freedom_spec: {
+        creative_features_spec: {
+          standard_enhancements: { enroll_status: 'OPT_OUT' },
         },
       },
       status: options.status || 'ACTIVE',
