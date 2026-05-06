@@ -243,10 +243,10 @@ export class MetaAdsClient {
     return response.data
   }
 
-  async getAdSetById(adsetId: string): Promise<{ id: string; name: string; status: string; campaign_id: string } | null> {
+  async getAdSetById(adsetId: string): Promise<{ id: string; name: string; status: string; campaign_id: string; optimization_goal?: string; destination_type?: string } | null> {
     try {
-      const fields = 'id,name,status,campaign_id'
-      const response = await this.request<{ id: string; name: string; status: string; campaign_id: string }>(
+      const fields = 'id,name,status,campaign_id,optimization_goal,destination_type'
+      const response = await this.request<{ id: string; name: string; status: string; campaign_id: string; optimization_goal?: string; destination_type?: string }>(
         `/${adsetId}?fields=${fields}`
       )
       return response
@@ -818,8 +818,12 @@ export class MetaAdsClient {
     status?: string
     pixelId?: string
   }): Promise<string> {
-    // Default pixel ID for waaba general events
-    const WAABA_PIXEL_ID = '1310175447121594'
+    // Fetch adset config to adapt ad params to its objective
+    const adset = await this.getAdSetById(options.adsetId)
+    const optimizationGoal = adset?.optimization_goal
+    const destinationType = adset?.destination_type
+
+    console.log(`[Meta API] AdSet ${options.adsetId} — optimization_goal: ${optimizationGoal}, destination_type: ${destinationType}`)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const params: Record<string, any> = {
@@ -827,14 +831,24 @@ export class MetaAdsClient {
       adset_id: options.adsetId,
       creative: {
         creative_id: options.creativeId,
+        degrees_of_freedom_spec: {
+          creative_features_spec: {
+            standard_enhancements: { enroll_status: 'OPT_OUT' },
+          },
+        },
       },
       status: options.status || 'ACTIVE',
-      // Website events tracking - always enabled with waaba pixel
-      tracking_specs: [
+    }
+
+    // For non-messaging destination types, add pixel tracking specs
+    const messagingDestinations = ['WHATSAPP', 'MESSENGER', 'INSTAGRAM_DIRECT']
+    const isMessaging = messagingDestinations.includes(destinationType || '')
+    if (!isMessaging && options.pixelId) {
+      params.tracking_specs = [
         {
           'action.type': ['offsite_conversion'],
-          'fb_pixel': [options.pixelId || WAABA_PIXEL_ID]
-        }
+          'fb_pixel': [options.pixelId],
+        },
       ]
     }
 
@@ -1235,9 +1249,7 @@ export class MetaAdsClient {
   async updateAdCreative(adId: string, newCreativeId: string): Promise<void> {
     await this.request(`/${adId}`, {
       method: 'POST',
-      body: JSON.stringify({
-        creative: { creative_id: newCreativeId }
-      }),
+      body: JSON.stringify({ creative: { creative_id: newCreativeId } }),
     })
   }
 
