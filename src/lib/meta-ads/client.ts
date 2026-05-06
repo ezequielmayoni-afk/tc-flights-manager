@@ -1082,22 +1082,7 @@ export class MetaAdsClient {
       asset_feed_spec: assetFeedSpec,
       degrees_of_freedom_spec: {
         creative_features_spec: {
-          image_brightness_and_contrast: { enroll_status: 'OPT_OUT' },
-          image_enhancement: { enroll_status: 'OPT_OUT' },
-          image_touchups: { enroll_status: 'OPT_OUT' },
-          image_uncrop: { enroll_status: 'OPT_OUT' },
-          text_optimizations: { enroll_status: 'OPT_OUT' },
-          text_generation: { enroll_status: 'OPT_OUT' },
-          enhance_cta: { enroll_status: 'OPT_OUT' },
-          adapt_to_placement: { enroll_status: 'OPT_OUT' },
-          description_automation: { enroll_status: 'OPT_OUT' },
-          video_auto_crop: { enroll_status: 'OPT_OUT' },
-          video_filtering: { enroll_status: 'OPT_OUT' },
-          music: { enroll_status: 'OPT_OUT' },
-          inline_comment: { enroll_status: 'OPT_OUT' },
-          product_extensions: { enroll_status: 'OPT_OUT' },
-          site_extensions: { enroll_status: 'OPT_OUT' },
-          image_templates: { enroll_status: 'OPT_OUT' },
+          standard_enhancements_catalog: { enroll_status: 'OPT_OUT' },
         },
       },
     }
