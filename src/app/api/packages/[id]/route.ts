@@ -113,6 +113,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
     if (updates.send_to_marketing === true) {
       updates.send_to_marketing_at = new Date().toISOString()
+      // Sincronizar status como source of truth — sin esto los dashboards
+      // /packages y /packages/comercial muestran counts diferentes que /packages/marketing.
+      // Se desincronizaba antes porque solo bulk-action seteaba ambos campos juntos.
+      if (updates.status === undefined) {
+        updates.status = 'in_marketing'
+      }
     }
     if (updates.marketing_completed === true) {
       updates.marketing_completed_at = new Date().toISOString()

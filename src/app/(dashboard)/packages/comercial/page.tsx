@@ -257,13 +257,10 @@ export default async function ComercialPage() {
     } as PackageForComercial
   })
 
-  // Filter: Show packages that are in marketing OR have matched flight (cupos)
-  // If a package matches a local flight, ALWAYS show it regardless of marketing status
-  const packages = allPackagesEnriched.filter((pkg) => {
-    const isInMarketing = pkg.status === 'in_marketing' || pkg.status === 'published' || pkg.send_to_marketing
-    const hasMatchedFlight = pkg.matched_supplier_id !== null
-    return isInMarketing || hasMatchedFlight
-  })
+  // Filter: solo packages que están en marketing (status canónico).
+  // Los cupos siguen enriqueciéndose para los que matchean, pero no se incluyen
+  // packages "sólo con cupos" que no están en marketing — esto se decidió 2026-05-19.
+  const packages = allPackagesEnriched.filter((pkg) => pkg.status === 'in_marketing')
 
   // Calculate stats
   // "Con Cupos" = paquetes que matchean con algún vuelo local (tienen matched_supplier_id)

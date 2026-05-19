@@ -101,10 +101,21 @@ export function PackageCard({ package: pkg }: PackageCardProps) {
 
       <CardHeader className="pb-3">
         <div className="space-y-1">
-          {/* TC Package ID */}
-          <Badge variant="outline" className="font-mono text-xs w-fit">
-            #{pkg.tc_package_id}
-          </Badge>
+          {/* TC Package ID — click abre la carpeta de Drive con las placas */}
+          <a
+            href={`/api/packages/${pkg.tc_package_id}/drive-folder`}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Ver placas y creativos en Google Drive"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Badge
+              variant="outline"
+              className="font-mono text-xs w-fit cursor-pointer hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors"
+            >
+              #{pkg.tc_package_id}
+            </Badge>
+          </a>
 
           {/* Title */}
           <CardTitle className="text-lg line-clamp-2 pr-16">{pkg.title}</CardTitle>

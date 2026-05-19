@@ -241,6 +241,7 @@ interface Package {
   meta_campaign_id?: string | null
   meta_adset_ids?: string | null
   meta_ad_account_id?: string | null
+  tc_active?: boolean
 }
 
 interface MarketingTableProps {
@@ -1455,6 +1456,15 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           >
                             {pkg.title}
                           </a>
+                          {pkg.tc_active === false && (
+                            <span
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800 shrink-0 border border-red-300"
+                              title="TC marcó este paquete como INACTIVO — los anuncios deben darse de baja"
+                            >
+                              <AlertTriangle className="h-3 w-3 mr-0.5" />
+                              INACTIVO EN TC · Dar de baja anuncio
+                            </span>
+                          )}
                           {pendingRequests[pkg.id] ? (
                             <button
                               onClick={(e) => {

@@ -42,7 +42,8 @@ export default async function MarketingPage() {
       created_at,
       meta_campaign_id,
       meta_adset_ids,
-      meta_ad_account_id
+      meta_ad_account_id,
+      tc_active
     `)
     .eq('send_to_marketing', true)
     .order('created_at', { ascending: false })
@@ -132,6 +133,8 @@ export default async function MarketingPage() {
     totalAds: packages?.reduce((sum, p) => sum + (p.ads_created_count || 0), 0) || 0,
     expiringCount: expiringPackages.length,
     expiringPackages: expiringPackages.map(p => ({ id: p.tc_package_id, title: p.title })),
+    inactiveInTcCount: packages?.filter((p) => p.tc_active === false).length || 0,
+    inactiveInTcPackages: packages?.filter((p) => p.tc_active === false).map(p => ({ id: p.tc_package_id, title: p.title })) || [],
   }
 
   return (
@@ -172,6 +175,39 @@ export default async function MarketingPage() {
       {/* Panel de creativos listos para subir */}
       {completedRequests && completedRequests.length > 0 && (
         <CreativesReadyPanel requests={completedRequests as any} />
+      )}
+
+      {/* Alert Banner: paquetes inactivos en TC — hay que dar de baja el anuncio */}
+      {stats.inactiveInTcCount > 0 && (
+        <div className="bg-red-50 border border-red-300 rounded-lg p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold text-red-900">
+                {stats.inactiveInTcCount} paquete{stats.inactiveInTcCount > 1 ? 's' : ''} marcado{stats.inactiveInTcCount > 1 ? 's' : ''} INACTIVO{stats.inactiveInTcCount > 1 ? 'S' : ''} en TravelCompositor
+              </p>
+              <p className="text-sm text-red-700 mt-1">
+                Tenés que dar de baja los anuncios de:{' '}
+                {stats.inactiveInTcPackages.map((p, i) => {
+                  const slug = p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+                  return (
+                    <span key={p.id}>
+                      {i > 0 && ', '}
+                      <a
+                        href={`https://www.siviajo.com/es/idea/${p.id}/${slug}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-red-700 hover:underline font-medium underline"
+                      >
+                        {p.id}
+                      </a>
+                    </span>
+                  )
+                })}
+              </p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Alert Banner for packages needing update */}
@@ -215,6 +251,12 @@ export default async function MarketingPage() {
           <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
             <p className="text-sm text-amber-700">Actualizar</p>
             <p className="text-2xl font-bold text-amber-600">{stats.needsUpdate}</p>
+          </div>
+        )}
+        {stats.inactiveInTcCount > 0 && (
+          <div className="bg-red-50 p-4 rounded-lg border border-red-300">
+            <p className="text-sm text-red-700">Inactivos TC</p>
+            <p className="text-2xl font-bold text-red-600">{stats.inactiveInTcCount}</p>
           </div>
         )}
         <div className="bg-white p-4 rounded-lg border">
