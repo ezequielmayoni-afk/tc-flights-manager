@@ -155,15 +155,29 @@ export async function POST(
     descriptionText = toCleanText(descBlock)
   }
 
-  // Itinerario — desde el div padre del <b>Itinerario</b> hasta el <p>Incluye:</p>
+  // Itinerario — desde el <b>Itinerario</b> mismo hasta el siguiente "terminator"
+  // (no usar lastIndexOf('<div'), trae chrome de sidebar como precio/Advertencia/Reservar)
   let itineraryText = ''
   const itiAnchor = html.search(/<b[^>]*>\s*Itinerario\s*<\/b>/)
-  const incAnchor = html.search(/<p[^>]*>\s*Incluye:\s*<\/p>/)
   if (itiAnchor !== -1) {
-    // Buscar div padre cercano antes del anchor
-    const divStart = html.lastIndexOf('<div', itiAnchor)
-    const endAt = incAnchor !== -1 && incAnchor > itiAnchor ? incAnchor : itiAnchor + 30_000
-    const itiBlock = html.slice(divStart, endAt)
+    // Cualquier terminador conocido después del itinerario
+    const terminators = [
+      /<p[^>]*>\s*Incluye:\s*<\/p>/,
+      /Resumen del tour/,
+      /Alojamientos previstos/,
+      /Incluido/,
+      /Pol[íi]tica de cancelaci[óo]n/,
+    ]
+    let endAt = html.length
+    for (const t of terminators) {
+      const m = html.slice(itiAnchor).search(t)
+      if (m !== -1) {
+        const absolute = itiAnchor + m
+        if (absolute < endAt) endAt = absolute
+      }
+    }
+    if (endAt > itiAnchor + 50_000) endAt = itiAnchor + 50_000  // safety cap
+    const itiBlock = html.slice(itiAnchor, endAt)
     itineraryText = toCleanText(itiBlock)
   }
 
