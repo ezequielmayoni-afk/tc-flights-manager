@@ -167,18 +167,44 @@ export async function POST(
     itineraryText = toCleanText(itiBlock)
   }
 
-  if (!descriptionText && !itineraryText) {
+  // 3) HOTELES — extraer data-hotelname únicos (siviajo los renderiza con
+  //    `<div class="...closed-tour-details__hotels__title..." data-hotelname="..." data-code="...">`)
+  //    No siempre hay una sección visible "Alojamientos previstos", pero los hoteles SI están en el HTML.
+  type HotelEntry = { name: string; code: string }
+  const hotels: HotelEntry[] = []
+  const seenHotels = new Set<string>()
+  for (const m of html.matchAll(/data-hotelname="([^"]+)"/g)) {
+    let name = m[1]
+      .replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/&iacute;/g, 'í').replace(/&aacute;/g, 'á').replace(/&eacute;/g, 'é')
+      .replace(/&oacute;/g, 'ó').replace(/&uacute;/g, 'ú').replace(/&ntilde;/g, 'ñ')
+      .trim()
+    if (seenHotels.has(name) || name.length < 2) continue
+    seenHotels.add(name)
+    // Buscar data-code en el contexto cercano (~300 chars antes/después)
+    const start = Math.max(0, m.index! - 300)
+    const end = Math.min(html.length, m.index! + 300)
+    const ctx = html.slice(start, end)
+    const codeM = ctx.match(/data-code="([^"]+)"/)
+    hotels.push({ name, code: codeM ? codeM[1] : '' })
+  }
+  const hotelsText = hotels.length > 0
+    ? 'Alojamientos previstos\n' + hotels.map(h => `• ${h.name}${h.code ? ` (${h.code})` : ''}`).join('\n')
+    : ''
+
+  if (!descriptionText && !itineraryText && !hotelsText) {
     return NextResponse.json({
-      error: 'No se pudieron extraer Descripción ni Itinerario del HTML',
+      error: 'No se pudieron extraer Descripción, Itinerario ni Hoteles del HTML',
       url,
       htmlSize: html.length,
     }, { status: 502 })
   }
 
-  // Composición final: solo Descripción + Itinerario, separados por línea en blanco
+  // Composición final: Descripción + Itinerario + Hoteles, separados por línea en blanco
   const body = [
     descriptionText ? `Descripción\n${descriptionText}` : '',
     itineraryText, // ya empieza con "Itinerario"
+    hotelsText,
   ].filter(Boolean).join('\n\n')
 
   const textOnly = body
