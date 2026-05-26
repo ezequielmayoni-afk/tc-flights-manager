@@ -164,7 +164,12 @@ export async function POST(
     const terminators = [
       /<p[^>]*>\s*Incluye:\s*<\/p>/,
       /Resumen del tour/,
+      /Resumen del viaje/,
       /Alojamientos previstos/,
+      /Esta idea incluye/,
+      /Ampliar mapa/,
+      /<button[^>]*>\s*Cerrar/,
+      /CLOSEDTOUR-/,    // texto del modal de "Advertencia: contrato CLOSEDTOUR-XXX"
       /Incluido/,
       /Pol[íi]tica de cancelaci[óo]n/,
     ]
