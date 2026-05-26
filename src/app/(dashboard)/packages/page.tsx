@@ -120,6 +120,8 @@ async function getPackages(): Promise<PackageWithDestinations[]> {
       last_requote_at,
       requote_price,
       requote_variance_pct,
+      description_body,
+      description_body_fetched_at,
       package_destinations(destination_code, destination_name),
       package_hotels(hotel_name, board_type),
       package_transports(baggage_info, checked_baggage, cabin_baggage)

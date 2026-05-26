@@ -62,11 +62,13 @@ import {
   RotateCcw,
   Luggage,
   Briefcase,
+  FileText,
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { DesignModal } from './DesignModal'
 import { SendToDesignModal } from './SendToDesignModal'
+import { DescriptionBodyModal } from './DescriptionBodyModal'
 import { useAuth } from '@/hooks/useAuth'
 
 // Normalize string by removing accents/diacritics
@@ -125,6 +127,8 @@ type PackageWithDestinations = {
   last_requote_at: string | null
   requote_price: number | null
   requote_variance_pct: number | null
+  description_body?: string | null
+  description_body_fetched_at?: string | null
   package_destinations: {
     destination_code: string
     destination_name: string
@@ -423,6 +427,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     error?: string
   } | null>(null)
   const [designModalPackage, setDesignModalPackage] = useState<{ id: number; title: string } | null>(null)
+  const [descriptionModalPackage, setDescriptionModalPackage] = useState<Package | null>(null)
 
   // Column widths state with localStorage persistence
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS)
@@ -1331,6 +1336,16 @@ export function PackagesTable({ packages }: PackagesTableProps) {
                               <Palette className="h-4 w-4" />
                               Gestionar Creativos
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setDescriptionModalPackage(pkg)}
+                              className="flex items-center gap-2"
+                            >
+                              <FileText className="h-4 w-4" />
+                              {pkg.description_body ? 'Ver descripción' : 'Cargar descripción'}
+                              {pkg.description_body && (
+                                <span className="ml-auto inline-flex items-center justify-center w-2 h-2 rounded-full bg-green-500" title="Descripción cargada" />
+                              )}
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -1614,6 +1629,19 @@ export function PackagesTable({ packages }: PackagesTableProps) {
           packageTitle={designModalPackage.title}
           open={!!designModalPackage}
           onOpenChange={(open) => !open && setDesignModalPackage(null)}
+        />
+      )}
+
+      {/* Description Body Modal */}
+      {descriptionModalPackage && (
+        <DescriptionBodyModal
+          open={!!descriptionModalPackage}
+          onOpenChange={(open) => !open && setDescriptionModalPackage(null)}
+          packageId={descriptionModalPackage.id}
+          tcPackageId={descriptionModalPackage.tc_package_id}
+          title={descriptionModalPackage.title}
+          initialBody={descriptionModalPackage.description_body || null}
+          initialFetchedAt={descriptionModalPackage.description_body_fetched_at || null}
         />
       )}
 
