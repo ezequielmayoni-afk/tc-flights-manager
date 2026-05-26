@@ -132,6 +132,8 @@ export async function POST(
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<\/(p|div|li|h[1-6]|tr|article|section)>/gi, '\n')
       .replace(/<[^>]+>/g, '')
+      // limpiar tags HTML incompletos al final (ej: </p sin > por slice cortado)
+      .replace(/<\/?\w*\s*$/g, '')
       // entidades HTML básicas
       .replace(/&gt;/g, '>').replace(/&lt;/g, '<')
       .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ')
