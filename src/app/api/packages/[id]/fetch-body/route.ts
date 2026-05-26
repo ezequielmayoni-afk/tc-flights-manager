@@ -97,35 +97,91 @@ export async function POST(
     return NextResponse.json({ error: e.message || String(e), url }, { status: 502 })
   }
 
-  // Extraer el <form id="idea-info-form">...</form> — contiene todo el body editorial
-  const formMatch = html.match(/<form[^>]*id="idea-info-form"[^>]*>([\s\S]+?)<\/form>/)
-  if (!formMatch) {
+  // Extraer SOLO el bloque "description-brochure" (la descripción real) +
+  // el bloque del Itinerario. Descartamos UI (Compartir, Advertencia, Hot Sale,
+  // Temas, breadcrumb de destinos, botones, etc).
+
+  // 1) DESCRIPCIÓN — <div class="...description-brochure...">
+  function extractBalancedDiv(html: string, startIdx: number): string {
+    // Recibe el offset del '<div ...>' inicial. Devuelve hasta el </div> que balancea.
+    const end = findClosingDiv(html, startIdx)
+    return html.slice(startIdx, end)
+  }
+  function findClosingDiv(s: string, from: number): number {
+    // Asume que `from` apunta al inicio de un '<div'. Avanza hasta el '</div>' balanceado.
+    const tagEnd = s.indexOf('>', from)
+    if (tagEnd === -1) return s.length
+    let i = tagEnd + 1
+    let depth = 1
+    while (i < s.length && depth > 0) {
+      const nextOpen = s.indexOf('<div', i)
+      const nextClose = s.indexOf('</div>', i)
+      if (nextClose === -1) return s.length
+      if (nextOpen !== -1 && nextOpen < nextClose) { depth++; i = nextOpen + 4 }
+      else { depth--; i = nextClose + 6 }
+    }
+    return i
+  }
+  function toCleanText(rawHtml: string): string {
+    let t = rawHtml
+      .replace(/<script[\s\S]*?<\/script>/g, '')
+      .replace(/<style[\s\S]*?<\/style>/g, '')
+      .replace(/<button[\s\S]*?<\/button>/g, '')
+      .replace(/<a[^>]*data-(?:p-required|widget-var|toggle-collapse)[^>]*>[\s\S]*?<\/a>/g, '')
+      .replace(/<div[^>]*c-read-more[^>]*>[\s\S]*?<\/div>/g, '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6]|tr|article|section)>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      // entidades HTML básicas
+      .replace(/&gt;/g, '>').replace(/&lt;/g, '<')
+      .replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/&iacute;/g, 'í').replace(/&aacute;/g, 'á')
+      .replace(/&eacute;/g, 'é').replace(/&oacute;/g, 'ó').replace(/&uacute;/g, 'ú')
+      .replace(/&ntilde;/g, 'ñ').replace(/&Ntilde;/g, 'Ñ')
+      // compactar espacios pero preservar saltos
+      .replace(/[ \t]+/g, ' ')
+      .replace(/ *\n */g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+    return t
+  }
+
+  // Descripción
+  const descMatch = html.match(/<div[^>]*class="[^"]*description-brochure[^"]*"[^>]*>/)
+  let descriptionText = ''
+  if (descMatch && descMatch.index !== undefined) {
+    const descBlock = extractBalancedDiv(html, descMatch.index)
+    descriptionText = toCleanText(descBlock)
+  }
+
+  // Itinerario — desde el div padre del <b>Itinerario</b> hasta el <p>Incluye:</p>
+  let itineraryText = ''
+  const itiAnchor = html.search(/<b[^>]*>\s*Itinerario\s*<\/b>/)
+  const incAnchor = html.search(/<p[^>]*>\s*Incluye:\s*<\/p>/)
+  if (itiAnchor !== -1) {
+    // Buscar div padre cercano antes del anchor
+    const divStart = html.lastIndexOf('<div', itiAnchor)
+    const endAt = incAnchor !== -1 && incAnchor > itiAnchor ? incAnchor : itiAnchor + 30_000
+    const itiBlock = html.slice(divStart, endAt)
+    itineraryText = toCleanText(itiBlock)
+  }
+
+  if (!descriptionText && !itineraryText) {
     return NextResponse.json({
-      error: 'No se encontró el bloque idea-info-form en la página',
+      error: 'No se pudieron extraer Descripción ni Itinerario del HTML',
       url,
       htmlSize: html.length,
     }, { status: 502 })
   }
-  let body = formMatch[1]
 
-  // Limpiar scripts, styles, inputs hidden, JSF noise — preservar contenido editorial
-  body = body
-    .replace(/<script[\s\S]*?<\/script>/g, '')
-    .replace(/<style[\s\S]*?<\/style>/g, '')
-    .replace(/<input[^>]*type="hidden"[^>]*\/?>/g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/<noscript[\s\S]*?<\/noscript>/g, '')
-    // botones "Leer más / Leer menos" PrimeFaces
-    .replace(/<div[^>]*class="[^"]*c-read-more[^"]*"[^>]*>[\s\S]*?<\/div>/g, '')
-    .replace(/<a[^>]*data-(?:p-required|widget-var)[^>]*>[\s\S]*?<\/a>/g, '')
-    // PrimeFaces wrappers vacíos
-    .replace(/\s+(?:onclick|onkeypress|onfocus|onblur|onmouseover|onmouseout)="[^"]*"/g, '')
-    // colapsar whitespace
-    .replace(/\s+/g, ' ')
-    .replace(/>\s+</g, '><')
-    .trim()
+  // Composición final: solo Descripción + Itinerario, separados por línea en blanco
+  const body = [
+    descriptionText ? `Descripción\n${descriptionText}` : '',
+    itineraryText, // ya empieza con "Itinerario"
+  ].filter(Boolean).join('\n\n')
 
-  const textOnly = body.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+  const textOnly = body
 
   if (dry) {
     return NextResponse.json({
