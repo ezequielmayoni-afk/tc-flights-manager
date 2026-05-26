@@ -427,7 +427,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     error?: string
   } | null>(null)
   const [designModalPackage, setDesignModalPackage] = useState<{ id: number; title: string } | null>(null)
-  const [descriptionModalPackage, setDescriptionModalPackage] = useState<Package | null>(null)
+  const [descriptionModalPackage, setDescriptionModalPackage] = useState<PackageWithDestinations | null>(null)
 
   // Column widths state with localStorage persistence
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(DEFAULT_COLUMN_WIDTHS)
