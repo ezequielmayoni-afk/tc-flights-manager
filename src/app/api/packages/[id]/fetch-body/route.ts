@@ -160,8 +160,11 @@ export async function POST(
   let itineraryText = ''
   const itiAnchor = html.search(/<b[^>]*>\s*Itinerario\s*<\/b>/)
   if (itiAnchor !== -1) {
-    // Cualquier terminador conocido después del itinerario
+    // Cualquier terminador conocido después del itinerario.
+    // El más confiable es "Fin de nuestros servicios" (frase final estándar de TC).
+    // Si no aparece, caemos a los otros.
     const terminators = [
+      /Fin de nuestros servicios/,    // PRIMARIO — termina el itinerario formal
       /<p[^>]*>\s*Incluye:\s*<\/p>/,
       /Resumen del tour/,
       /Resumen del viaje/,
@@ -169,17 +172,23 @@ export async function POST(
       /Esta idea incluye/,
       /Ampliar mapa/,
       /<button[^>]*>\s*Cerrar/,
-      /CLOSEDTOUR-/,    // texto del modal de "Advertencia: contrato CLOSEDTOUR-XXX"
+      /CLOSEDTOUR-/,
       /Incluido/,
       /Pol[íi]tica de cancelaci[óo]n/,
     ]
     let endAt = html.length
+    let endTerminator = ''
     for (const t of terminators) {
       const m = html.slice(itiAnchor).search(t)
       if (m !== -1) {
         const absolute = itiAnchor + m
-        if (absolute < endAt) endAt = absolute
+        if (absolute < endAt) { endAt = absolute; endTerminator = t.source }
       }
+    }
+    // Si terminamos en "Fin de nuestros servicios", extender hasta cerrar la frase
+    if (endTerminator.startsWith('Fin de nuestros')) {
+      const finIdx = html.indexOf('Fin de nuestros servicios', endAt)
+      if (finIdx !== -1) endAt = finIdx + 30  // incluir "Fin de nuestros servicios." + punto
     }
     if (endAt > itiAnchor + 50_000) endAt = itiAnchor + 50_000  // safety cap
     const itiBlock = html.slice(itiAnchor, endAt)
