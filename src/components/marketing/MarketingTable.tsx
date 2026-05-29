@@ -43,6 +43,7 @@ import {
   ArrowUpDown,
   Link2,
   X,
+  Copy,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -67,6 +68,7 @@ import { es } from 'date-fns/locale'
 import { PackageRowExpanded } from './PackageRowExpanded'
 import { CreativeRequestModal } from './CreativeRequestModal'
 import { ImportAdsModal } from './ImportAdsModal'
+import { DuplicateAdsModal } from './DuplicateAdsModal'
 
 function buildPackageUrl(packageId: number, title: string): string {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
@@ -82,7 +84,7 @@ function normalizeText(text: string): string {
 }
 
 // Column configuration for resizable columns
-type ColumnKey = 'id' | 'paquete' | 'creado' | 'rango' | 'vencimiento' | 'adAccountId' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
+type ColumnKey = 'id' | 'paquete' | 'creado' | 'rango' | 'vencimiento' | 'campaignId' | 'adsetId' | 'copies' | 'creativos' | 'ads' | 'status' | 'actions'
 
 const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   id: 90,
@@ -90,9 +92,8 @@ const DEFAULT_COLUMN_WIDTHS: Record<ColumnKey, number> = {
   creado: 90,
   rango: 120,
   vencimiento: 110,
-  adAccountId: 160,
-  campaignId: 200,
-  adsetId: 200,
+  campaignId: 240,
+  adsetId: 240,
   copies: 70,
   creativos: 90,
   ads: 60,
@@ -242,6 +243,7 @@ interface Package {
   meta_adset_ids?: string | null
   meta_ad_account_id?: string | null
   tc_active?: boolean
+  meta_campaign_ids?: string[] | null
 }
 
 interface MarketingTableProps {
@@ -259,6 +261,14 @@ const STATUS_OPTIONS = [
   { value: 'needs_update', label: 'Actualizar' },
 ]
 
+interface Placement {
+  adset_id: string
+  adset_name: string | null
+  campaign_id: string | null
+  campaign_name: string | null
+  ad_count: number
+}
+
 interface PackageRowData {
   copiesCount: number
   creativesCount: number
@@ -268,6 +278,7 @@ interface PackageRowData {
   adSetId: string
   campaignName: string | null
   adSetName: string | null
+  placements: Placement[]
   adsActive: boolean
   togglingAds: boolean
 }
@@ -287,6 +298,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [confirmRemoveFromMarketing, setConfirmRemoveFromMarketing] = useState<number | null>(null)
   const [removingFromMarketing, setRemovingFromMarketing] = useState<Set<number>>(new Set())
   const [importAdsPkg, setImportAdsPkg] = useState<Package | null>(null)
+  const [duplicateAdsPkg, setDuplicateAdsPkg] = useState<Package | null>(null)
+  const [syncingMetaAdsPkgId, setSyncingMetaAdsPkgId] = useState<number | null>(null)
   const [sortColumn, setSortColumn] = useState<ColumnKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>(null)
   const [campaignFilter, setCampaignFilter] = useState<string>('all')
@@ -338,28 +351,98 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       const creativesCount = creatives?.length || 0
       const uploadedCreativesCount = creatives?.filter((c: { upload_status: string }) => c.upload_status === 'uploaded').length || 0
 
-      // Load ads status
+      // Load ads + recompute placements (agrupados por adset)
       const { data: ads } = await supabase
         .from('meta_ads')
-        .select('status')
+        .select('status, meta_adset_id')
         .eq('package_id', packageId)
+        .neq('status', 'DELETED')
+        .limit(10000)
 
       const hasActiveAds = ads?.some((ad: { status: string }) => ad.status === 'ACTIVE') || false
 
-      setPackageData(prev => {
-        const existing = prev[packageId] || {
-          campaignId: '',
-          adSetId: '',
-          campaignName: null,
-          adSetName: null,
+      const adsetCounts: Record<string, number> = {}
+      for (const ad of (ads as Array<{ meta_adset_id?: string }> | null) || []) {
+        if (ad.meta_adset_id) adsetCounts[ad.meta_adset_id] = (adsetCounts[ad.meta_adset_id] || 0) + 1
+      }
+      const adsetIds = Object.keys(adsetCounts)
+
+      // Resolver nombres de adsets + campañas
+      const pkgObj = packages.find((p) => p.id === packageId)
+      const campaignIds = (pkgObj?.meta_campaign_ids || []).filter(Boolean)
+      let campMap: Record<string, { name: string }> = {}
+      let adsetMap: Record<string, { name: string; campaign_id: string }> = {}
+      if (adsetIds.length > 0 || campaignIds.length > 0) {
+        try {
+          const resp = await fetch('/api/meta/lookup/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adsetIds, campaignIds }),
+          })
+          const data = await resp.json()
+          campMap = data.campaigns || {}
+          adsetMap = data.adsets || {}
+          // Segunda pasada para campañas que aparecen vía adsets
+          const extraCampIds = new Set<string>()
+          for (const aid of adsetIds) {
+            const info = adsetMap[aid]
+            if (info?.campaign_id && !campMap[info.campaign_id]) extraCampIds.add(info.campaign_id)
+          }
+          if (extraCampIds.size > 0) {
+            const extraResp = await fetch('/api/meta/lookup/batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ campaignIds: Array.from(extraCampIds), adsetIds: [] }),
+            })
+            const extra = await extraResp.json()
+            Object.assign(campMap, extra.campaigns || {})
+          }
+        } catch (e) {
+          console.warn('lookup/batch failed', e)
         }
+      }
+
+      const placements: Placement[] = adsetIds.map((aid) => {
+        const info = adsetMap[aid]
+        const campaignId = info?.campaign_id || null
+        return {
+          adset_id: aid,
+          adset_name: info?.name || null,
+          campaign_id: campaignId,
+          campaign_name: campaignId ? campMap[campaignId]?.name || null : null,
+          ad_count: adsetCounts[aid],
+        }
+      })
+      // Ghosts: campañas en meta_campaign_ids sin placement
+      const existingCampIds = new Set(placements.map((p) => p.campaign_id).filter(Boolean))
+      for (const cid of campaignIds) {
+        if (existingCampIds.has(cid)) continue
+        placements.push({
+          adset_id: `__ghost__${cid}`,
+          adset_name: null,
+          campaign_id: cid,
+          campaign_name: campMap[cid]?.name || null,
+          ad_count: 0,
+        })
+      }
+
+      setPackageData(prev => {
+        const existing = prev[packageId]
         return {
           ...prev,
           [packageId]: {
-            ...existing,
+            ...(existing || {
+              adAccountId: '',
+              campaignId: '',
+              adSetId: '',
+              campaignName: null,
+              adSetName: null,
+              placements: [],
+            }),
             copiesCount: copiesCount || 0,
             creativesCount,
             uploadedCreativesCount,
+            placements,
             adsActive: hasActiveAds,
             togglingAds: false,
           }
@@ -368,7 +451,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     } catch (error) {
       console.error(`Error reloading data for package ${packageId}:`, error)
     }
-  }, [])
+  }, [packages])
 
   // Real-time subscriptions
   useEffect(() => {
@@ -481,6 +564,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           .from('meta_ads')
           .select('package_id, status, meta_adset_id')
           .in('package_id', unloadedIds)
+          .neq('status', 'DELETED')
+          .limit(50000)
 
         // Process results into counts per package
         const copiesByPackage: Record<number, number> = {}
@@ -499,16 +584,20 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           }
         })
 
-        const adsByPackage: Record<number, { hasActive: boolean; adSetId: string }> = {}
+        const adsByPackage: Record<number, { hasActive: boolean; adSetId: string; adsetCounts: Record<string, number> }> = {}
         ;(allAds as Array<{ package_id: number; status: string; meta_adset_id?: string }> | null)?.forEach(ad => {
           if (!adsByPackage[ad.package_id]) {
-            adsByPackage[ad.package_id] = { hasActive: false, adSetId: '' }
+            adsByPackage[ad.package_id] = { hasActive: false, adSetId: '', adsetCounts: {} }
           }
           if (ad.status === 'ACTIVE') {
             adsByPackage[ad.package_id].hasActive = true
           }
-          if (ad.meta_adset_id && !adsByPackage[ad.package_id].adSetId) {
-            adsByPackage[ad.package_id].adSetId = ad.meta_adset_id
+          if (ad.meta_adset_id) {
+            if (!adsByPackage[ad.package_id].adSetId) {
+              adsByPackage[ad.package_id].adSetId = ad.meta_adset_id
+            }
+            adsByPackage[ad.package_id].adsetCounts[ad.meta_adset_id] =
+              (adsByPackage[ad.package_id].adsetCounts[ad.meta_adset_id] || 0) + 1
           }
         })
 
@@ -516,12 +605,20 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         const newPackageData: Record<number, PackageRowData> = {}
         for (const pkgId of unloadedIds) {
           const creatives = creativesByPackage[pkgId] || { total: 0, uploaded: 0 }
-          const ads = adsByPackage[pkgId] || { hasActive: false, adSetId: '' }
+          const ads = adsByPackage[pkgId] || { hasActive: false, adSetId: '', adsetCounts: {} }
           // Use saved IDs from package, fallback to ads table
           const pkgObj = packages.find(p => p.id === pkgId)
           const savedAdSetId = pkgObj?.meta_adset_ids || ''
           const savedCampaignId = pkgObj?.meta_campaign_id || ''
           const savedAdAccountId = pkgObj?.meta_ad_account_id || ''
+
+          const placements: Placement[] = Object.entries(ads.adsetCounts).map(([adset_id, ad_count]) => ({
+            adset_id,
+            adset_name: null,
+            campaign_id: null,
+            campaign_name: null,
+            ad_count,
+          }))
 
           newPackageData[pkgId] = {
             copiesCount: copiesByPackage[pkgId] || 0,
@@ -532,6 +629,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
             adSetId: savedAdSetId || ads.adSetId,
             campaignName: null,
             adSetName: null,
+            placements,
             adsActive: ads.hasActive,
             togglingAds: false,
           }
@@ -539,32 +637,46 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
 
         setPackageData(prev => ({ ...prev, ...newPackageData }))
 
-        // Batch lookup: collect all unique adset IDs, then resolve names in ONE call
+        // Batch lookup: collect ALL adset IDs across all placements
         const adsetIdMap: Record<string, { pkgIds: number[]; rawId: string }> = {}
+        const allAdsetIds = new Set<string>()
         const campaignIdSet = new Set<string>()
 
         for (const pkgId of unloadedIds) {
-          const adSetIdRaw = newPackageData[pkgId]?.adSetId
+          const data = newPackageData[pkgId]
+          if (!data) continue
+          for (const p of data.placements) {
+            allAdsetIds.add(p.adset_id)
+          }
+          const adSetIdRaw = data.adSetId
           if (adSetIdRaw) {
             const firstAdSetId = adSetIdRaw.split(',')[0].trim()
-            if (!firstAdSetId) continue
-            if (!adsetIdMap[firstAdSetId]) {
-              adsetIdMap[firstAdSetId] = { pkgIds: [], rawId: adSetIdRaw }
+            if (firstAdSetId) {
+              if (!adsetIdMap[firstAdSetId]) {
+                adsetIdMap[firstAdSetId] = { pkgIds: [], rawId: adSetIdRaw }
+              }
+              adsetIdMap[firstAdSetId].pkgIds.push(pkgId)
+              allAdsetIds.add(firstAdSetId)
             }
-            adsetIdMap[firstAdSetId].pkgIds.push(pkgId)
           }
-          const campId = newPackageData[pkgId]?.campaignId
+          const campId = data.campaignId
           if (campId) campaignIdSet.add(campId)
+          // También resolver nombres de meta_campaign_ids del paquete (puede haber campañas sin ads aún)
+          const pkgObj = packages.find((p) => p.id === pkgId)
+          for (const cid of pkgObj?.meta_campaign_ids || []) {
+            if (cid) campaignIdSet.add(cid)
+          }
         }
 
         const uniqueAdsetIds = Object.keys(adsetIdMap)
-        if (uniqueAdsetIds.length > 0 || campaignIdSet.size > 0) {
+        const allAdsetIdsArr = Array.from(allAdsetIds)
+        if (allAdsetIdsArr.length > 0 || campaignIdSet.size > 0) {
           try {
             const batchRes = await fetch('/api/meta/lookup/batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                adsetIds: uniqueAdsetIds,
+                adsetIds: allAdsetIdsArr,
                 campaignIds: Array.from(campaignIdSet),
               }),
             })
@@ -573,7 +685,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
 
             // Also collect campaign IDs from adset results for a second resolve pass
             const extraCampaignIds = new Set<string>()
-            for (const adsetId of uniqueAdsetIds) {
+            for (const adsetId of allAdsetIdsArr) {
               const adsetInfo = adsetMap[adsetId]
               if (adsetInfo?.campaign_id && !campMap[adsetInfo.campaign_id]) {
                 extraCampaignIds.add(adsetInfo.campaign_id)
@@ -594,6 +706,41 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
             // Apply results to package data
             setPackageData(prev => {
               const updated = { ...prev }
+
+              // Enriquecer placements de cada paquete con nombres
+              for (const pkgId of unloadedIds) {
+                const current = updated[pkgId]
+                if (!current) continue
+                const enrichedPlacements: Placement[] = current.placements.map((pl) => {
+                  const adsetInfo = adsetMap[pl.adset_id]
+                  const campaignId = adsetInfo?.campaign_id || null
+                  const campaignName = campaignId ? campMap[campaignId]?.name || null : null
+                  return {
+                    ...pl,
+                    adset_name: adsetInfo?.name || pl.adset_name,
+                    campaign_id: campaignId,
+                    campaign_name: campaignName,
+                  }
+                })
+
+                // Agregar placements "fantasma" para campañas en meta_campaign_ids
+                // que no tengan ads en BD (replicación incompleta o entrada manual)
+                const pkgObj = packages.find((p) => p.id === pkgId)
+                const existingCampaignIds = new Set(enrichedPlacements.map((p) => p.campaign_id).filter(Boolean))
+                for (const cid of pkgObj?.meta_campaign_ids || []) {
+                  if (!cid || existingCampaignIds.has(cid)) continue
+                  enrichedPlacements.push({
+                    adset_id: `__ghost__${cid}`,
+                    adset_name: null,
+                    campaign_id: cid,
+                    campaign_name: campMap[cid]?.name || null,
+                    ad_count: 0,
+                  })
+                }
+
+                updated[pkgId] = { ...current, placements: enrichedPlacements }
+              }
+
               for (const [adsetId, { pkgIds, rawId }] of Object.entries(adsetIdMap)) {
                 const adsetInfo = adsetMap[adsetId]
                 if (!adsetInfo) continue
@@ -896,17 +1043,20 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         return false
       }
     }
-    // Campaign filter
+    // Campaign filter — match cualquier placement
     if (campaignFilter !== 'all') {
       const data = packageData[pkg.id]
-      if (!data?.campaignId || data.campaignId !== campaignFilter) return false
+      const inPlacements = data?.placements?.some((p) => p.campaign_id === campaignFilter) ?? false
+      const inPrimary = data?.campaignId === campaignFilter
+      if (!inPlacements && !inPrimary) return false
     }
-    // AdSet filter
+    // AdSet filter — match cualquier placement
     if (adsetFilter !== 'all') {
       const data = packageData[pkg.id]
-      if (!data?.adSetId) return false
-      const adsetIds = data.adSetId.split(',').map((s: string) => s.trim())
-      if (!adsetIds.includes(adsetFilter)) return false
+      const inPlacements = data?.placements?.some((p) => p.adset_id === adsetFilter) ?? false
+      const adsetIds = data?.adSetId?.split(',').map((s) => s.trim()) || []
+      const inPrimary = adsetIds.includes(adsetFilter)
+      if (!inPlacements && !inPrimary) return false
     }
     return true
   })
@@ -980,6 +1130,35 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       }
     } finally {
       setIsRefreshing(false)
+    }
+  }
+
+  // Backfill ads desde Meta para este paquete (rescata ads que están en Meta
+  // pero no en meta_ads BD — típicamente por replicaciones que fallaron al guardar)
+  const handleSyncMetaAds = async (pkgId: number) => {
+    setSyncingMetaAdsPkgId(pkgId)
+    try {
+      const resp = await fetch(`/api/packages/${pkgId}/sync-meta-ads`, { method: 'POST' })
+      const data = await resp.json()
+      if (!resp.ok) {
+        toast.error(`Error: ${data.error || resp.status}`)
+        return
+      }
+      const { synced, skipped_existing, campaigns_scanned, errors } = data
+      if (synced > 0) {
+        toast.success(`✓ ${synced} ad${synced > 1 ? 's' : ''} sincronizado${synced > 1 ? 's' : ''} (${skipped_existing} ya estaba${skipped_existing !== 1 ? 'n' : ''}, ${campaigns_scanned} campaña${campaigns_scanned !== 1 ? 's' : ''} escaneada${campaigns_scanned !== 1 ? 's' : ''})`)
+      } else {
+        toast.info(`Nada nuevo: ${skipped_existing} ya estaba${skipped_existing !== 1 ? 'n' : ''} en BD, ${campaigns_scanned} campaña${campaigns_scanned !== 1 ? 's' : ''} escaneada${campaigns_scanned !== 1 ? 's' : ''}`)
+      }
+      if (errors?.length > 0) {
+        console.warn('[sync-meta-ads] errores:', errors)
+        toast.warning(`${errors.length} errores — revisá console`)
+      }
+      await reloadPackageData(pkgId)
+    } catch (e) {
+      toast.error(`Falló sincronización: ${(e as Error).message}`)
+    } finally {
+      setSyncingMetaAdsPkgId(null)
     }
   }
 
@@ -1365,7 +1544,6 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               <ResizableHeader label="Creado" columnKey="creado" width={columnWidths.creado} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creado' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Rango" columnKey="rango" width={columnWidths.rango} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'rango' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Vencimiento" columnKey="vencimiento" width={columnWidths.vencimiento} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'vencimiento' ? sortDir : null} onSort={handleSort} />
-              <ResizableHeader label="Cuenta" columnKey="adAccountId" width={columnWidths.adAccountId} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered />
               <TableHead
                 className="relative group"
                 style={{ width: `${columnWidths.campaignId}px`, minWidth: `${columnWidths.campaignId}px`, maxWidth: `${columnWidths.campaignId}px` }}
@@ -1413,7 +1591,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           </TableHeader>
           <TableBody>
             {sortedPackages.map((pkg) => {
-              const data = packageData[pkg.id] || {
+              const data: PackageRowData = packageData[pkg.id] || {
                 copiesCount: 0,
                 creativesCount: 0,
                 uploadedCreativesCount: 0,
@@ -1422,6 +1600,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                 adSetId: '',
                 campaignName: null,
                 adSetName: null,
+                placements: [],
                 adsActive: false,
                 togglingAds: false,
               }
@@ -1464,6 +1643,16 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                               <AlertTriangle className="h-3 w-3 mr-0.5" />
                               INACTIVO EN TC · Dar de baja anuncio
                             </span>
+                          )}
+                          {(pkg.meta_campaign_ids?.length || 0) > 0 && (
+                            <button
+                              onClick={() => setDuplicateAdsPkg(pkg)}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-800 shrink-0 border border-blue-200 hover:bg-blue-200 transition-colors cursor-pointer"
+                              title={`Este paquete está en ${pkg.meta_campaign_ids!.length} campaña(s). Click para gestionar replicación.`}
+                            >
+                              <Copy className="h-3 w-3 mr-0.5" />
+                              {pkg.meta_campaign_ids!.length} campaña{pkg.meta_campaign_ids!.length > 1 ? 's' : ''}
+                            </button>
                           )}
                           {pendingRequests[pkg.id] ? (
                             <button
@@ -1604,66 +1793,52 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                       </Popover>
                     </TableCell>
 
-                    {/* Ad Account */}
-                    <TableCell style={{ width: columnWidths.adAccountId, minWidth: columnWidths.adAccountId, maxWidth: columnWidths.adAccountId }}>
-                      <div className="flex flex-col items-center gap-0.5">
-                        <Input
-                          placeholder="act_..."
-                          value={data.adAccountId ?? ''}
-                          onChange={(e) => updatePackageField(pkg.id, 'adAccountId', e.target.value)}
-                          className={`w-full h-6 text-[10px] text-center font-mono text-muted-foreground ${
-                            data.adAccountId ? 'border-blue-500' : ''
-                          }`}
-                        />
-                      </div>
+                    {/* Campaign — lista de placements */}
+                    <TableCell className="align-top py-2" style={{ width: columnWidths.campaignId, minWidth: columnWidths.campaignId, maxWidth: columnWidths.campaignId }}>
+                      {data.placements && data.placements.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {data.placements.map((p) => (
+                            <div key={p.adset_id + ':camp'} className="text-[11px] leading-tight">
+                              <div className="font-semibold text-green-700 truncate" title={p.campaign_name || p.campaign_id || ''}>
+                                {p.campaign_name || (p.campaign_id ? '(sin nombre)' : '—')}
+                              </div>
+                              {p.campaign_id && (
+                                <div className="text-[9px] text-muted-foreground font-mono truncate">{p.campaign_id}</div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground italic">Sin campaña</span>
+                      )}
                     </TableCell>
 
-                    {/* Campaign */}
-                    <TableCell style={{ width: columnWidths.campaignId, minWidth: columnWidths.campaignId, maxWidth: columnWidths.campaignId }}>
-                      <div className="flex flex-col items-center gap-0.5">
-                        {data.campaignName && (
-                          <span className="text-xs font-semibold text-green-700 truncate w-full text-center leading-tight" title={data.campaignName}>
-                            {data.campaignName}
-                          </span>
-                        )}
-                        {data.campaignId && !data.campaignName && (
-                          <span className="text-[10px] text-red-400 italic">No encontrada</span>
-                        )}
-                        <Input
-                          placeholder="Campaign ID"
-                          value={data.campaignId ?? ''}
-                          onChange={(e) => updatePackageField(pkg.id, 'campaignId', e.target.value)}
-                          onFocus={() => handleFieldFocus(pkg.id, 'campaignId')}
-                          className={`w-full h-6 text-[10px] text-center font-mono text-muted-foreground ${
-                            data.campaignName ? 'border-green-500' :
-                            data.campaignId ? 'border-red-400' : ''
-                          }`}
-                        />
-                      </div>
-                    </TableCell>
-
-                    {/* AdSet */}
-                    <TableCell style={{ width: columnWidths.adsetId, minWidth: columnWidths.adsetId, maxWidth: columnWidths.adsetId }}>
-                      <div className="flex flex-col items-center gap-0.5">
-                        {data.adSetName && (
-                          <span className="text-xs font-semibold text-green-700 truncate w-full text-center leading-tight" title={data.adSetName}>
-                            {data.adSetName}
-                          </span>
-                        )}
-                        {data.adSetId && !data.adSetName && (
-                          <span className="text-[10px] text-red-400 italic">No encontrado</span>
-                        )}
-                        <Input
-                          placeholder="AdSet ID *"
-                          value={data.adSetId ?? ''}
-                          onChange={(e) => updatePackageField(pkg.id, 'adSetId', e.target.value)}
-                          onFocus={() => handleFieldFocus(pkg.id, 'adSetId')}
-                          className={`w-full h-6 text-[10px] text-center font-mono text-muted-foreground ${
-                            data.adSetName ? 'border-green-500' :
-                            data.adSetId ? 'border-red-400' : ''
-                          }`}
-                        />
-                      </div>
+                    {/* AdSet — lista de placements */}
+                    <TableCell className="align-top py-2" style={{ width: columnWidths.adsetId, minWidth: columnWidths.adsetId, maxWidth: columnWidths.adsetId }}>
+                      {data.placements && data.placements.length > 0 ? (
+                        <div className="flex flex-col gap-1">
+                          {data.placements.map((p) => {
+                            const isGhost = p.adset_id.startsWith('__ghost__')
+                            return (
+                              <div key={p.adset_id + ':as'} className="text-[11px] leading-tight">
+                                {isGhost ? (
+                                  <div className="text-[10px] text-amber-600 italic">— sin ads —</div>
+                                ) : (
+                                  <>
+                                    <div className="font-semibold text-green-700 truncate flex items-center gap-1" title={p.adset_name || p.adset_id}>
+                                      <span className="truncate">{p.adset_name || '(sin nombre)'}</span>
+                                      <span className="text-[9px] bg-blue-100 text-blue-700 px-1 rounded font-normal shrink-0">{p.ad_count}</span>
+                                    </div>
+                                    <div className="text-[9px] text-muted-foreground font-mono truncate">{p.adset_id}</div>
+                                  </>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-muted-foreground italic">Sin adset</span>
+                      )}
                     </TableCell>
 
                     {/* Copies Count */}
@@ -1785,6 +1960,24 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                               Importar anuncios
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                              onClick={() => setDuplicateAdsPkg(pkg)}
+                              className="text-blue-700 focus:text-blue-700"
+                            >
+                              <Copy className="h-4 w-4 mr-2" />
+                              Replicar en otras campañas
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleSyncMetaAds(pkg.id)}
+                              disabled={syncingMetaAdsPkgId === pkg.id}
+                            >
+                              {syncingMetaAdsPkgId === pkg.id ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <RefreshCw className="h-4 w-4 mr-2" />
+                              )}
+                              Sincronizar ads desde Meta
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
                               onClick={() => setConfirmRemoveFromMarketing(pkg.id)}
                               className="text-red-600 focus:text-red-600"
                             >
@@ -1812,7 +2005,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                   {/* Expanded Row */}
                   {isExpanded && (
                     <TableRow key={`${pkg.id}-expanded`}>
-                      <TableCell colSpan={13} className="bg-muted/10 p-0">
+                      <TableCell colSpan={12} className="bg-muted/10 p-0">
                         <PackageRowExpanded
                           pkg={pkg}
                           adAccountId={data.adAccountId}
@@ -1905,6 +2098,16 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Duplicate Ads Modal — replica ads existentes en otras campañas */}
+      {duplicateAdsPkg && (
+        <DuplicateAdsModal
+          open={!!duplicateAdsPkg}
+          onOpenChange={(o) => !o && setDuplicateAdsPkg(null)}
+          packageId={duplicateAdsPkg.id}
+          packageTitle={duplicateAdsPkg.title}
+        />
+      )}
 
       {/* Import Ads Modal */}
       {importAdsPkg && (

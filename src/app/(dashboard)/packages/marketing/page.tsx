@@ -43,6 +43,7 @@ export default async function MarketingPage() {
       meta_campaign_id,
       meta_adset_ids,
       meta_ad_account_id,
+      meta_campaign_ids,
       tc_active
     `)
     .eq('send_to_marketing', true)

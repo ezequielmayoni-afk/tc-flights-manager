@@ -70,6 +70,7 @@ interface ExistingAd {
   id: number
   variant: number
   meta_ad_id: string
+  meta_adset_id?: string | null
   ad_name?: string | null
   status: string
   meta_status?: string | null
@@ -136,6 +137,7 @@ export function PackageRowExpanded({
   const [creatives, setCreatives] = useState<Creative[]>([])
   const [driveCreatives, setDriveCreatives] = useState<DriveCreative[]>([])
   const [existingAds, setExistingAds] = useState<ExistingAd[]>([])
+  const [adsetNames, setAdsetNames] = useState<Record<string, { name: string; campaign_name?: string }>>({})
   const [isLoading, setIsLoading] = useState(true)
   const [isSyncing, setIsSyncing] = useState(false)
   const [generatingCopy, setGeneratingCopy] = useState(false)
@@ -190,6 +192,54 @@ export function PackageRowExpanded({
       })
     }
   }, [localPreviews])
+
+  // Resolver nombres de adsets (+ campañas) para mostrar en la tabla de ads
+  useEffect(() => {
+    const uniqueAdsetIds = Array.from(new Set(
+      existingAds.map(a => a.meta_adset_id).filter((id): id is string => !!id && !adsetNames[id])
+    ))
+    if (uniqueAdsetIds.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const r = await fetch('/api/meta/lookup/batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ adsetIds: uniqueAdsetIds, campaignIds: [] }),
+        })
+        const data = await r.json()
+        if (cancelled) return
+        const adsetMap = data.adsets || {}
+        const campMap = data.campaigns || {}
+        // Si los adsets traen campaign_id que no está en campMap, traerlos
+        const extraCampIds = Array.from(new Set(
+          Object.values(adsetMap)
+            .map((info) => (info as { campaign_id?: string })?.campaign_id)
+            .filter((id): id is string => !!id && !campMap[id])
+        ))
+        let extraCampMap: Record<string, { name: string }> = {}
+        if (extraCampIds.length > 0) {
+          const r2 = await fetch('/api/meta/lookup/batch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ campaignIds: extraCampIds, adsetIds: [] }),
+          })
+          const d2 = await r2.json()
+          extraCampMap = d2.campaigns || {}
+        }
+        const next: Record<string, { name: string; campaign_name?: string }> = {}
+        for (const [aid, info] of Object.entries(adsetMap)) {
+          const i = info as { name: string; campaign_id?: string }
+          const campName = i.campaign_id ? (campMap[i.campaign_id]?.name || extraCampMap[i.campaign_id]?.name) : undefined
+          next[aid] = { name: i.name, campaign_name: campName }
+        }
+        if (!cancelled) setAdsetNames(prev => ({ ...prev, ...next }))
+      } catch (e) {
+        console.warn('[adset names] lookup failed', e)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [existingAds, adsetNames])
 
   const loadData = async () => {
     setIsLoading(true)
@@ -1190,6 +1240,7 @@ export function PackageRowExpanded({
                 <tr>
                   <th className="text-left px-3 py-2 font-medium">Variante</th>
                   <th className="text-left px-3 py-2 font-medium">Ad ID</th>
+                  <th className="text-left px-3 py-2 font-medium">AdSet</th>
                   <th className="text-left px-3 py-2 font-medium">Estado en Meta</th>
                   <th className="text-right px-3 py-2 font-medium w-24">Acciones</th>
                 </tr>
@@ -1235,6 +1286,23 @@ export function PackageRowExpanded({
                           >
                             {ad.meta_ad_id || '—'}
                           </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2">
+                        {ad.meta_adset_id ? (
+                          <div className="text-xs leading-tight">
+                            <div className="font-medium text-green-700 truncate max-w-[220px]" title={adsetNames[ad.meta_adset_id]?.name || ad.meta_adset_id}>
+                              {adsetNames[ad.meta_adset_id]?.name || <span className="text-muted-foreground italic">cargando...</span>}
+                            </div>
+                            {adsetNames[ad.meta_adset_id]?.campaign_name && (
+                              <div className="text-[10px] text-muted-foreground truncate max-w-[220px]" title={adsetNames[ad.meta_adset_id]?.campaign_name}>
+                                {adsetNames[ad.meta_adset_id]?.campaign_name}
+                              </div>
+                            )}
+                            <div className="text-[9px] text-muted-foreground font-mono truncate max-w-[220px]">{ad.meta_adset_id}</div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground italic">—</span>
                         )}
                       </td>
                       <td className="px-3 py-2">
