@@ -62,6 +62,8 @@ export function DuplicateAdsModal({
   const [loadingAds, setLoadingAds] = useState(false)
   const [sourceAds, setSourceAds] = useState<SourceAd[]>([])
   const [selectedAdIds, setSelectedAdIds] = useState<Set<string>>(new Set())
+  // Para paquetes sin ads aún: nº de creativos disponibles para crear ads desde 0
+  const [creativesCount, setCreativesCount] = useState<number>(0)
   const [targets, setTargets] = useState<TargetSlot[]>([newSlot()])
   const [statusInitial, setStatusInitial] = useState<'ACTIVE' | 'PAUSED'>('ACTIVE')
   const [step, setStep] = useState<'form' | 'progress' | 'done'>('form')
@@ -78,11 +80,13 @@ export function DuplicateAdsModal({
     setTargets([newSlot()])
     setProgress([])
     setStats(null)
-    fetch(`/api/packages/${packageId}/meta-ads`)
-      .then((r) => r.json())
-      .then((data) => {
+    Promise.all([
+      fetch(`/api/packages/${packageId}/meta-ads`).then((r) => r.json()),
+      fetch(`/api/meta/creatives?package_id=${packageId}`).then((r) => r.ok ? r.json() : { creatives: [] }),
+    ])
+      .then(([adsData, creativesData]) => {
         const ads: SourceAd[] = []
-        for (const c of data.campaigns || []) {
+        for (const c of adsData.campaigns || []) {
           for (const a of c.adsets || []) {
             for (const ad of a.ads || []) {
               ads.push({
@@ -98,12 +102,17 @@ export function DuplicateAdsModal({
           }
         }
         setSourceAds(ads)
-        // Pre-seleccionar ACTIVE
         setSelectedAdIds(new Set(ads.filter((a) => a.status === 'ACTIVE').map((a) => a.ad_id)))
+        // Si no hay ads, contar creativos disponibles para "primera carga"
+        const uploaded = (creativesData.creatives || []).filter((c: { upload_status?: string }) => c.upload_status === 'uploaded')
+        setCreativesCount(uploaded.length || (creativesData.creatives || []).length)
       })
       .catch((e) => setGlobalError(e.message || String(e)))
       .finally(() => setLoadingAds(false))
   }, [open, packageId])
+
+  // Modo "primera carga" cuando no hay ads existentes — usa creatives del paquete
+  const isFirstUploadMode = !loadingAds && sourceAds.length === 0 && creativesCount > 0
 
   function toggleAd(adId: string) {
     setSelectedAdIds((prev) => {
@@ -170,7 +179,9 @@ export function DuplicateAdsModal({
   }, [targets.map((t) => `${t.id}:${t.adset_id}`).join('|')])
 
   const validTargets = targets.filter((t) => t.adset_id.trim() && !t.error && t.adset_name && t.campaign_id)
-  const totalAdsToCreate = selectedAdIds.size * validTargets.length
+  const totalAdsToCreate = isFirstUploadMode
+    ? creativesCount * validTargets.length
+    : selectedAdIds.size * validTargets.length
 
   async function handleSubmit() {
     setStep('progress')
@@ -178,6 +189,69 @@ export function DuplicateAdsModal({
     setStats({ total: totalAdsToCreate, done: 0, success: 0, failed: 0 })
 
     try {
+      // Modo "primera carga": crear ads desde 0 usando creatives del paquete (POST /api/meta/ads)
+      if (isFirstUploadMode) {
+        let stepCount = 0
+        let successCount = 0
+        let failedCount = 0
+        for (const t of validTargets) {
+          const adsetId = t.adset_id.trim()
+          try {
+            const resp = await fetch('/api/meta/ads', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                packages: [{ package_id: packageId, meta_adset_id: adsetId }],
+                campaign_id: t.campaign_id,
+              }),
+            })
+            if (!resp.ok || !resp.body) {
+              failedCount += creativesCount
+              stepCount += creativesCount
+              setStats((s) => s ? { ...s, done: stepCount, failed: failedCount } : null)
+              setProgress((p) => [...p, { step: stepCount, total: totalAdsToCreate, ok: false, adset_id: adsetId, source_ad_id: '', error: `HTTP ${resp.status}` }])
+              continue
+            }
+            // Stream SSE — el endpoint emite 'created' por ad
+            const reader = resp.body.getReader()
+            const decoder = new TextDecoder()
+            let buf = ''
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              buf += decoder.decode(value, { stream: true })
+              const lines = buf.split('\n')
+              buf = lines.pop() || ''
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue
+                try {
+                  const ev = JSON.parse(line.slice(6))
+                  if (ev.type === 'created') {
+                    stepCount++
+                    successCount++
+                    setProgress((p) => [...p, { step: stepCount, total: totalAdsToCreate, ok: true, adset_id: adsetId, source_ad_id: '', new_ad_id: ev.data?.meta_ad_id }])
+                  } else if (ev.type === 'error') {
+                    stepCount++
+                    failedCount++
+                    setProgress((p) => [...p, { step: stepCount, total: totalAdsToCreate, ok: false, adset_id: adsetId, source_ad_id: '', error: ev.data?.error || 'Error desconocido' }])
+                  }
+                  setStats((s) => s ? { ...s, done: stepCount, success: successCount, failed: failedCount } : null)
+                } catch { /* skip */ }
+              }
+            }
+          } catch (e) {
+            stepCount += creativesCount
+            failedCount += creativesCount
+            setStats((s) => s ? { ...s, done: stepCount, failed: failedCount } : null)
+            setProgress((p) => [...p, { step: stepCount, total: totalAdsToCreate, ok: false, adset_id: adsetId, source_ad_id: '', error: (e as Error).message }])
+          }
+        }
+        setStep('done')
+        setStats({ total: totalAdsToCreate, done: stepCount, success: successCount, failed: failedCount })
+        if (onSuccess) onSuccess()
+        return
+      }
+
       const resp = await fetch('/api/meta/ads/duplicate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -258,8 +332,8 @@ export function DuplicateAdsModal({
             {/* Ads source */}
             <section>
               <Label className="text-sm font-semibold mb-2 block">
-                📦 Anuncios a replicar
-                {selectedAdIds.size > 0 && (
+                {isFirstUploadMode ? '🆕 Primera carga' : '📦 Anuncios a replicar'}
+                {!isFirstUploadMode && selectedAdIds.size > 0 && (
                   <span className="ml-2 text-xs text-muted-foreground font-normal">
                     ({selectedAdIds.size} seleccionados)
                   </span>
@@ -269,9 +343,15 @@ export function DuplicateAdsModal({
                 <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                   <Loader2 className="h-4 w-4 animate-spin" /> Cargando ads del paquete...
                 </div>
+              ) : isFirstUploadMode ? (
+                <div className="text-sm p-3 border rounded bg-blue-50 border-blue-200 text-blue-900">
+                  Este paquete no tiene ads en Meta todavía. Vamos a crearlos usando los{' '}
+                  <strong>{creativesCount} creativo{creativesCount !== 1 ? 's' : ''}</strong> del paquete.
+                  Pegá abajo los ad sets destino y se creará 1 ad por creativo en cada uno.
+                </div>
               ) : sourceAds.length === 0 ? (
                 <div className="text-xs text-muted-foreground p-3 border rounded bg-amber-50">
-                  Este paquete no tiene ads creados. Importá o creá un ad antes de replicar.
+                  Este paquete no tiene ads ni creativos cargados. Subí creativos primero.
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-64 overflow-auto border rounded p-2">
@@ -422,7 +502,10 @@ export function DuplicateAdsModal({
               <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm">
                 <strong>📊 Vas a crear {totalAdsToCreate} ads:</strong>{' '}
                 <span className="text-muted-foreground text-xs">
-                  {selectedAdIds.size} ads × {validTargets.length} destinos · arrancan {statusInitial}
+                  {isFirstUploadMode
+                    ? `${creativesCount} creativo${creativesCount !== 1 ? 's' : ''}`
+                    : `${selectedAdIds.size} ads`}
+                  {' '}× {validTargets.length} destino{validTargets.length !== 1 ? 's' : ''} · arrancan {statusInitial}
                 </span>
               </div>
             )}

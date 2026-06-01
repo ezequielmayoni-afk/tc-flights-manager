@@ -1809,7 +1809,14 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           ))}
                         </div>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground italic">Sin campaña</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setDuplicateAdsPkg(pkg) }}
+                          className="inline-flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 hover:underline"
+                          title="Agregar campañas/adsets a este paquete"
+                        >
+                          <PlusCircle className="h-3.5 w-3.5" />
+                          Agregar
+                        </button>
                       )}
                     </TableCell>
 
@@ -1837,7 +1844,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                           })}
                         </div>
                       ) : (
-                        <span className="text-[10px] text-muted-foreground italic">Sin adset</span>
+                        <span className="text-[10px] text-muted-foreground italic">—</span>
                       )}
                     </TableCell>
 
