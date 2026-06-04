@@ -19,55 +19,61 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const campaignIds: string[] = (body.campaignIds || []).filter(Boolean)
     const adsetIds: string[] = (body.adsetIds || []).filter(Boolean)
+    const forceRefresh: boolean = body.force_refresh === true
 
     const db = createAdminClient()
 
     const campaigns: Record<string, { name: string; status: string; objective?: string }> = {}
     const adsets: Record<string, { name: string; status: string; campaign_id: string }> = {}
 
-    // Batch fetch campaigns from Supabase
-    if (campaignIds.length > 0) {
-      const { data } = await db
-        .from('meta_campaigns')
-        .select('meta_campaign_id, name, status, objective')
-        .in('meta_campaign_id', campaignIds)
+    // Si force_refresh, saltamos el caché local — vamos directo a Meta API
+    if (!forceRefresh) {
+      // Batch fetch campaigns from Supabase
+      if (campaignIds.length > 0) {
+        const { data } = await db
+          .from('meta_campaigns')
+          .select('meta_campaign_id, name, status, objective')
+          .in('meta_campaign_id', campaignIds)
 
-      for (const c of data || []) {
-        campaigns[c.meta_campaign_id] = {
-          name: c.name,
-          status: c.status,
-          objective: c.objective,
+        for (const c of data || []) {
+          campaigns[c.meta_campaign_id] = {
+            name: c.name,
+            status: c.status,
+            objective: c.objective,
+          }
+        }
+      }
+
+      // Batch fetch adsets from Supabase
+      if (adsetIds.length > 0) {
+        const { data } = await db
+          .from('meta_adsets')
+          .select('meta_adset_id, meta_campaign_id, name, status')
+          .in('meta_adset_id', adsetIds)
+
+        for (const a of data || []) {
+          adsets[a.meta_adset_id] = {
+            name: a.name,
+            status: a.status,
+            campaign_id: a.meta_campaign_id,
+          }
         }
       }
     }
 
-    // Batch fetch adsets from Supabase
-    if (adsetIds.length > 0) {
-      const { data } = await db
-        .from('meta_adsets')
-        .select('meta_adset_id, meta_campaign_id, name, status')
-        .in('meta_adset_id', adsetIds)
-
-      for (const a of data || []) {
-        adsets[a.meta_adset_id] = {
-          name: a.name,
-          status: a.status,
-          campaign_id: a.meta_campaign_id,
-        }
-      }
-    }
-
-    // Fallback: fetch missing IDs directly from Meta API and save to Supabase
-    const missingCampaignIds = campaignIds.filter(id => !campaigns[id])
-    const missingAdsetIds = adsetIds.filter(id => !adsets[id])
+    // En force_refresh todos cuentan como missing → todos van a Meta API y sobreescriben caché
+    const missingCampaignIds = forceRefresh ? campaignIds : campaignIds.filter(id => !campaigns[id])
+    const missingAdsetIds = forceRefresh ? adsetIds : adsetIds.filter(id => !adsets[id])
 
     if (missingCampaignIds.length > 0 || missingAdsetIds.length > 0) {
       try {
         const metaClient = getMetaAdsClient()
         const syncedAt = new Date().toISOString()
 
-        // Fetch missing campaigns from Meta API (one by one, capped at 20)
-        const campaignsToFetch = missingCampaignIds.slice(0, 20)
+        // Fetch missing campaigns from Meta API
+        // - sin forceRefresh: capped a 20 (no inundar Meta en hot path)
+        // - con forceRefresh: el user lo pidió explícitamente, traer todos
+        const campaignsToFetch = forceRefresh ? missingCampaignIds : missingCampaignIds.slice(0, 20)
         const campaignPromises = campaignsToFetch.map(id =>
           metaClient.getCampaignById(id).catch(() => null)
         )
@@ -102,8 +108,8 @@ export async function POST(request: NextRequest) {
             })
         }
 
-        // Fetch missing adsets from Meta API (one by one, capped at 20)
-        const adsetsToFetch = missingAdsetIds.slice(0, 20)
+        // Fetch missing adsets from Meta API (capped salvo forceRefresh)
+        const adsetsToFetch = forceRefresh ? missingAdsetIds : missingAdsetIds.slice(0, 20)
         const adsetPromises = adsetsToFetch.map(id =>
           metaClient.getAdSetById(id).catch(() => null)
         )

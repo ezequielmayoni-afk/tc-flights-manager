@@ -62,8 +62,9 @@ export function DuplicateAdsModal({
   const [loadingAds, setLoadingAds] = useState(false)
   const [sourceAds, setSourceAds] = useState<SourceAd[]>([])
   const [selectedAdIds, setSelectedAdIds] = useState<Set<string>>(new Set())
-  // Para paquetes sin ads aún: nº de creativos disponibles para crear ads desde 0
-  const [creativesCount, setCreativesCount] = useState<number>(0)
+  // Para paquetes sin ads aún: lista de variantes con creativo disponible + selección
+  const [availableVariants, setAvailableVariants] = useState<number[]>([])
+  const [selectedVariants, setSelectedVariants] = useState<Set<number>>(new Set())
   const [targets, setTargets] = useState<TargetSlot[]>([newSlot()])
   const [statusInitial, setStatusInitial] = useState<'ACTIVE' | 'PAUSED'>('ACTIVE')
   const [step, setStep] = useState<'form' | 'progress' | 'done'>('form')
@@ -103,16 +104,37 @@ export function DuplicateAdsModal({
         }
         setSourceAds(ads)
         setSelectedAdIds(new Set(ads.filter((a) => a.status === 'ACTIVE').map((a) => a.ad_id)))
-        // Si no hay ads, contar creativos disponibles para "primera carga"
-        const uploaded = (creativesData.creatives || []).filter((c: { upload_status?: string }) => c.upload_status === 'uploaded')
-        setCreativesCount(uploaded.length || (creativesData.creatives || []).length)
+        // Variantes disponibles (uploaded en DB + Drive). Cada variante = 1 ad por adset.
+        const uploaded = (creativesData.uploaded_creatives || []) as Array<{ variant: number; upload_status?: string }>
+        const drive = (creativesData.drive_creatives || []) as Array<{ variant: number }>
+        const variantSet = new Set<number>()
+        for (const c of uploaded) {
+          if (c.upload_status === 'uploaded') variantSet.add(c.variant)
+        }
+        for (const c of drive) variantSet.add(c.variant)
+        const sorted = Array.from(variantSet).sort((a, b) => a - b)
+        setAvailableVariants(sorted)
+        setSelectedVariants(new Set(sorted))
       })
       .catch((e) => setGlobalError(e.message || String(e)))
       .finally(() => setLoadingAds(false))
   }, [open, packageId])
 
+  const totalCreativesAvailable = availableVariants.length
+  const selectedCreativesCount = selectedVariants.size
   // Modo "primera carga" cuando no hay ads existentes — usa creatives del paquete
-  const isFirstUploadMode = !loadingAds && sourceAds.length === 0 && creativesCount > 0
+  const isFirstUploadMode = !loadingAds && sourceAds.length === 0 && totalCreativesAvailable > 0
+  // Modo "solo reservar" cuando no hay ni ads ni creativos: solo registra los adsets destino
+  const isPlaceholderMode = !loadingAds && sourceAds.length === 0 && totalCreativesAvailable === 0
+
+  function toggleVariant(v: number) {
+    setSelectedVariants((prev) => {
+      const n = new Set(prev)
+      if (n.has(v)) n.delete(v)
+      else n.add(v)
+      return n
+    })
+  }
 
   function toggleAd(adId: string) {
     setSelectedAdIds((prev) => {
@@ -180,7 +202,7 @@ export function DuplicateAdsModal({
 
   const validTargets = targets.filter((t) => t.adset_id.trim() && !t.error && t.adset_name && t.campaign_id)
   const totalAdsToCreate = isFirstUploadMode
-    ? creativesCount * validTargets.length
+    ? selectedCreativesCount * validTargets.length
     : selectedAdIds.size * validTargets.length
 
   async function handleSubmit() {
@@ -189,11 +211,29 @@ export function DuplicateAdsModal({
     setStats({ total: totalAdsToCreate, done: 0, success: 0, failed: 0 })
 
     try {
+      // Modo "solo reservar": registrar campaign_ids + adset_ids en el paquete sin crear ads
+      if (isPlaceholderMode) {
+        const campaignIds = validTargets.map((t) => t.campaign_id).filter((x): x is string => !!x)
+        const adsetIds = validTargets.map((t) => t.adset_id.trim()).filter(Boolean)
+        const resp = await fetch(`/api/packages/${packageId}/add-placements`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ campaign_ids: campaignIds, adset_ids: adsetIds }),
+        })
+        const data = await resp.json()
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`)
+        setStep('done')
+        setStats({ total: validTargets.length, done: validTargets.length, success: validTargets.length, failed: 0 })
+        if (onSuccess) onSuccess()
+        return
+      }
+
       // Modo "primera carga": crear ads desde 0 usando creatives del paquete (POST /api/meta/ads)
       if (isFirstUploadMode) {
         let stepCount = 0
         let successCount = 0
         let failedCount = 0
+        const variantsToCreate = Array.from(selectedVariants).sort((a, b) => a - b)
         for (const t of validTargets) {
           const adsetId = t.adset_id.trim()
           try {
@@ -201,13 +241,13 @@ export function DuplicateAdsModal({
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({
-                packages: [{ package_id: packageId, meta_adset_id: adsetId }],
+                packages: [{ package_id: packageId, meta_adset_id: adsetId, variants: variantsToCreate }],
                 campaign_id: t.campaign_id,
               }),
             })
             if (!resp.ok || !resp.body) {
-              failedCount += creativesCount
-              stepCount += creativesCount
+              failedCount += selectedCreativesCount
+              stepCount += selectedCreativesCount
               setStats((s) => s ? { ...s, done: stepCount, failed: failedCount } : null)
               setProgress((p) => [...p, { step: stepCount, total: totalAdsToCreate, ok: false, adset_id: adsetId, source_ad_id: '', error: `HTTP ${resp.status}` }])
               continue
@@ -240,8 +280,8 @@ export function DuplicateAdsModal({
               }
             }
           } catch (e) {
-            stepCount += creativesCount
-            failedCount += creativesCount
+            stepCount += selectedCreativesCount
+            failedCount += selectedCreativesCount
             setStats((s) => s ? { ...s, done: stepCount, failed: failedCount } : null)
             setProgress((p) => [...p, { step: stepCount, total: totalAdsToCreate, ok: false, adset_id: adsetId, source_ad_id: '', error: (e as Error).message }])
           }
@@ -344,14 +384,55 @@ export function DuplicateAdsModal({
                   <Loader2 className="h-4 w-4 animate-spin" /> Cargando ads del paquete...
                 </div>
               ) : isFirstUploadMode ? (
-                <div className="text-sm p-3 border rounded bg-blue-50 border-blue-200 text-blue-900">
-                  Este paquete no tiene ads en Meta todavía. Vamos a crearlos usando los{' '}
-                  <strong>{creativesCount} creativo{creativesCount !== 1 ? 's' : ''}</strong> del paquete.
-                  Pegá abajo los ad sets destino y se creará 1 ad por creativo en cada uno.
+                <div className="space-y-2">
+                  <div className="text-xs p-2.5 border rounded bg-blue-50 border-blue-200 text-blue-900">
+                    Paquete sin ads en Meta. Elegí qué creativos querés subir
+                    ({selectedCreativesCount}/{totalCreativesAvailable} seleccionado{selectedCreativesCount !== 1 ? 's' : ''}).
+                  </div>
+                  <div className="flex items-center gap-2 text-xs">
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline"
+                      onClick={() => setSelectedVariants(new Set(availableVariants))}
+                    >
+                      Todas
+                    </button>
+                    <span className="text-muted-foreground">·</span>
+                    <button
+                      type="button"
+                      className="text-blue-600 hover:underline"
+                      onClick={() => setSelectedVariants(new Set())}
+                    >
+                      Ninguna
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+                    {availableVariants.map((v) => {
+                      const selected = selectedVariants.has(v)
+                      return (
+                        <label
+                          key={v}
+                          className={`flex items-center gap-2 px-3 py-2 rounded border cursor-pointer text-sm ${
+                            selected ? 'bg-blue-50 border-blue-300' : 'hover:bg-muted'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() => toggleVariant(v)}
+                            className="h-4 w-4 accent-blue-600"
+                          />
+                          <span className="font-medium">V{v}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
                 </div>
-              ) : sourceAds.length === 0 ? (
-                <div className="text-xs text-muted-foreground p-3 border rounded bg-amber-50">
-                  Este paquete no tiene ads ni creativos cargados. Subí creativos primero.
+              ) : isPlaceholderMode ? (
+                <div className="text-sm p-3 border rounded bg-amber-50 border-amber-200 text-amber-900">
+                  Este paquete no tiene ads ni creativos todavía. Vamos a <strong>reservar</strong> los
+                  adsets destino — quedan registrados en el paquete y aparecen como "sin ads"
+                  hasta que cargues creativos y los publiques desde el panel.
                 </div>
               ) : (
                 <div className="space-y-1.5 max-h-64 overflow-auto border rounded p-2">
@@ -498,12 +579,12 @@ export function DuplicateAdsModal({
             </section>
 
             {/* Resumen */}
-            {totalAdsToCreate > 0 && (
+            {!isPlaceholderMode && totalAdsToCreate > 0 && (
               <div className="rounded-md bg-blue-50 border border-blue-200 p-3 text-sm">
                 <strong>📊 Vas a crear {totalAdsToCreate} ads:</strong>{' '}
                 <span className="text-muted-foreground text-xs">
                   {isFirstUploadMode
-                    ? `${creativesCount} creativo${creativesCount !== 1 ? 's' : ''}`
+                    ? `${selectedCreativesCount} creativo${selectedCreativesCount !== 1 ? 's' : ''}`
                     : `${selectedAdIds.size} ads`}
                   {' '}× {validTargets.length} destino{validTargets.length !== 1 ? 's' : ''} · arrancan {statusInitial}
                 </span>
@@ -573,9 +654,11 @@ export function DuplicateAdsModal({
             {step === 'form' && (
               <Button
                 onClick={handleSubmit}
-                disabled={totalAdsToCreate === 0}
+                disabled={isPlaceholderMode ? validTargets.length === 0 : totalAdsToCreate === 0}
               >
-                Replicar {totalAdsToCreate > 0 ? totalAdsToCreate : ''} ads →
+                {isPlaceholderMode
+                  ? `Reservar ${validTargets.length} adset${validTargets.length !== 1 ? 's' : ''} →`
+                  : `Replicar ${totalAdsToCreate > 0 ? totalAdsToCreate : ''} ads →`}
               </Button>
             )}
           </div>

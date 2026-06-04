@@ -102,18 +102,21 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Mapa de meta_creative_id → variant (para que ads clonados con el mismo
-      // creative reusen la variante del original, en vez de inflar el contador).
-      // La UNIQUE constraint es (package_id, variant, meta_adset_id) → mismo
-      // variant en otro adset está permitido.
+      // Mapas para asignar variant correctamente al clonar:
+      //   - sourceAdIdToVariant: usa el variant del SOURCE AD en BD (más confiable,
+      //     funciona aún cuando Meta genera nuevo creative_id en otra ad account).
+      //   - creativeToVariant: fallback por meta_creative_id (cuando el source ad
+      //     no está en BD pero ya hay un ad con ese creative_id).
       const { data: existingForVariantMap } = await db
         .from('meta_ads')
-        .select('variant, meta_creative_id')
+        .select('variant, meta_creative_id, meta_ad_id')
         .eq('package_id', pkg.id)
         .limit(10000)
+      const sourceAdIdToVariant = new Map<string, number>()
       const creativeToVariant = new Map<string, number>()
       let maxVariant = 0
       for (const row of existingForVariantMap || []) {
+        if (row.meta_ad_id) sourceAdIdToVariant.set(row.meta_ad_id, row.variant)
         if (row.meta_creative_id && !creativeToVariant.has(row.meta_creative_id)) {
           creativeToVariant.set(row.meta_creative_id, row.variant)
         }
@@ -152,8 +155,10 @@ export async function POST(request: NextRequest) {
               creativeId: src.creative_id,
               status,
             })
-            // Reutilizar variant del creative original si ya existe; si no, asignar uno nuevo.
-            let variantToUse = creativeToVariant.get(src.creative_id)
+            // Reutilizar variant del SOURCE AD (más confiable) o del creative_id (fallback).
+            // Esto asegura que clones cross-account (donde Meta genera nuevos creative_ids)
+            // hereden el variant del original en vez de inflar el contador a V6/V7/V8.
+            let variantToUse = sourceAdIdToVariant.get(sourceAdId) || creativeToVariant.get(src.creative_id)
             if (variantToUse === undefined) {
               variantToUse = nextNewVariant > 20 ? ((nextNewVariant - 1) % 20) + 1 : nextNewVariant
               nextNewVariant++

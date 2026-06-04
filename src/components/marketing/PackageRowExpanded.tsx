@@ -155,6 +155,10 @@ export function PackageRowExpanded({
   const [editingAdId, setEditingAdId] = useState<number | null>(null)
   const [editAdIdValue, setEditAdIdValue] = useState('')
   const [savingAdId, setSavingAdId] = useState<number | null>(null)
+  // Link ad state (vincular ads externos a una variante)
+  const [linkingVariant, setLinkingVariant] = useState<number | null>(null)
+  const [linkAdIdValue, setLinkAdIdValue] = useState('')
+  const [isLinking, setIsLinking] = useState(false)
 
   // Manual upload state
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -279,6 +283,26 @@ export function PackageRowExpanded({
   const syncAdsWithMeta = async () => {
     setIsSyncing(true)
     try {
+      // 1) Sync-meta-ads: backfill creative_id + dedup variantes por creative + rescata ads huérfanos en Meta
+      try {
+        const r1 = await fetch(`/api/packages/${pkg.id}/sync-meta-ads`, { method: 'POST' })
+        if (r1.ok) {
+          const d1 = await r1.json()
+          const parts: string[] = []
+          if (d1.synced > 0) parts.push(`${d1.synced} ad${d1.synced > 1 ? 's' : ''} agregado${d1.synced > 1 ? 's' : ''}`)
+          if (d1.cleaned_duplicates > 0) parts.push(`${d1.cleaned_duplicates} variante${d1.cleaned_duplicates > 1 ? 's' : ''} colapsada${d1.cleaned_duplicates > 1 ? 's' : ''}`)
+          if (d1.backfilled_creative_ids > 0) parts.push(`${d1.backfilled_creative_ids} creative_id${d1.backfilled_creative_ids > 1 ? 's' : ''} backfilleado${d1.backfilled_creative_ids > 1 ? 's' : ''}`)
+          if (d1.skipped_cross_package > 0) parts.push(`${d1.skipped_cross_package} ad${d1.skipped_cross_package > 1 ? 's' : ''} ignorado${d1.skipped_cross_package > 1 ? 's' : ''} (otros paquetes)`)
+          if (parts.length > 0) toast.success(parts.join(' · '))
+        } else {
+          const err = await r1.json().catch(() => null)
+          if (err?.error) toast.error(`Sync-meta-ads: ${err.error}`)
+        }
+      } catch (e) {
+        console.warn('sync-meta-ads falló:', e)
+      }
+
+      // 2) Status sync: actualiza meta_status (ACTIVE/PAUSED/DELETED) de cada ad existente
       const res = await fetch('/api/meta/ads/sync', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -287,32 +311,17 @@ export function PackageRowExpanded({
 
       if (res.ok) {
         const data = await res.json()
-        if (data.synced_ads && data.synced_ads.length > 0) {
-          // Update existing ads with synced data
-          setExistingAds(prev =>
-            prev.map(ad => {
-              const syncedAd = data.synced_ads.find((s: ExistingAd) => s.id === ad.id)
-              if (syncedAd) {
-                return {
-                  ...ad,
-                  meta_status: syncedAd.meta_status,
-                  status: syncedAd.meta_status || ad.status,
-                  last_synced_at: syncedAd.last_synced_at,
-                }
-              }
-              return ad
-            })
-          )
-          setLastSyncedAt(new Date().toISOString())
-
-          // Show notification about deleted ads
-          if (data.deleted_count > 0) {
-            toast.warning(`${data.deleted_count} anuncio${data.deleted_count > 1 ? 's' : ''} eliminado${data.deleted_count > 1 ? 's' : ''} en Meta`)
-          }
+        if (data.deleted_count > 0) {
+          toast.warning(`${data.deleted_count} anuncio${data.deleted_count > 1 ? 's' : ''} eliminado${data.deleted_count > 1 ? 's' : ''} en Meta`)
         }
       }
+
+      // 3) Reload completo desde BD para reflejar dedup + cualquier ad nuevo
+      await loadExistingAds()
+      setLastSyncedAt(new Date().toISOString())
     } catch (error) {
       console.error('Error syncing ads with Meta:', error)
+      toast.error('Error sincronizando con Meta')
     } finally {
       setIsSyncing(false)
     }
@@ -716,10 +725,45 @@ export function PackageRowExpanded({
     }
   }
 
+  // Vincular un Ad ID externo a una variante — Meta nos dice el adset/campaign automáticamente
+  const handleLinkAd = async (variant: number) => {
+    const adId = linkAdIdValue.trim()
+    if (!adId) {
+      toast.error('Pegá un Ad ID de Meta')
+      return
+    }
+    setIsLinking(true)
+    try {
+      const r = await fetch(`/api/packages/${pkg.id}/link-ad`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ variant, meta_ad_id: adId }),
+      })
+      const data = await r.json()
+      if (!r.ok) {
+        toast.error(`Error: ${data.error || r.status}`)
+        return
+      }
+      if (data.already_existed) {
+        toast.info(`Ad ya estaba vinculado a V${data.variant}`)
+      } else {
+        toast.success(`✓ Vinculado a V${variant} — ${data.adset_name || data.adset_id}`)
+      }
+      setLinkAdIdValue('')
+      setLinkingVariant(null)
+      await loadExistingAds()
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setIsLinking(false)
+    }
+  }
+
   // Update existing ad with new creatives from database
+  // Actualiza TODOS los ads que comparten esta variant (1 por adset).
   const handleUpdateAd = async (variant: number) => {
-    const existingAd = existingAds.find(a => a.variant === variant)
-    if (!existingAd) {
+    const adsForVariant = existingAds.filter(a => a.variant === variant && a.meta_status !== 'DELETED')
+    if (adsForVariant.length === 0) {
       toast.error('No hay anuncio existente para actualizar')
       return
     }
@@ -732,22 +776,22 @@ export function PackageRowExpanded({
     }
 
     setUpdatingAdVariant(variant)
-    setCreationProgress([`Actualizando anuncio V${variant}...`])
+    setCreationProgress([`Actualizando ${adsForVariant.length} anuncio${adsForVariant.length > 1 ? 's' : ''} V${variant}...`])
 
     try {
       const res = await fetch('/api/meta/ads/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ads: [{
-            ad_id: existingAd.id,
-            meta_ad_id: existingAd.meta_ad_id,
+          ads: adsForVariant.map((ad) => ({
+            ad_id: ad.id,
+            meta_ad_id: ad.meta_ad_id,
             package_id: pkg.id,
             variant: variant,
             update_creative: true,
             update_copy: true,
-            force_reupload: true, // Always get fresh creative from Drive
-          }],
+            force_reupload: true,
+          })),
           ...(adAccountId ? { ad_account_id: adAccountId } : {}),
         }),
       })
@@ -1246,130 +1290,220 @@ export function PackageRowExpanded({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {existingAds.map(ad => {
-                  const statusKey = ad.meta_status || ad.status || 'DEFAULT'
-                  const statusConfig = AD_STATUS_CONFIG[statusKey] || AD_STATUS_CONFIG.DEFAULT
-                  const StatusIcon = statusConfig.icon
-                  const isEditing = editingAdId === ad.id
+                {(() => {
+                  // Agrupar por variant — cada variant es una creatividad de Drive
+                  // y puede tener N ads en Meta (1 por adset destino).
+                  const byVariant = new Map<number, ExistingAd[]>()
+                  for (const ad of existingAds) {
+                    if (!byVariant.has(ad.variant)) byVariant.set(ad.variant, [])
+                    byVariant.get(ad.variant)!.push(ad)
+                  }
+                  const sortedVariants = Array.from(byVariant.keys()).sort((a, b) => a - b)
 
-                  return (
-                    <tr key={ad.id} className={ad.meta_status === 'DELETED' ? 'bg-red-50/50' : ''}>
-                      <td className="px-3 py-2">
-                        <Badge variant="outline" className="text-xs">
-                          V{ad.variant}
-                        </Badge>
-                      </td>
-                      <td className="px-3 py-2 font-mono text-xs">
-                        {isEditing ? (
-                          <Input
-                            value={editAdIdValue}
-                            onChange={(e) => setEditAdIdValue(e.target.value)}
-                            className="h-7 text-xs font-mono w-48"
-                            placeholder="Meta Ad ID"
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                handleSaveAdId(ad.id, editAdIdValue)
-                              } else if (e.key === 'Escape') {
-                                setEditingAdId(null)
-                              }
-                            }}
-                          />
-                        ) : (
-                          <span
-                            className="cursor-pointer hover:text-blue-600 hover:underline"
-                            onClick={() => {
-                              setEditingAdId(ad.id)
-                              setEditAdIdValue(ad.meta_ad_id || '')
-                            }}
-                            title="Click para editar"
-                          >
-                            {ad.meta_ad_id || '—'}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        {ad.meta_adset_id ? (
-                          <div className="text-xs leading-tight">
-                            <div className="font-medium text-green-700 truncate max-w-[220px]" title={adsetNames[ad.meta_adset_id]?.name || ad.meta_adset_id}>
-                              {adsetNames[ad.meta_adset_id]?.name || <span className="text-muted-foreground italic">cargando...</span>}
-                            </div>
-                            {adsetNames[ad.meta_adset_id]?.campaign_name && (
-                              <div className="text-[10px] text-muted-foreground truncate max-w-[220px]" title={adsetNames[ad.meta_adset_id]?.campaign_name}>
-                                {adsetNames[ad.meta_adset_id]?.campaign_name}
+                  return sortedVariants.map((variant) => {
+                    const adsInVariant = byVariant.get(variant)!
+                    const allDeleted = adsInVariant.every((a) => a.meta_status === 'DELETED')
+
+                    return (
+                      <tr key={`v${variant}`} className={`align-top ${allDeleted ? 'bg-red-50/50' : ''}`}>
+                        {/* Variante — una sola fila por variante */}
+                        <td className="px-3 py-3">
+                          <Badge variant="outline" className="text-xs">
+                            V{variant}
+                          </Badge>
+                          <div className="text-[10px] text-muted-foreground mt-1">
+                            {adsInVariant.length} ad{adsInVariant.length !== 1 ? 's' : ''}
+                          </div>
+                        </td>
+
+                        {/* Ad ID — stacked, uno por ad */}
+                        <td className="px-3 py-3 font-mono text-xs">
+                          <div className="space-y-1.5">
+                            {adsInVariant.map((ad) => {
+                              const isEditing = editingAdId === ad.id
+                              return isEditing ? (
+                                <Input
+                                  key={ad.id}
+                                  value={editAdIdValue}
+                                  onChange={(e) => setEditAdIdValue(e.target.value)}
+                                  className="h-7 text-xs font-mono w-48"
+                                  placeholder="Meta Ad ID"
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveAdId(ad.id, editAdIdValue)
+                                    else if (e.key === 'Escape') setEditingAdId(null)
+                                  }}
+                                />
+                              ) : (
+                                <div
+                                  key={ad.id}
+                                  className="cursor-pointer hover:text-blue-600 hover:underline"
+                                  onClick={() => {
+                                    setEditingAdId(ad.id)
+                                    setEditAdIdValue(ad.meta_ad_id || '')
+                                  }}
+                                  title="Click para editar"
+                                >
+                                  {ad.meta_ad_id || '—'}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </td>
+
+                        {/* AdSet — stacked, uno por ad */}
+                        <td className="px-3 py-3">
+                          <div className="space-y-1.5">
+                            {adsInVariant.map((ad) => (
+                              <div key={ad.id} className="text-xs leading-tight">
+                                {ad.meta_adset_id ? (
+                                  <>
+                                    <div className="font-medium text-green-700 truncate max-w-[260px]" title={adsetNames[ad.meta_adset_id]?.name || ad.meta_adset_id}>
+                                      {adsetNames[ad.meta_adset_id]?.name || <span className="text-muted-foreground italic">cargando...</span>}
+                                    </div>
+                                    {adsetNames[ad.meta_adset_id]?.campaign_name && (
+                                      <div className="text-[10px] text-muted-foreground truncate max-w-[260px]" title={adsetNames[ad.meta_adset_id]?.campaign_name}>
+                                        {adsetNames[ad.meta_adset_id]?.campaign_name}
+                                      </div>
+                                    )}
+                                    <div className="text-[9px] text-muted-foreground font-mono truncate max-w-[260px]">{ad.meta_adset_id}</div>
+                                  </>
+                                ) : (
+                                  <span className="text-muted-foreground italic">—</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+
+                        {/* Estado — stacked, uno por ad */}
+                        <td className="px-3 py-3">
+                          <div className="space-y-1.5">
+                            {adsInVariant.map((ad) => {
+                              const sk = ad.meta_status || ad.status || 'DEFAULT'
+                              const cfg = AD_STATUS_CONFIG[sk] || AD_STATUS_CONFIG.DEFAULT
+                              const Icon = cfg.icon
+                              return (
+                                <div key={ad.id} className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${cfg.bgColor} ${cfg.color}`}>
+                                  <Icon className="h-3 w-3" />
+                                  {cfg.label}
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </td>
+
+                        {/* Acciones — stacked, uno por ad + botón "vincular" al final */}
+                        <td className="px-3 py-3">
+                          <div className="space-y-1.5">
+                            {adsInVariant.map((ad) => {
+                              const isEditing = editingAdId === ad.id
+                              return (
+                                <div key={ad.id} className="flex items-center justify-end gap-1 h-7">
+                                  {!isEditing && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 text-gray-400 hover:text-green-600"
+                                      onClick={() => { setLinkingVariant(variant); setLinkAdIdValue('') }}
+                                      title="Vincular otro Ad ID a esta variante"
+                                    >
+                                      <PlusCircle className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                  {isEditing ? (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                        onClick={() => handleSaveAdId(ad.id, editAdIdValue)}
+                                        disabled={savingAdId === ad.id}
+                                        title="Guardar"
+                                      >
+                                        {savingAdId === ad.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 text-gray-500 hover:text-gray-700"
+                                        onClick={() => setEditingAdId(null)}
+                                        title="Cancelar"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600"
+                                        onClick={() => {
+                                          setEditingAdId(ad.id)
+                                          setEditAdIdValue(ad.meta_ad_id || '')
+                                        }}
+                                        title="Editar Ad ID"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
+                                        onClick={() => handleDeleteSingleAd(ad.id, ad.variant)}
+                                        disabled={savingAdId === ad.id}
+                                        title="Eliminar de BD"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </Button>
+                                    </>
+                                  )}
+                                </div>
+                              )
+                            })}
+                            {linkingVariant === variant && (
+                              <div className="flex items-center gap-1 pt-1 border-t">
+                                <Input
+                                  value={linkAdIdValue}
+                                  onChange={(e) => setLinkAdIdValue(e.target.value)}
+                                  placeholder="Ad ID de Meta..."
+                                  className="h-7 text-xs font-mono"
+                                  autoFocus
+                                  disabled={isLinking}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleLinkAd(variant)
+                                    else if (e.key === 'Escape') { setLinkingVariant(null); setLinkAdIdValue('') }
+                                  }}
+                                />
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-green-600 hover:text-green-700 hover:bg-green-50 shrink-0"
+                                  onClick={() => handleLinkAd(variant)}
+                                  disabled={isLinking || !linkAdIdValue.trim()}
+                                  title="Vincular"
+                                >
+                                  {isLinking ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-gray-500 hover:text-gray-700 shrink-0"
+                                  onClick={() => { setLinkingVariant(null); setLinkAdIdValue('') }}
+                                  disabled={isLinking}
+                                  title="Cancelar"
+                                >
+                                  <X className="h-3 w-3" />
+                                </Button>
                               </div>
                             )}
-                            <div className="text-[9px] text-muted-foreground font-mono truncate max-w-[220px]">{ad.meta_adset_id}</div>
                           </div>
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">—</span>
-                        )}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${statusConfig.bgColor} ${statusConfig.color}`}>
-                          <StatusIcon className="h-3 w-3" />
-                          {statusConfig.label}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex items-center justify-end gap-1">
-                          {isEditing ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                onClick={() => handleSaveAdId(ad.id, editAdIdValue)}
-                                disabled={savingAdId === ad.id}
-                                title="Guardar"
-                              >
-                                {savingAdId === ad.id ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <Check className="h-3 w-3" />
-                                )}
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 text-gray-500 hover:text-gray-700"
-                                onClick={() => setEditingAdId(null)}
-                                title="Cancelar"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 text-gray-400 hover:text-blue-600"
-                                onClick={() => {
-                                  setEditingAdId(ad.id)
-                                  setEditAdIdValue(ad.meta_ad_id || '')
-                                }}
-                                title="Editar Ad ID"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0 text-gray-400 hover:text-red-600"
-                                onClick={() => handleDeleteSingleAd(ad.id, ad.variant)}
-                                disabled={savingAdId === ad.id}
-                                title="Eliminar de BD"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </Button>
-                            </>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                        </td>
+                      </tr>
+                    )
+                  })
+                })()}
               </tbody>
             </table>
           </div>
@@ -1954,35 +2088,48 @@ export function PackageRowExpanded({
                     </div>
                   </div>
 
-                  {/* Ad Status & Update Button */}
+                  {/* Ad Status & Update Button — muestra TODOS los ads de la variante (1 por adset) */}
                   {existingAd && (() => {
-                    const statusKey = existingAd.meta_status || existingAd.status || 'DEFAULT'
-                    const statusConfig = AD_STATUS_CONFIG[statusKey] || AD_STATUS_CONFIG.DEFAULT
-                    const StatusIcon = statusConfig.icon
+                    const adsForVariant = existingAds.filter(a => a.variant === variant)
                     const hasUploadedCreatives = creatives.some(c => c.variant === variant && c.upload_status === 'uploaded') || localPreview4x5 || localPreview9x16
 
                     return (
-                      <div className={`mt-2 px-2 py-1.5 rounded ${statusConfig.bgColor}`}>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <div className="flex items-center gap-1 text-[10px] font-medium">
-                            <StatusIcon className={`h-3 w-3 ${statusConfig.color}`} />
-                            <span className={statusConfig.color}>{statusConfig.label}</span>
-                          </div>
-                          {hasUploadedCreatives && (
+                      <div className="mt-2 space-y-1">
+                        {hasUploadedCreatives && (
+                          <div className="flex justify-end">
                             <button
                               onClick={(e) => { e.stopPropagation(); handleUpdateAd(variant) }}
                               disabled={updatingAdVariant === variant}
-                              className="text-[9px] font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 flex items-center gap-0.5"
-                              title="Actualizar anuncio con los creativos subidos"
+                              className="text-[10px] font-medium text-blue-600 hover:text-blue-800 disabled:text-gray-400 flex items-center gap-0.5"
+                              title={`Actualizar ${adsForVariant.length} ad${adsForVariant.length > 1 ? 's' : ''} en Meta`}
                             >
                               {updatingAdVariant === variant ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                              Actualizar
+                              Actualizar {adsForVariant.length > 1 ? `${adsForVariant.length} ads` : ''}
                             </button>
-                          )}
-                        </div>
-                        <span className="font-mono text-[9px] text-muted-foreground block truncate" title={existingAd.meta_ad_id}>
-                          {existingAd.meta_ad_id}
-                        </span>
+                          </div>
+                        )}
+                        {adsForVariant.map((ad) => {
+                          const sk = ad.meta_status || ad.status || 'DEFAULT'
+                          const cfg = AD_STATUS_CONFIG[sk] || AD_STATUS_CONFIG.DEFAULT
+                          const Icon = cfg.icon
+                          const adsetName = ad.meta_adset_id ? adsetNames[ad.meta_adset_id]?.name : null
+                          return (
+                            <div key={ad.id} className={`px-2 py-1 rounded ${cfg.bgColor}`}>
+                              <div className="flex items-center gap-1 text-[10px] font-medium">
+                                <Icon className={`h-3 w-3 ${cfg.color}`} />
+                                <span className={cfg.color}>{cfg.label}</span>
+                              </div>
+                              {adsetName && (
+                                <div className="text-[9px] text-green-700 font-medium truncate" title={adsetName}>
+                                  {adsetName}
+                                </div>
+                              )}
+                              <span className="font-mono text-[9px] text-muted-foreground block truncate" title={ad.meta_ad_id}>
+                                {ad.meta_ad_id}
+                              </span>
+                            </div>
+                          )
+                        })}
                       </div>
                     )
                   })()}

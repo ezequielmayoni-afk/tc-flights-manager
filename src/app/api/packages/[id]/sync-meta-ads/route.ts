@@ -122,8 +122,27 @@ export async function POST(
     }
   }
 
+  // Set de meta_creative_id que SABEMOS pertenecen a este paquete:
+  //   - los que ya están en meta_ads (ads existentes del paquete)
+  //   - los registrados en meta_creatives (subidos por el workflow)
+  const ownedCreativeIds = new Set<string>()
+  for (const row of existingAds) {
+    if (row.meta_creative_id) ownedCreativeIds.add(row.meta_creative_id)
+  }
+  const { data: ownedCreatives } = await db
+    .from('meta_creatives')
+    .select('meta_creative_id')
+    .eq('package_id', pkgId)
+    .not('meta_creative_id', 'is', null)
+  for (const c of ownedCreatives || []) {
+    if (c.meta_creative_id) ownedCreativeIds.add(c.meta_creative_id)
+  }
+  const tcIdStr = String(pkg.tc_package_id)
+  console.log(`[sync-meta-ads] pkg ${pkgId} (tc=${tcIdStr}): ${ownedCreativeIds.size} creative_ids propios`)
+
   let synced = 0
   let skippedExisting = 0
+  let skippedCrossPackage = 0
   const errors: Array<{ campaign_id: string; error: string }> = []
 
   for (const campaignId of campaignIds) {
@@ -165,6 +184,19 @@ export async function POST(
           // Skip deleted/archived
           if (ad.status === 'DELETED' || ad.status === 'ARCHIVED') continue
 
+          // FILTRO ANTI-CROSS-PACKAGE: solo importar ads que pertenecen a este paquete.
+          // Aceptamos si:
+          //   - el creative_id ya está linkeado al paquete (existingAds o meta_creatives), o
+          //   - el ad_name contiene el tc_package_id como token (ej. "SIV 38204302")
+          const metaCreativeIdCheck = ad.creative?.id
+          const adNameForCheck = (ad.name || '').toLowerCase()
+          const ownsByCreative = metaCreativeIdCheck ? ownedCreativeIds.has(metaCreativeIdCheck) : false
+          const ownsByName = new RegExp(`(^|[^\\d])${tcIdStr}([^\\d]|$)`).test(adNameForCheck)
+          if (!ownsByCreative && !ownsByName) {
+            skippedCrossPackage++
+            continue
+          }
+
           // Reusar variante existente si el creative_id ya está en BD
           const metaCreativeId = ad.creative?.id
           let variantToUse: number | undefined = metaCreativeId ? creativeToVariant.get(metaCreativeId) : undefined
@@ -203,6 +235,7 @@ export async function POST(
   return NextResponse.json({
     synced,
     skipped_existing: skippedExisting,
+    skipped_cross_package: skippedCrossPackage,
     cleaned_duplicates: cleanedDuplicates,
     backfilled_creative_ids: backfilled,
     campaigns_scanned: campaignIds.length,

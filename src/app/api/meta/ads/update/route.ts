@@ -169,6 +169,18 @@ export async function POST(request: NextRequest) {
                   step: `Processing ad V${ad.variant}`,
                 })
 
+                // Check ad status in Meta before attempting update
+                const adInfo = await metaClient.getAdWithCreative(ad.meta_ad_id)
+                if (!adInfo || adInfo.effective_status === 'ARCHIVED' || adInfo.status === 'ARCHIVED') {
+                  sendEvent('skipped', {
+                    package_id,
+                    variant: ad.variant,
+                    meta_ad_id: ad.meta_ad_id,
+                    reason: 'Ad is archived in Meta and cannot be edited',
+                  })
+                  continue
+                }
+
                 let imageHash4x5: string | undefined
                 let imageHash9x16: string | undefined
                 let videoId4x5: string | undefined
