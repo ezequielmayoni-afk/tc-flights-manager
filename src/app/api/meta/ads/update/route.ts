@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
 import { getPackageCreatives, uploadCreativeToMeta } from '@/lib/meta-ads/creative-uploader'
+import { getPackageDestinationLabel, buildWaMessage } from '@/lib/meta-ads/wa-message'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
@@ -150,8 +151,9 @@ export async function POST(request: NextRequest) {
               continue
             }
 
-            // WhatsApp autofill message template
-            const waMessageTemplate = `Hola! Quiero mas info de la promo SIV ${pkg.tc_package_id} (no borrar)`
+            // WhatsApp autofill message template (incluye destino + SIV id de tracking)
+            const destino = await getPackageDestinationLabel(db, package_id)
+            const waMessageTemplate = buildWaMessage(destino, pkg.tc_package_id)
 
             // Prepare copy variations
             const copyVariations = copies.map((copy) => ({
