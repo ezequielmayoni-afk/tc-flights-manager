@@ -124,6 +124,38 @@ const VARIANT_LABELS: Record<number, { name: string; focus: string }> = {
   5: { name: 'Escasez', focus: 'Ultimos lugares' },
 }
 
+/**
+ * Thumbnail <img> with graceful fallback. When the source fails to load (expired
+ * Meta CDN url, Drive throttle, etc.) it shows a placeholder instead of a broken
+ * image icon. Used for both Meta and Drive thumbnails across the variant cards.
+ */
+function ThumbImg({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [failed, setFailed] = useState(false)
+  if (failed) {
+    return (
+      <div className={`flex flex-col items-center justify-center bg-muted text-muted-foreground ${className || ''}`}>
+        <ImageIcon className="h-5 w-5" />
+        <span className="text-[8px] mt-0.5">sin preview</span>
+      </div>
+    )
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      loading="lazy"
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+    />
+  )
+}
+
+const driveViewUrl = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`
+const driveThumbProxy = (fileId: string) => `/api/drive/thumbnail/${fileId}?sz=400`
+const driveFolderUrl = (folderId: string) => `https://drive.google.com/drive/folders/${folderId}`
+
 export function PackageRowExpanded({
   pkg,
   adAccountId,
@@ -136,6 +168,7 @@ export function PackageRowExpanded({
   const [copies, setCopies] = useState<CopyVariant[]>([])
   const [creatives, setCreatives] = useState<Creative[]>([])
   const [driveCreatives, setDriveCreatives] = useState<DriveCreative[]>([])
+  const [variantFolders, setVariantFolders] = useState<Record<number, string>>({})
   const [existingAds, setExistingAds] = useState<ExistingAd[]>([])
   const [adsetNames, setAdsetNames] = useState<Record<string, { name: string; campaign_name?: string }>>({})
   const [isLoading, setIsLoading] = useState(true)
@@ -454,6 +487,7 @@ export function PackageRowExpanded({
       if (driveRes.ok) {
         const driveData = await driveRes.json()
         setDriveCreatives(driveData.creatives || [])
+        setVariantFolders(driveData.folders?.variantFolders || {})
         console.log(`[Drive] Loaded ${driveData.creatives?.length || 0} creatives for package ${pkg.id}`)
       } else {
         console.warn(`[Drive] Failed to load creatives for package ${pkg.id}:`, driveRes.status)
@@ -1596,11 +1630,9 @@ export function PackageRowExpanded({
                     <div className="flex gap-3">
                       {/* Thumbnail */}
                       {ad.thumbnail_url ? (
-                        <img
-                          src={ad.thumbnail_url}
-                          alt={ad.name}
-                          className="w-16 h-16 rounded object-cover shrink-0 border"
-                        />
+                        <a href={ad.thumbnail_url} target="_blank" rel="noopener noreferrer" className="shrink-0 cursor-zoom-in" title="Ver imagen completa">
+                          <ThumbImg src={ad.thumbnail_url} alt={ad.name} className="w-16 h-16 rounded object-cover border" />
+                        </a>
                       ) : (
                         <div className="w-16 h-16 rounded bg-muted flex items-center justify-center shrink-0 border">
                           <ImageIcon className="h-6 w-6 text-muted-foreground" />
@@ -1932,10 +1964,15 @@ export function PackageRowExpanded({
                       <span className="text-[10px] font-medium text-purple-600">IMPORTADO</span>
                     </div>
                     {importedThumbnail ? (
-                      <div className="relative w-full h-[140px] rounded-lg overflow-hidden border bg-muted">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={importedThumbnail} alt={existingAd.ad_name || `V${variant}`} className="w-full h-full object-cover" />
-                      </div>
+                      <a
+                        href={importedThumbnail}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="relative w-full h-[140px] rounded-lg overflow-hidden border bg-muted block cursor-zoom-in"
+                        title="Ver imagen completa"
+                      >
+                        <ThumbImg src={importedThumbnail} alt={existingAd.ad_name || `V${variant}`} className="w-full h-full object-cover" />
+                      </a>
                     ) : (
                       <div className="w-full h-[140px] rounded-lg bg-muted flex flex-col items-center justify-center border">
                         <ImageIcon className="h-8 w-8 text-muted-foreground" />
@@ -1973,15 +2010,14 @@ export function PackageRowExpanded({
                               <img src={localPreview4x5.url} alt={`V${variant} 4x5 (subido)`} className="w-full h-full object-cover" />
                             )
                           ) : metaUrl4x5 ? (
-                            <>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={metaUrl4x5} alt={`V${variant} 4x5 Meta`} className="w-full h-full object-cover" />
+                            <a href={metaUrl4x5} target="_blank" rel="noopener noreferrer" className="block w-full h-full cursor-zoom-in" title="Ver creativo en grande">
+                              <ThumbImg src={metaUrl4x5} alt={`V${variant} 4x5 Meta`} className="w-full h-full object-cover" />
                               {isVideo4x5 && (
                                 <div className="absolute bottom-1 left-1 bg-purple-600 rounded px-1">
                                   <span className="text-[7px] text-white font-medium">VID</span>
                                 </div>
                               )}
-                            </>
+                            </a>
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50">
                               <Check className="h-5 w-5 text-blue-500" />
@@ -1991,17 +2027,17 @@ export function PackageRowExpanded({
                           <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5">
                             <Check className="h-3 w-3 text-white" />
                           </div>
-                          {/* Manual upload overlay */}
+                          {/* Manual replace — small corner button (image click opens the creative) */}
                           <button
                             onClick={(e) => { e.stopPropagation(); triggerManualUpload(variant, '4x5') }}
                             disabled={manualUploading}
-                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            className="absolute bottom-1 right-1 bg-black/60 hover:bg-black/80 rounded p-1 transition-colors"
                             title="Reemplazar manualmente"
                           >
                             {manualUploading && manualUploadTarget?.variant === variant && manualUploadTarget?.aspectRatio === '4x5' ? (
-                              <Loader2 className="h-5 w-5 text-white animate-spin" />
+                              <Loader2 className="h-3 w-3 text-white animate-spin" />
                             ) : (
-                              <UploadCloud className="h-5 w-5 text-white" />
+                              <UploadCloud className="h-3 w-3 text-white" />
                             )}
                           </button>
                         </div>
@@ -2037,15 +2073,14 @@ export function PackageRowExpanded({
                               <img src={localPreview9x16.url} alt={`V${variant} 9x16 (subido)`} className="w-full h-full object-cover" />
                             )
                           ) : metaUrl9x16 ? (
-                            <>
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={metaUrl9x16} alt={`V${variant} 9x16 Meta`} className="w-full h-full object-cover" />
+                            <a href={metaUrl9x16} target="_blank" rel="noopener noreferrer" className="block w-full h-full cursor-zoom-in" title="Ver creativo en grande">
+                              <ThumbImg src={metaUrl9x16} alt={`V${variant} 9x16 Meta`} className="w-full h-full object-cover" />
                               {isVideo9x16 && (
                                 <div className="absolute bottom-1 left-1 bg-purple-600 rounded px-1">
                                   <span className="text-[7px] text-white font-medium">VID</span>
                                 </div>
                               )}
-                            </>
+                            </a>
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50">
                               <Check className="h-5 w-5 text-blue-500" />
@@ -2058,13 +2093,13 @@ export function PackageRowExpanded({
                           <button
                             onClick={(e) => { e.stopPropagation(); triggerManualUpload(variant, '9x16') }}
                             disabled={manualUploading}
-                            className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                            className="absolute bottom-1 right-1 bg-black/60 hover:bg-black/80 rounded p-1 transition-colors"
                             title="Reemplazar manualmente"
                           >
                             {manualUploading && manualUploadTarget?.variant === variant && manualUploadTarget?.aspectRatio === '9x16' ? (
-                              <Loader2 className="h-4 w-4 text-white animate-spin" />
+                              <Loader2 className="h-3 w-3 text-white animate-spin" />
                             ) : (
-                              <UploadCloud className="h-4 w-4 text-white" />
+                              <UploadCloud className="h-3 w-3 text-white" />
                             )}
                           </button>
                         </div>
@@ -2157,21 +2192,20 @@ export function PackageRowExpanded({
                           <span className="text-[8px] text-orange-300 mt-1">Cargando...</span>
                         </div>
                       ) : fileId4x5 ? (
-                        <div className="relative w-24 h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`https://drive.google.com/thumbnail?id=${fileId4x5}&sz=w200`}
-                            alt={`V${variant} 4x5 Drive`}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                          />
+                        <a
+                          href={variantFolders[variant] ? driveFolderUrl(variantFolders[variant]) : driveViewUrl(fileId4x5)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="relative w-24 h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted block cursor-zoom-in"
+                          title="Abrir carpeta de Drive de esta variante"
+                        >
+                          <ThumbImg src={driveThumbProxy(fileId4x5)} alt={`V${variant} 4x5 Drive`} className="w-full h-full object-cover" />
                           {drive4x5 && (
                             <div className="absolute bottom-1 left-1 bg-orange-500 rounded px-1">
                               <span className="text-[7px] text-white">{creative4x5?.creative_type === 'VIDEO' ? 'VID' : 'IMG'}</span>
                             </div>
                           )}
-                        </div>
+                        </a>
                       ) : (
                         <div className="w-24 h-[116px] rounded-lg border-2 border-dashed border-orange-200 flex flex-col items-center justify-center bg-orange-50/30">
                           <ImageIcon className="h-5 w-5 text-orange-300" />
@@ -2189,21 +2223,20 @@ export function PackageRowExpanded({
                           <span className="text-[8px] text-orange-300 mt-1">Cargando...</span>
                         </div>
                       ) : fileId9x16 ? (
-                        <div className="relative w-[68px] h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={`https://drive.google.com/thumbnail?id=${fileId9x16}&sz=w200`}
-                            alt={`V${variant} 9x16 Drive`}
-                            className="w-full h-full object-cover"
-                            loading="lazy"
-                            referrerPolicy="no-referrer"
-                          />
+                        <a
+                          href={variantFolders[variant] ? driveFolderUrl(variantFolders[variant]) : driveViewUrl(fileId9x16)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="relative w-[68px] h-[116px] rounded-lg overflow-hidden border-2 border-orange-200 bg-muted block cursor-zoom-in"
+                          title="Abrir carpeta de Drive de esta variante"
+                        >
+                          <ThumbImg src={driveThumbProxy(fileId9x16)} alt={`V${variant} 9x16 Drive`} className="w-full h-full object-cover" />
                           {drive9x16 && (
                             <div className="absolute bottom-1 left-1 bg-orange-500 rounded px-1">
                               <span className="text-[7px] text-white">{creative9x16?.creative_type === 'VIDEO' ? 'VID' : 'IMG'}</span>
                             </div>
                           )}
-                        </div>
+                        </a>
                       ) : (
                         <div className="w-[68px] h-[116px] rounded-lg border-2 border-dashed border-orange-200 flex flex-col items-center justify-center bg-orange-50/30">
                           <ImageIcon className="h-4 w-4 text-orange-300" />

@@ -262,7 +262,7 @@ export function UploadToMetaModal({
   const metaByVariant = groupByVariant(metaCreatives)
 
   const getDriveThumbnail = (fileId: string) =>
-    `https://drive.google.com/thumbnail?id=${fileId}&sz=w200`
+    `/api/drive/thumbnail/${fileId}?sz=400`
 
   const getMetaThumbnail = (hash: string) =>
     metaImageUrls[hash] || ''

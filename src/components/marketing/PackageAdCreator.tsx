@@ -672,9 +672,9 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
                             </div>
                             <div className="flex gap-2">
                               {variantCreatives.map(creative => {
-                                // Generate Google Drive thumbnail URL
+                                // Drive thumbnail via server proxy (reliable for images + video)
                                 const thumbnailUrl = creative.drive_file_id
-                                  ? `https://drive.google.com/thumbnail?id=${creative.drive_file_id}&sz=w200`
+                                  ? `/api/drive/thumbnail/${creative.drive_file_id}?sz=400`
                                   : null
 
                                 return (

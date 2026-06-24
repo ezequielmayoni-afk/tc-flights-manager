@@ -388,3 +388,49 @@ export async function deleteCreative(fileId: string): Promise<void> {
   const drive = getDrive()
   await drive.files.delete({ fileId, supportsAllDrives: true })
 }
+
+/**
+ * Fetch a Drive file's thumbnail via the Drive API (works for images AND videos,
+ * regardless of public-sharing state). Returns the image bytes + content type.
+ * Used by the /api/drive/thumbnail proxy so the browser never hits the flaky
+ * drive.google.com/thumbnail endpoint directly.
+ */
+export async function getDriveThumbnail(
+  fileId: string,
+  size = 400
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  const drive = getDrive()
+  const auth = getAuth()
+
+  // 1. Ask the Drive API for the authenticated thumbnailLink (reliable, video-capable)
+  const meta = await drive.files.get({
+    fileId,
+    fields: 'thumbnailLink, mimeType',
+    supportsAllDrives: true,
+  })
+  let thumbLink = meta.data.thumbnailLink || ''
+
+  if (thumbLink) {
+    // thumbnailLink ends with "=s220"; bump the requested size
+    thumbLink = thumbLink.replace(/=s\d+$/, `=s${size}`)
+    await auth.authorize()
+    const token = (await auth.getAccessToken()).token
+    const r = await fetch(thumbLink, { headers: { Authorization: `Bearer ${token}` } })
+    if (r.ok) {
+      const buf = Buffer.from(await r.arrayBuffer())
+      return { buffer: buf, contentType: r.headers.get('content-type') || 'image/jpeg' }
+    }
+  }
+
+  // 2. Fallback: for images, download the media directly
+  const mime = meta.data.mimeType || ''
+  if (mime.startsWith('image/')) {
+    const res = await drive.files.get(
+      { fileId, alt: 'media', supportsAllDrives: true },
+      { responseType: 'arraybuffer' }
+    )
+    return { buffer: Buffer.from(res.data as ArrayBuffer), contentType: mime }
+  }
+
+  return null
+}
