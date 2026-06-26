@@ -22,6 +22,7 @@ import {
   ShoppingCart,
   BarChart3,
   Users,
+  Video,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -32,6 +33,7 @@ interface NavItem {
   href: string
   icon: React.ComponentType<{ className?: string }>
   section?: string
+  external?: boolean
 }
 
 const cuposItems: NavItem[] = [
@@ -46,6 +48,7 @@ const productosItems: NavItem[] = [
   { name: 'Cotización manual', href: '/packages/requote', icon: RefreshCw, section: 'requote' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
   { name: 'Diseño', href: '/packages/design', icon: Palette, section: 'diseño' },
+  { name: 'Video', href: 'http://148.230.72.17:8095', icon: Video, section: 'diseño', external: true },
   { name: 'Marketing', href: '/packages/marketing', icon: Megaphone, section: 'marketing' },
   { name: 'Comercial', href: '/packages/comercial', icon: ShoppingCart, section: 'comercial' },
 ]
@@ -263,21 +266,29 @@ export function Sidebar() {
 
             {productosExpanded && (
               <div className="mt-1 ml-4 space-y-1">
-                {visibleProductosItems.map((item) => (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={cn(
-                      'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
-                      isItemActive(item.href)
-                        ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
-                        : 'text-white/70 hover:bg-[#283593] hover:text-white'
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    {item.name}
-                  </Link>
-                ))}
+                {visibleProductosItems.map((item) => {
+                  const itemClass = cn(
+                    'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors',
+                    !item.external && isItemActive(item.href)
+                      ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
+                      : 'text-white/70 hover:bg-[#283593] hover:text-white'
+                  )
+                  const inner = (
+                    <>
+                      <item.icon className="h-4 w-4" />
+                      {item.name}
+                    </>
+                  )
+                  return item.external ? (
+                    <a key={item.name} href={item.href} target="_blank" rel="noopener noreferrer" className={itemClass}>
+                      {inner}
+                    </a>
+                  ) : (
+                    <Link key={item.name} href={item.href} className={itemClass}>
+                      {inner}
+                    </Link>
+                  )
+                })}
               </div>
             )}
           </div>
