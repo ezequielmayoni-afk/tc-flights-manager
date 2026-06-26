@@ -48,7 +48,7 @@ const productosItems: NavItem[] = [
   { name: 'Cotización manual', href: '/packages/requote', icon: RefreshCw, section: 'requote' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
   { name: 'Diseño', href: '/packages/design', icon: Palette, section: 'diseño' },
-  { name: 'Video', href: 'http://148.230.72.17:8095', icon: Video, section: 'diseño', external: true },
+  { name: 'Video', href: 'https://hub.siviajo.com:8095', icon: Video, section: 'diseño', external: true },
   { name: 'Marketing', href: '/packages/marketing', icon: Megaphone, section: 'marketing' },
   { name: 'Comercial', href: '/packages/comercial', icon: ShoppingCart, section: 'comercial' },
 ]
