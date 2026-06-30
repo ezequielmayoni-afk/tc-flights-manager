@@ -176,6 +176,15 @@ export function PackageRowExpanded({
   const [generatingCopy, setGeneratingCopy] = useState(false)
   const [uploadingCreatives, setUploadingCreatives] = useState(false)
   const [uploadCreativesProgress, setUploadCreativesProgress] = useState({ current: 0, total: 0 })
+  // Progreso por archivo durante "Subir a Meta" (key = `${variant}-${aspectRatio}`)
+  const [fileUploads, setFileUploads] = useState<Record<string, {
+    variant: number
+    aspectRatio: string
+    creativeType: string
+    fileName: string
+    percent: number
+    phase: 'download' | 'upload' | 'done' | 'error'
+  }>>({})
   const [creatingAds, setCreatingAds] = useState(false)
   const [editingCopy, setEditingCopy] = useState<number | null>(null)
   const [savingCopy, setSavingCopy] = useState<number | null>(null)
@@ -624,6 +633,7 @@ export function PackageRowExpanded({
     setUploadingCreatives(true)
     setUploadCreativesProgress({ current: 0, total: totalToUpload })
     setCreationProgress([])
+    setFileUploads({})
 
     try {
       const res = await fetch('/api/meta/creatives', {
@@ -656,10 +666,31 @@ export function PackageRowExpanded({
         for (const line of lines) {
           try {
             const data = JSON.parse(line.slice(6))
-            if (data.type === 'progress') {
+            if (data.type === 'file_progress') {
+              // Progreso en vivo de cada archivo que se sube
+              const d = data.data
+              const key = `${d.variant}-${d.aspect_ratio}`
+              setFileUploads(prev => ({
+                ...prev,
+                [key]: {
+                  variant: d.variant,
+                  aspectRatio: d.aspect_ratio,
+                  creativeType: d.creative_type,
+                  fileName: d.file_name,
+                  percent: d.percent,
+                  phase: d.phase,
+                },
+              }))
+            } else if (data.type === 'progress') {
               if (data.data.variant && data.data.status === 'uploaded') {
                 uploadedCount++
                 setUploadCreativesProgress({ current: uploadedCount, total: totalToUpload })
+                // Asegurar 100% en el archivo terminado
+                const key = `${data.data.variant}-${data.data.aspect_ratio}`
+                setFileUploads(prev => prev[key] ? {
+                  ...prev,
+                  [key]: { ...prev[key], percent: 100, phase: 'done' },
+                } : prev)
               }
             } else if (data.type === 'complete') {
               setUploadCreativesProgress({ current: totalToUpload, total: totalToUpload })
@@ -667,6 +698,13 @@ export function PackageRowExpanded({
               await loadCreatives()
             } else if (data.type === 'error') {
               toast.error(`Error${data.data.variant ? ` V${data.data.variant}` : ''}: ${data.data.error}`)
+              if (data.data.variant && data.data.aspect_ratio) {
+                const key = `${data.data.variant}-${data.data.aspect_ratio}`
+                setFileUploads(prev => prev[key] ? {
+                  ...prev,
+                  [key]: { ...prev[key], phase: 'error' },
+                } : prev)
+              }
             }
           } catch {
             // Ignore parse errors
@@ -2339,6 +2377,47 @@ export function PackageRowExpanded({
         })}
       </div>
 
+
+      {/* Progreso por archivo al subir a Meta */}
+      {Object.keys(fileUploads).length > 0 && (
+        <div className="p-3 bg-muted rounded-lg text-sm space-y-2">
+          <p className="font-medium text-xs text-muted-foreground">
+            Subiendo archivos a Meta · {uploadCreativesProgress.current}/{uploadCreativesProgress.total}
+          </p>
+          {Object.entries(fileUploads)
+            .sort(([, a], [, b]) =>
+              a.variant - b.variant || a.aspectRatio.localeCompare(b.aspectRatio)
+            )
+            .map(([key, f]) => {
+              const phaseLabel =
+                f.phase === 'download' ? 'Descargando' :
+                f.phase === 'upload' ? 'Subiendo' :
+                f.phase === 'error' ? 'Error' : 'Listo'
+              const barColor =
+                f.phase === 'error' ? 'bg-red-500' :
+                f.phase === 'done' ? 'bg-green-500' : 'bg-blue-500'
+              return (
+                <div key={key} className="space-y-0.5">
+                  <div className="flex items-center justify-between text-xs gap-2">
+                    <span className="truncate">
+                      {f.creativeType === 'VIDEO' ? '🎬' : '🖼️'} V{f.variant} · {f.aspectRatio}
+                      <span className="text-muted-foreground ml-1 truncate">{f.fileName}</span>
+                    </span>
+                    <span className="shrink-0 tabular-nums text-muted-foreground">
+                      {f.phase === 'error' ? 'Error' : `${phaseLabel} ${f.percent}%`}
+                    </span>
+                  </div>
+                  <div className="h-1.5 w-full bg-background rounded overflow-hidden">
+                    <div
+                      className={`h-full ${barColor} transition-all duration-300`}
+                      style={{ width: `${f.phase === 'error' ? 100 : f.percent}%` }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+        </div>
+      )}
 
       {/* Progress */}
       {creationProgress.length > 0 && (

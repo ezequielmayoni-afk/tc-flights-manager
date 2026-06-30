@@ -163,6 +163,23 @@ export interface UploadResult {
   error?: string
 }
 
+/** Fase de subida de un archivo individual */
+export type UploadPhase = 'download' | 'upload' | 'done' | 'error'
+
+/** Progreso de un único creativo durante la subida a Meta */
+export interface FileUploadProgress {
+  variant: number
+  aspectRatio: AspectRatio
+  creativeType: CreativeType
+  fileName: string
+  /** Porcentaje 0-100 del archivo actual */
+  percent: number
+  phase: UploadPhase
+  /** Posición dentro del lote (1-based) y total del lote */
+  index: number
+  total: number
+}
+
 /**
  * Download a file from Google Drive as a buffer
  */
@@ -291,10 +308,13 @@ export async function getPackageCreatives(tcPackageId: number): Promise<DriveCre
  */
 export async function uploadCreativeToMeta(
   creative: DriveCreativeInfo,
-  adAccountId?: string
+  adAccountId?: string,
+  onProgress?: (percent: number, phase: UploadPhase) => void
 ): Promise<UploadResult> {
   try {
     console.log(`[Creative Uploader] Downloading ${creative.fileName} from Drive...`)
+
+    onProgress?.(0, 'download')
 
     // Download from Drive with retry
     const fileBuffer = await withRetry(
@@ -322,11 +342,15 @@ export async function uploadCreativeToMeta(
 
     if (creative.creativeType === 'IMAGE') {
       console.log(`[Creative Uploader] Uploading image to Meta...`)
+      // La subida de imagen es un único POST (no hay progreso por bytes):
+      // reportamos inicio de subida y luego 100% al terminar.
+      onProgress?.(10, 'upload')
       const imageHash = await withRetry(
         () => metaClient.uploadImage(fileBuffer, creative.fileName),
         { maxRetries: 3, baseDelayMs: 2000, context: `Upload image ${creative.fileName}` }
       )
       console.log(`[Creative Uploader] Uploaded image, hash: ${imageHash}`)
+      onProgress?.(100, 'done')
 
       return {
         success: true,
@@ -339,10 +363,13 @@ export async function uploadCreativeToMeta(
     } else {
       console.log(`[Creative Uploader] Uploading video to Meta...`)
       const videoId = await withRetry(
-        () => metaClient.uploadVideo(fileBuffer, creative.fileName),
+        () => metaClient.uploadVideo(fileBuffer, creative.fileName, (p) =>
+          onProgress?.(p, p >= 100 ? 'done' : 'upload')
+        ),
         { maxRetries: 3, baseDelayMs: 3000, context: `Upload video ${creative.fileName}` }
       )
       console.log(`[Creative Uploader] Uploaded video, ID: ${videoId}`)
+      onProgress?.(100, 'done')
 
       return {
         success: true,
@@ -355,6 +382,7 @@ export async function uploadCreativeToMeta(
     }
   } catch (error) {
     console.error(`[Creative Uploader] Error uploading ${creative.fileName}:`, error)
+    onProgress?.(0, 'error')
     return {
       success: false,
       variant: creative.variant,
@@ -373,7 +401,8 @@ export async function uploadCreativeToMeta(
 export async function uploadPackageCreativesToMeta(
   tcPackageId: number,
   variantsFilter?: number[],
-  adAccountId?: string
+  adAccountId?: string,
+  onFileProgress?: (progress: FileUploadProgress) => void
 ): Promise<UploadResult[]> {
   console.log(`[Creative Uploader] Starting upload for package ${tcPackageId}`)
 
@@ -394,9 +423,22 @@ export async function uploadPackageCreativesToMeta(
 
   // Upload each creative
   const results: UploadResult[] = []
+  const total = filteredCreatives.length
 
-  for (const creative of filteredCreatives) {
-    const result = await uploadCreativeToMeta(creative, adAccountId)
+  for (let i = 0; i < filteredCreatives.length; i++) {
+    const creative = filteredCreatives[i]
+    const result = await uploadCreativeToMeta(creative, adAccountId, (percent, phase) => {
+      onFileProgress?.({
+        variant: creative.variant,
+        aspectRatio: creative.aspectRatio,
+        creativeType: creative.creativeType,
+        fileName: creative.fileName,
+        percent,
+        phase,
+        index: i + 1,
+        total,
+      })
+    })
     results.push(result)
 
     // Small delay between uploads to avoid rate limiting

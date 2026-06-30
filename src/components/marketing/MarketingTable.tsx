@@ -299,6 +299,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [confirmRemovePackageId, setConfirmRemovePackageId] = useState<number | null>(null)
   const [confirmRemoveFromMarketing, setConfirmRemoveFromMarketing] = useState<number | null>(null)
   const [removingFromMarketing, setRemovingFromMarketing] = useState<Set<number>>(new Set())
+  const [confirmBulkRemove, setConfirmBulkRemove] = useState(false)
+  const [bulkRemoving, setBulkRemoving] = useState(false)
   const [importAdsPkg, setImportAdsPkg] = useState<Package | null>(null)
   const [duplicateAdsPkg, setDuplicateAdsPkg] = useState<Package | null>(null)
   const [selectedPackageIds, setSelectedPackageIds] = useState<Set<number>>(new Set())
@@ -1103,7 +1105,15 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       }
     }
     // Campaign filter — match cualquier placement
-    if (campaignFilter !== 'all') {
+    if (campaignFilter === '__none__') {
+      // "Sin campaña" = lo que en la celda muestra el botón "Agregar":
+      // el paquete no tiene ningún placement (ni con ads, ni reservado, ni fantasma).
+      // Nota: data.campaignId puede venir de un meta_campaign_id guardado aunque
+      // no haya placements, por eso NO se usa acá.
+      const data = packageData[pkg.id]
+      const hasPlacements = (data?.placements?.length ?? 0) > 0
+      if (hasPlacements) return false
+    } else if (campaignFilter !== 'all') {
       const data = packageData[pkg.id]
       const inPlacements = data?.placements?.some((p) => p.campaign_id === campaignFilter) ?? false
       const inPrimary = data?.campaignId === campaignFilter
@@ -1457,42 +1467,48 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     }
   }
 
+  // Core: quita un paquete de marketing (borra ads de Meta si hay y deja status 'imported').
+  // Lanza error si falla — el caller maneja el toast/estado.
+  const removeFromMarketingRequest = async (packageId: number) => {
+    // If package has ads, delete them from Meta first
+    const pkg = packages.find(p => p.id === packageId)
+    if (pkg && pkg.ads_created_count > 0) {
+      await fetch('/api/meta/ads', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_id: packageId, delete_from_meta: true }),
+      })
+    }
+
+    // Update package status back to imported
+    const res = await fetch(`/api/packages/${packageId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        status: 'imported',
+        send_to_marketing: false,
+        marketing_completed: false,
+        marketing_status: null,
+        ads_created_count: 0,
+        ads_active_count: 0,
+        send_to_design: false,
+        design_completed: false,
+      }),
+    })
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      throw new Error(data.error || 'Error quitando de marketing')
+    }
+  }
+
   // Remove package from marketing (back to imported, also removes ads if any)
   const handleRemoveFromMarketing = async (packageId: number) => {
     setRemovingFromMarketing(prev => new Set(prev).add(packageId))
     setConfirmRemoveFromMarketing(null)
 
     try {
-      // If package has ads, delete them from Meta first
-      const pkg = packages.find(p => p.id === packageId)
-      if (pkg && pkg.ads_created_count > 0) {
-        await fetch('/api/meta/ads', {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ package_id: packageId, delete_from_meta: true }),
-        })
-      }
-
-      // Update package status back to imported
-      const res = await fetch(`/api/packages/${packageId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status: 'imported',
-          send_to_marketing: false,
-          marketing_completed: false,
-          marketing_status: null,
-          ads_created_count: 0,
-          ads_active_count: 0,
-          send_to_design: false,
-          design_completed: false,
-        }),
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.error || 'Error quitando de marketing')
-      }
+      await removeFromMarketingRequest(packageId)
 
       // Remove from local state
       setPackages(prev => prev.filter(p => p.id !== packageId))
@@ -1505,6 +1521,40 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         newSet.delete(packageId)
         return newSet
       })
+    }
+  }
+
+  // Bulk: quita de marketing todos los paquetes seleccionados
+  const handleBulkRemoveFromMarketing = async () => {
+    const ids = Array.from(selectedPackageIds)
+    setConfirmBulkRemove(false)
+    if (ids.length === 0) return
+
+    setBulkRemoving(true)
+    setRemovingFromMarketing(prev => { const s = new Set(prev); ids.forEach(id => s.add(id)); return s })
+
+    let ok = 0
+    const failed: number[] = []
+    for (const packageId of ids) {
+      try {
+        await removeFromMarketingRequest(packageId)
+        ok++
+      } catch {
+        failed.push(packageId)
+      }
+    }
+
+    // Sacar de la tabla solo los que se quitaron bien
+    const failedSet = new Set(failed)
+    setPackages(prev => prev.filter(p => !selectedPackageIds.has(p.id) || failedSet.has(p.id)))
+    setSelectedPackageIds(failedSet)
+    setRemovingFromMarketing(prev => { const s = new Set(prev); ids.forEach(id => s.delete(id)); return s })
+    setBulkRemoving(false)
+
+    if (failed.length === 0) {
+      toast.success(`${ok} paquete${ok !== 1 ? 's' : ''} quitado${ok !== 1 ? 's' : ''} de marketing`)
+    } else {
+      toast.warning(`${ok} quitado(s), ${failed.length} con error`)
     }
   }
 
@@ -1572,6 +1622,21 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               >
                 <Copy className="h-4 w-4 mr-2" />
                 Replicar {selectedPackageIds.size} paquete{selectedPackageIds.size > 1 ? 's' : ''}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmBulkRemove(true)}
+                disabled={bulkRemoving}
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+                title="Quitar los paquetes seleccionados de marketing (vuelven a estado importado)"
+              >
+                {bulkRemoving ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Eliminar de marketing ({selectedPackageIds.size})
               </Button>
               <Button
                 variant="ghost"
@@ -1654,6 +1719,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                     className="w-full h-5 text-[10px] bg-transparent border border-border rounded px-1 text-center truncate focus:outline-none focus:ring-1 focus:ring-ring"
                   >
                     <option value="all">Todas</option>
+                    <option value="__none__">(Sin campaña)</option>
                     {campaignOptions.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
@@ -2216,6 +2282,28 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
               Quitar de marketing
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Confirm Bulk Remove from Marketing Dialog */}
+      <AlertDialog open={confirmBulkRemove} onOpenChange={(open) => { if (!open) setConfirmBulkRemove(false) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Eliminar de marketing</AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta acción quitará {selectedPackageIds.size} paquete{selectedPackageIds.size !== 1 ? 's' : ''} del módulo de marketing y {selectedPackageIds.size !== 1 ? 'los devolverá' : 'lo devolverá'} al estado &quot;importado&quot;.
+              {packages.some(p => selectedPackageIds.has(p.id) && p.ads_created_count > 0) ? ' También se eliminarán de Meta los anuncios de los que tengan.' : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleBulkRemoveFromMarketing}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Eliminar de marketing
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

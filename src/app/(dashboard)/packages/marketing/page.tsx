@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { MarketingTable } from '@/components/marketing/MarketingTable'
 import { CreativesReadyPanel } from '@/components/marketing/CreativesReadyPanel'
+import { CreativesRequestedPanel } from '@/components/marketing/CreativesRequestedPanel'
 import { PromptIAButton } from '@/components/marketing/PromptIAButton'
 import Link from 'next/link'
 import { BarChart3, Settings, AlertTriangle, Radio, MessageSquare } from 'lucide-react'
@@ -85,6 +86,29 @@ export default async function MarketingPage() {
     .from('creative_requests')
     .select('*', { count: 'exact', head: true })
     .eq('status', 'pending')
+
+  // Get creative requests in progress (solicitados, todavía no completados) — resumen + SLA 48h
+  const { data: requestedRequests } = await db
+    .from('creative_requests')
+    .select(`
+      id,
+      package_id,
+      tc_package_id,
+      reason,
+      reason_detail,
+      priority,
+      status,
+      requested_by,
+      created_at,
+      requested_variants,
+      packages:package_id (
+        title,
+        current_price_per_pax,
+        currency
+      )
+    `)
+    .in('status', ['pending', 'in_progress'])
+    .order('created_at', { ascending: false })
 
   // Get completed creative requests (ready to upload to Meta)
   const { data: completedRequests } = await db
@@ -180,6 +204,11 @@ export default async function MarketingPage() {
           </Link>
         </div>
       </div>
+
+      {/* Panel de creativos solicitados (resumen + vencimiento 48h) */}
+      {requestedRequests && requestedRequests.length > 0 && (
+        <CreativesRequestedPanel requests={requestedRequests as any} />
+      )}
 
       {/* Panel de creativos listos para subir */}
       {completedRequests && completedRequests.length > 0 && (

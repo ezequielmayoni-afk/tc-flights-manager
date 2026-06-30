@@ -120,8 +120,25 @@ export async function POST(request: NextRequest) {
               message: `Uploading creatives for ${pkg.title}`,
             })
 
-            // Upload creatives
-            const results = await uploadPackageCreativesToMeta(pkg.tc_package_id, variants, ad_account_id)
+            // Upload creatives (con progreso por archivo en vivo)
+            const results = await uploadPackageCreativesToMeta(
+              pkg.tc_package_id,
+              variants,
+              ad_account_id,
+              (fp) => {
+                sendEvent('file_progress', {
+                  package_id: packageId,
+                  variant: fp.variant,
+                  aspect_ratio: fp.aspectRatio,
+                  creative_type: fp.creativeType,
+                  file_name: fp.fileName,
+                  percent: fp.percent,
+                  phase: fp.phase,
+                  index: fp.index,
+                  total: fp.total,
+                })
+              }
+            )
 
             // Save results to database
             for (const result of results) {
