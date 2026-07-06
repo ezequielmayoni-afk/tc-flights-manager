@@ -32,6 +32,7 @@ function unescapeHtml(html: string): string {
   return html
     .replace(/\\u002[fF]/g, '/')
     .replace(/\\\//g, '/')
+    .replace(/\\"/g, '"') // el payload RSC embebe JSON con comillas escapadas
     .replace(/&amp;/g, '&')
     .replace(/&#x2[fF];/g, '/')
 }
@@ -40,27 +41,53 @@ const CAPTION_RE =
   /aria-description="(?:Vista desde el asiento|View from your seat):\s*([^"\\]+)"/i
 const MEDIA_IN_TAG_RE =
   /https:\/\/(?:media\.p1travel\.com|ik\.imagekit\.io\/p1)\/[^"'\\ )]+\.(?:jpg|jpeg|png|webp)/i
+const MEDIA_URL = 'https://(?:media\\.p1travel\\.com|ik\\.imagekit\\.io/p1)/[^"?\\\\ )]+\\.(?:jpg|jpeg|png|webp)'
 
 /**
- * Parse every <img> whose aria-description marks it as a seat-view photo, pairing
- * the caption (sector label) with its image URL. Dedupes by caption.
+ * Extract the COMPLETE per-sector photo set from the RSC/JSON payload. Each seat
+ * photo is an ImageKit file object:
+ *   {"url":"https://ik.imagekit.io/p1/Belgian GP - Silver 4 Grandstand.jpg?...",
+ *    ...,"customMetadata":{"description_es":"Vista desde el asiento: Silver 4"}}
+ * Only a few of these are rendered as <img> tags (the visible carousel frame);
+ * the rest live only in the RSC, which is why fetch-only parsing must read here
+ * to get every sector's photo (not just the 4 visible ones).
+ */
+function extractRscPhotos(html: string): Map<string, string> {
+  const res = new Map<string, string>()
+  const capRe = /"description_es":"Vista desde el asiento:\s*([^"\\]+)"/g
+  const urlRe = new RegExp(`"url":"(${MEDIA_URL})`, 'g')
+  let m: RegExpExecArray | null
+  while ((m = capRe.exec(html))) {
+    const caption = m[1].trim()
+    if (!caption || res.has(caption)) continue
+    // La url del objeto aparece antes de customMetadata; tomamos la más cercana.
+    const before = html.slice(Math.max(0, m.index - 1600), m.index)
+    let lastUrl: string | null = null
+    let u: RegExpExecArray | null
+    urlRe.lastIndex = 0
+    while ((u = urlRe.exec(before))) lastUrl = u[1]
+    if (lastUrl) res.set(caption, normalizeMediaUrl(lastUrl))
+  }
+  return res
+}
+
+/**
+ * Parse the seat-view photos, pairing each caption (sector label) with its image
+ * URL. Reads the RSC payload (complete set) and also any rendered <img> tags.
  */
 export function parseDetailImages(rawHtml: string): DetailImages {
   const html = unescapeHtml(rawHtml)
-  const seatByCaption = new Map<string, string>()
+  const seatByCaption = extractRscPhotos(html)
 
-  // Walk each <img ...> tag; keep the ones with a seat-view aria-description.
+  // Complementar con <img aria-description> renderizados (por si el RSC cambia).
   for (const m of html.matchAll(/<img\b[^>]*>/gi)) {
     const tag = m[0]
     const cap = tag.match(CAPTION_RE)
     if (!cap) continue
     const caption = cap[1].trim()
-    if (!caption) continue
+    if (!caption || seatByCaption.has(caption)) continue
     const img = tag.match(MEDIA_IN_TAG_RE)
-    if (!img) continue
-    if (!seatByCaption.has(caption)) {
-      seatByCaption.set(caption, normalizeMediaUrl(img[0]))
-    }
+    if (img) seatByCaption.set(caption, normalizeMediaUrl(img[0]))
   }
 
   const seatPhotos: SeatPhoto[] = Array.from(seatByCaption.entries()).map(
