@@ -1,0 +1,26 @@
+{
+  "name": "p1-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "scrape": "npx tsx src/run-scrape.ts",
+    "scrape:dry": "npx tsx src/run-scrape.ts --dry",
+    "images": "npx tsx src/run-scrape.ts",
+    "cron": "npx tsx src/cron.ts",
+    "push-tc": "tsx src/run-push-tc.ts",
+    "push-tc:dry": "tsx src/run-push-tc.ts --dry"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "@types/ws": "^8.18.1",
+    "dotenv": "^16.4.0",
+    "node-cron": "^4.2.1",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/node-cron": "^3.0.11",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
