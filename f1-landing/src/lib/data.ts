@@ -1,5 +1,6 @@
 import { db } from './supabase'
 import type { F1Event, F1Ticket, DisplayImage } from './types'
+import { translateEventName, translateSector } from './i18n'
 
 const EVENT_COLS =
   'id, slug, name, venue_name, city, country_code, date_time, date_time_end, main_image_url, price_ticket_only, currency'
@@ -26,7 +27,10 @@ export async function getEvents(): Promise<F1Event[]> {
     console.error('[data] getEvents:', error.message)
     return []
   }
-  return (data ?? []) as unknown as F1Event[]
+  return (data ?? []).map((e: Record<string, unknown>) => ({
+    ...(e as unknown as F1Event),
+    name: translateEventName((e.name as string) ?? ''),
+  }))
 }
 
 export async function getEventBySlug(slug: string): Promise<F1Event | null> {
@@ -40,7 +44,9 @@ export async function getEventBySlug(slug: string): Promise<F1Event | null> {
     console.error('[data] getEventBySlug:', error.message)
     return null
   }
-  return (data as unknown as F1Event) ?? null
+  if (!data) return null
+  const e = data as Record<string, unknown>
+  return { ...(e as unknown as F1Event), name: translateEventName((e.name as string) ?? '') }
 }
 
 /** Sectores disponibles de un evento, más baratos primero. */
@@ -59,11 +65,12 @@ export async function getTickets(eventId: string, eventBanner: string | null): P
   }
   return (data ?? []).map((t: Record<string, unknown>) => ({
     category_id: t.category_id as string,
-    name: (t.name as string) ?? '',
+    name: translateSector((t.name as string) ?? ''),
     description: ((t.description_es as string) || (t.description as string) || '').trim(),
     price: (t.price as number) ?? null,
     currency: (t.currency as string) ?? 'EUR',
     image: readImage(t.features, eventBanner),
+    seatplanUrl: (t.seatplan_image_url as string) ?? null,
   }))
 }
 
@@ -85,8 +92,8 @@ export async function getTicketPrice(
   return {
     price: (data.price as number) ?? 0,
     currency: (data.currency as string) ?? 'EUR',
-    sectorName: (data.name as string) ?? '',
-    eventName: ev.name,
+    sectorName: translateSector((data.name as string) ?? ''),
+    eventName: ev.name, // ya traducido por getEventBySlug
     eventId: ev.id,
   }
 }

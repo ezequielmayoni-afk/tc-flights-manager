@@ -26,10 +26,74 @@ function DescriptionList({ text }: { text: string }) {
   )
 }
 
+interface GalleryImage {
+  url: string
+  label: string
+  kind: 'photo' | 'map'
+}
+
+function Gallery({ images }: { images: GalleryImage[] }) {
+  const [active, setActive] = useState(0)
+  if (images.length === 0) {
+    return <div className="grid aspect-[16/10] place-items-center bg-brand-900 text-white/40">🏟️</div>
+  }
+  const current = images[Math.min(active, images.length - 1)]
+  return (
+    <div>
+      <div className="relative aspect-[16/10] overflow-hidden bg-brand-900">
+        {current.kind === 'photo' ? (
+          <Image src={current.url} alt={current.label} fill sizes="(max-width:768px) 100vw, 50vw" className="object-cover" />
+        ) : (
+          // El mapa del circuito es SVG: <img> lo renderiza sin optimización.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={current.url} alt={current.label} className="h-full w-full bg-white object-contain p-2" />
+        )}
+        <span className="absolute bottom-2 left-2 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">
+          {current.label}
+        </span>
+      </div>
+      {images.length > 1 && (
+        <div className="flex gap-2 p-2">
+          {images.map((img, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => setActive(i)}
+              className={`relative h-14 w-20 shrink-0 overflow-hidden rounded-md ring-2 transition ${
+                i === active ? 'ring-brand' : 'ring-transparent opacity-70 hover:opacity-100'
+              }`}
+              aria-label={img.label}
+            >
+              {img.kind === 'photo' ? (
+                <Image src={img.url} alt={img.label} fill sizes="80px" className="object-cover" />
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={img.url} alt={img.label} className="h-full w-full bg-white object-contain p-0.5" />
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function SectorCard({ ev, ticket }: { ev: F1Event; ticket: F1Ticket }) {
   const { add } = useCart()
   const [qty, setQty] = useState(1)
   const [added, setAdded] = useState(false)
+
+  const gallery: GalleryImage[] = []
+  if (ticket.image.url) {
+    gallery.push({
+      url: ticket.image.url,
+      label: ticket.image.source === 'seat_photo' && ticket.image.caption ? ticket.image.caption : 'Vista del sector',
+      kind: 'photo',
+    })
+  }
+  if (ticket.seatplanUrl) {
+    gallery.push({ url: ticket.seatplanUrl, label: 'Ubicación en el circuito', kind: 'map' })
+  }
 
   const handleAdd = () => {
     if (ticket.price == null) return
@@ -50,24 +114,7 @@ export function SectorCard({ ev, ticket }: { ev: F1Event; ticket: F1Ticket }) {
 
   return (
     <div className="flex flex-col overflow-hidden rounded-[var(--radius-card)] bg-surface shadow-sm ring-1 ring-black/5">
-      <div className="relative aspect-[16/10] bg-brand-900">
-        {ticket.image.url ? (
-          <Image
-            src={ticket.image.url}
-            alt={ticket.image.caption || ticket.name}
-            fill
-            sizes="(max-width: 768px) 100vw, 50vw"
-            className="object-cover"
-          />
-        ) : (
-          <div className="grid h-full place-items-center text-white/40">🏟️</div>
-        )}
-        {ticket.image.source === 'seat_photo' && ticket.image.caption && (
-          <span className="absolute bottom-2 left-2 rounded-full bg-black/65 px-3 py-1 text-xs font-medium text-white">
-            {ticket.image.caption}
-          </span>
-        )}
-      </div>
+      <Gallery images={gallery} />
 
       <div className="flex flex-1 flex-col gap-3 p-4">
         <h3 className="text-lg font-bold leading-snug">{ticket.name}</h3>

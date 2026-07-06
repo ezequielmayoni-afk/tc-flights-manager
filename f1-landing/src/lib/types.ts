@@ -28,7 +28,10 @@ export interface F1Ticket {
   description: string
   price: number | null
   currency: string
+  /** Foto real "vista desde el asiento" (o banner del GP como fallback). */
   image: DisplayImage
+  /** Mapa del circuito / plano de asientos (SVG) que ubica el sector. */
+  seatplanUrl: string | null
 }
 
 export interface CartItem {

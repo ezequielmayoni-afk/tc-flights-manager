@@ -1,5 +1,5 @@
 import { getEvents } from '@/lib/data'
-import { EventCard } from '@/components/EventCard'
+import { EventsExplorer } from '@/components/EventsExplorer'
 
 export const dynamic = 'force-dynamic'
 
@@ -24,25 +24,14 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Listado */}
+      {/* Listado + filtros */}
       <section>
-        <div className="mb-5 flex items-baseline justify-between">
-          <h2 className="text-2xl font-bold">Próximos Grandes Premios</h2>
-          <span className="text-sm text-muted">
-            {events.length} evento{events.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-
         {events.length === 0 ? (
           <div className="rounded-[var(--radius-card)] bg-surface p-10 text-center text-muted ring-1 ring-black/5">
             No hay Grandes Premios disponibles en este momento. Volvé pronto.
           </div>
         ) : (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {events.map((ev) => (
-              <EventCard key={ev.id} ev={ev} />
-            ))}
-          </div>
+          <EventsExplorer events={events} />
         )}
       </section>
     </div>
