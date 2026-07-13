@@ -287,11 +287,10 @@ export function CreativeRequestModal({
                             }`}>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={`https://drive.google.com/thumbnail?id=${creative4x5.fileId}&sz=w100`}
+                                src={`/api/drive/thumbnail/${creative4x5.fileId}?sz=200`}
                                 alt={`V${variant} 4x5`}
                                 className="w-full h-full object-cover"
                                 loading="lazy"
-                                referrerPolicy="no-referrer"
                               />
                             </div>
                           ) : (
@@ -312,11 +311,10 @@ export function CreativeRequestModal({
                             }`}>
                               {/* eslint-disable-next-line @next/next/no-img-element */}
                               <img
-                                src={`https://drive.google.com/thumbnail?id=${creative9x16.fileId}&sz=w100`}
+                                src={`/api/drive/thumbnail/${creative9x16.fileId}?sz=200`}
                                 alt={`V${variant} 9x16`}
                                 className="w-full h-full object-cover"
                                 loading="lazy"
-                                referrerPolicy="no-referrer"
                               />
                             </div>
                           ) : (

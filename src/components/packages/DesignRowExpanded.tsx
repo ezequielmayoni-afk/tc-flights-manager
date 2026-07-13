@@ -346,14 +346,16 @@ export function DesignRowExpanded({ packageId, tcPackageId: _tcPackageId, reques
     const sizeClass = ar.key === '4x5' ? 'w-[70px] h-[70px]' : 'w-[70px] h-[112px]'
 
     if (creative) {
-      const thumbnailUrl = `https://drive.google.com/thumbnail?id=${creative.fileId}&sz=w150`
+      // Servir la miniatura por el proxy autenticado del servidor. Pegar directo a
+      // drive.google.com/thumbnail falla intermitentemente porque los archivos
+      // están en un Shared Drive privado (el navegador no tiene acceso).
+      const thumbnailUrl = `/api/drive/thumbnail/${creative.fileId}?sz=300`
       return (
         <div className={`relative group ${sizeClass} border rounded-lg overflow-hidden bg-gray-100`}>
           <img
             src={thumbnailUrl}
             alt={`${ar.label} actual`}
             className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
             loading="lazy"
           />
           <div className="absolute top-0.5 right-0.5 bg-green-500 rounded-full p-0.5">

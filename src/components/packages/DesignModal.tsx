@@ -344,8 +344,9 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
     const sizeClass = ar.key === '4x5' ? 'w-[100px] h-[100px]' : 'w-[100px] h-[160px]'
 
     if (creative && !pending) {
-      // Google Drive thumbnail URL (works for publicly shared files)
-      const thumbnailUrl = `https://drive.google.com/thumbnail?id=${creative.fileId}&sz=w150`
+      // Miniatura vía proxy autenticado del servidor (los archivos están en un
+      // Shared Drive privado; pegar directo a drive.google.com falla a veces).
+      const thumbnailUrl = `/api/drive/thumbnail/${creative.fileId}?sz=300`
 
       return (
         <div className={`relative group ${sizeClass} border rounded-lg overflow-hidden bg-gray-100`}>
@@ -353,7 +354,6 @@ export function DesignModal({ packageId, packageTitle, open, onOpenChange }: Des
             src={thumbnailUrl}
             alt={`${ar.label} preview`}
             className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
           />
           {/* Green checkmark badge */}
           <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5">
