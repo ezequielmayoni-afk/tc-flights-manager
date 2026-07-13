@@ -342,32 +342,17 @@ export async function listPackageCreatives(packageId: number): Promise<PackageCr
 
       for (const file of files.data.files) {
         const fileName = file.name?.toLowerCase() || ''
-        // Check if file starts with known aspect ratios (any extension, case-insensitive)
-        if (fileName.startsWith('4x5.')) {
+        // Match aspect-ratio por nombre, con o sin extensión: acepta "4x5.jpg",
+        // "9x16.mp4" y también "4x5" / "9x16" sin extensión (algunas carpetas
+        // suben los archivos sin extensión en el nombre — el tipo real viene del
+        // mimeType, no del nombre).
+        const aspectRatio = ['4x5', '9x16', '1080', '1920'].find(
+          (ar) => fileName === ar || fileName.startsWith(ar + '.')
+        )
+        if (aspectRatio) {
           creatives.push({
             variant,
-            aspectRatio: '4x5',
-            fileId: file.id!,
-            webViewLink: file.webViewLink!,
-          })
-        } else if (fileName.startsWith('9x16.')) {
-          creatives.push({
-            variant,
-            aspectRatio: '9x16',
-            fileId: file.id!,
-            webViewLink: file.webViewLink!,
-          })
-        } else if (fileName.startsWith('1080.')) {
-          creatives.push({
-            variant,
-            aspectRatio: '1080',
-            fileId: file.id!,
-            webViewLink: file.webViewLink!,
-          })
-        } else if (fileName.startsWith('1920.')) {
-          creatives.push({
-            variant,
-            aspectRatio: '1920',
+            aspectRatio: aspectRatio as '4x5' | '9x16' | '1080' | '1920',
             fileId: file.id!,
             webViewLink: file.webViewLink!,
           })
