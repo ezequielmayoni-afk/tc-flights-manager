@@ -62,10 +62,11 @@ FORMATO EXACTO del "body" (español rioplatense, emojis y negritas de WhatsApp c
 
 🎒 *Tarifa {NOMBRE, ej. BASIC}* (equipaje según política de cada aerolínea).
 
-🏨 *Hotel:* {Nombre} {estrellas como ⭐ repetidas}
+🏨 *Hotel:* {Nombre} {estrellas ⭐ SOLO si el texto trae [ESTRELLAS_HOTEL:N] o dice la categoría en estrellas}
 🛏️ {Tipo de habitación}
 🍹 Régimen {ej. Todo Incluido}
 📍 Ubicado en {ubicación}.
+💬 *Opinión:* {etiqueta del puntaje de huéspedes, ej "Muy bueno"} ({puntaje, ej 8,0})
 
 🚗 *Incluye traslados privados*
 ✅ Aeropuerto ➜ Hotel
@@ -75,6 +76,8 @@ REGLAS del body:
 - Fechas de cada vuelo en formato DD/MM. Rango de "Fechas" en palabras (ej "19 al 29 de enero").
 - Nombrá la aerolínea y aclará "Directo" o la cantidad de escalas. NO pongas el número de vuelo.
 - Horarios con "hs". Si la llegada es al día siguiente, agregá "(+1)".
+- ESTRELLAS del hotel: la categoría en estrellas normalmente NO viene en el texto. Poné ⭐ SOLO si el texto trae explícitamente el marcador "[ESTRELLAS_HOTEL:N]" (usá N estrellas) o dice la categoría en estrellas. Si no aparece, NO pongas estrellas (NO las adivines, y NUNCA uses el puntaje de opinión como estrellas).
+- OPINIÓN: el puntaje de opinión de huéspedes (ej "8 Muy bueno (14624 opiniones)" o "7,9 Agradable") va SOLO en la línea "💬 *Opinión:*" con la etiqueta y el número; no es la categoría de estrellas. Si no hay puntaje, omití esa línea.
 - La sección de traslados va solo si el paquete los incluye; una línea con ✅ por cada tramo.
 - Cerrá con una línea corta y amena (ej "*¡A disfrutar del Caribe!* 🌴") antes del precio (que se agrega aparte).
 - NO incluyas el precio total, ni "por persona", ni los seguros/opcionales.
