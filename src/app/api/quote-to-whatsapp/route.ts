@@ -33,7 +33,7 @@ export async function OPTIONS(req: NextRequest) {
 
 const SYSTEM_PROMPT = `Recibís el TEXTO CRUDO del resumen de una cotización de viaje de la agencia "Sí, Viajo". Devolvé SOLO un JSON válido (sin bloques de código), con esta forma exacta:
 {
- "body": string,          // mensaje de WhatsApp en español rioplatense, con emojis y negritas de WhatsApp (*texto*). Incluí TODO menos el precio y los opcionales: título con gancho, 📅 fechas y noches, ✈️ vuelos ida/vuelta (aerolínea, fecha, aeropuertos+horarios, directo/escalas, +1 día si corresponde), 🎒 tarifa/equipaje, 🏨 hotel (nombre, estrellas si hay, habitación, régimen ej "Todo Incluido", ubicación), 🚗 traslados incluidos. NO incluyas el precio total, ni "por persona", ni los seguros/opcionales.
+ "body": string,          // mensaje de WhatsApp ameno y prolijo (ver FORMATO). Incluí TODO menos el precio total y los opcionales.
  "flights_total": number, // total de vuelos IDA Y VUELTA. Ese importe suele aparecer REPETIDO en el tramo de ida y en el de vuelta: es el MISMO, tomalo UNA sola vez.
  "hotel_total": number,   // 0 si no hay hotel
  "transfers": number[],   // importe de cada traslado (vacío si no hay)
@@ -41,7 +41,44 @@ const SYSTEM_PROMPT = `Recibís el TEXTO CRUDO del resumen de una cotización de
  "pax": number|null,      // cantidad de pasajeros si se puede inferir con certeza, si no null
  "optionals": [ { "label": string, "price": number } ]  // seguros u opcionales (vacío si no hay)
 }
-No inventes números ni datos que no estén en el texto.`
+
+FORMATO EXACTO del "body" (español rioplatense, emojis y negritas de WhatsApp con *asteriscos*; omití las secciones que no existan):
+
+*¡Volá a {DESTINO}!* ✈️
+
+📅 *Fechas:* {día} al {día} de {mes} ({N} noches)
+
+✈️ *Vuelos*
+🛫 *Ida - {Aerolínea}* ({Directo | N escala/s})
+• {DD/MM}
+• {Ciudad origen} ({COD}) {HH:MM} hs
+• {Ciudad destino} ({COD}) {HH:MM} hs
+
+🛬 *Vuelta - {Aerolínea}*
+• {DD/MM}
+• {Ciudad origen} ({COD}) {HH:MM} hs
+• {Ciudad destino} ({COD}) {HH:MM} hs {(+1) si llega al día siguiente}
+• {N escala/s, solo si tiene}
+
+🎒 *Tarifa {NOMBRE, ej. BASIC}* (equipaje según política de cada aerolínea).
+
+🏨 *Hotel:* {Nombre} {estrellas como ⭐ repetidas}
+🛏️ {Tipo de habitación}
+🍹 Régimen {ej. Todo Incluido}
+📍 Ubicado en {ubicación}.
+
+🚗 *Incluye traslados privados*
+✅ Aeropuerto ➜ Hotel
+✅ Hotel ➜ Aeropuerto
+
+REGLAS del body:
+- Fechas de cada vuelo en formato DD/MM. Rango de "Fechas" en palabras (ej "19 al 29 de enero").
+- Nombrá la aerolínea y aclará "Directo" o la cantidad de escalas. NO pongas el número de vuelo.
+- Horarios con "hs". Si la llegada es al día siguiente, agregá "(+1)".
+- La sección de traslados va solo si el paquete los incluye; una línea con ✅ por cada tramo.
+- Cerrá con una línea corta y amena (ej "*¡A disfrutar del Caribe!* 🌴") antes del precio (que se agrega aparte).
+- NO incluyas el precio total, ni "por persona", ni los seguros/opcionales.
+- No inventes datos ni números que no estén en el texto.`
 
 interface Extracted {
   body: string
