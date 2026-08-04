@@ -53,12 +53,13 @@ FORMATO EXACTO del "body" (español rioplatense, emojis y negritas de WhatsApp c
 • {DD/MM}
 • {Ciudad origen} ({COD}) {HH:MM} hs
 • {Ciudad destino} ({COD}) {HH:MM} hs
+• Duración: {tiempo total de vuelo, ej 7h 55m}
 
-🛬 *Vuelta - {Aerolínea}*
+🛬 *Vuelta - {Aerolínea}* ({Directo | N escala/s})
 • {DD/MM}
 • {Ciudad origen} ({COD}) {HH:MM} hs
 • {Ciudad destino} ({COD}) {HH:MM} hs {(+1) si llega al día siguiente}
-• {N escala/s, solo si tiene}
+• Duración: {tiempo total de vuelo, ej 11h}
 
 🎒 *Tarifa {NOMBRE, ej. BASIC}* (equipaje según política de cada aerolínea).
 
@@ -76,6 +77,7 @@ REGLAS del body:
 - Fechas de cada vuelo en formato DD/MM. Rango de "Fechas" en palabras (ej "19 al 29 de enero").
 - Nombrá la aerolínea y aclará "Directo" o la cantidad de escalas. NO pongas el número de vuelo.
 - Horarios con "hs". Si la llegada es al día siguiente, agregá "(+1)".
+- Duración: incluí el tiempo total de vuelo de cada tramo (ej "7h 55m") que aparece en el texto; si no está, omití esa línea. No la inventes.
 - ESTRELLAS del hotel: la categoría en estrellas normalmente NO viene en el texto. Poné ⭐ SOLO si el texto trae explícitamente el marcador "[ESTRELLAS_HOTEL:N]" (usá N estrellas) o dice la categoría en estrellas. Si no aparece, NO pongas estrellas (NO las adivines, y NUNCA uses el puntaje de opinión como estrellas).
 - OPINIÓN: el puntaje de opinión de huéspedes (ej "8 Muy bueno (14624 opiniones)" o "7,9 Agradable") va SOLO en la línea "💬 *Opinión:*" con la etiqueta y el número; no es la categoría de estrellas. Si no hay puntaje, omití esa línea.
 - La sección de traslados va solo si el paquete los incluye; una línea con ✅ por cada tramo.
