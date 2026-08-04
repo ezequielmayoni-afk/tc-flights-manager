@@ -117,13 +117,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no autorizado' }, { status: 401, headers })
     }
 
-    const body = (await req.json()) as { text?: string; pax?: number }
+    const body = (await req.json()) as { text?: string; pax?: number; total?: number; perPax?: number }
     const text = (body.text || '').trim()
     if (text.length < 40) {
       return NextResponse.json({ error: 'texto de cotización insuficiente' }, { status: 400, headers })
     }
     const clipped = text.slice(0, 14000)
     const paxFromClient = Number.isFinite(body.pax) && (body.pax as number) > 0 ? Math.round(body.pax as number) : null
+    // Precio total/por-persona LEÍDOS DEL DOM del summary (autoritativos). Si vienen,
+    // se usan tal cual y NO se confía en la suma que infiere la IA.
+    const totalFromClient = Number.isFinite(body.total) && (body.total as number) > 0 ? (body.total as number) : null
+    const perPaxFromClient = Number.isFinite(body.perPax) && (body.perPax as number) > 0 ? (body.perPax as number) : null
 
     const anthropic = getAnthropicClient()
     const res = await anthropic.messages.create({
@@ -150,14 +154,16 @@ export async function POST(req: NextRequest) {
       data = JSON.parse(m[0]) as Extracted
     }
 
-    // El TOTAL lo calcula el código (no el modelo): vuelos + hotel + traslados.
+    // Total: si el DOM lo trae (autoritativo), se usa ese; si no, se suma lo que
+    // extrajo la IA (vuelos ida-y-vuelta una vez + hotel + traslados) como fallback.
     const flights = num(data.flights_total)
     const hotel = num(data.hotel_total)
     const transfers = (data.transfers || []).map(num)
-    const total = flights + hotel + transfers.reduce((a, b) => a + b, 0)
+    const totalFromModel = flights + hotel + transfers.reduce((a, b) => a + b, 0)
+    const total = totalFromClient ?? totalFromModel
     const currency = (data.currency || 'US$').trim()
     const pax = paxFromClient ?? (Number.isFinite(data.pax as number) && (data.pax as number) > 0 ? Math.round(data.pax as number) : null)
-    const perPax = pax ? Math.round(total / pax) : null
+    const perPax = perPaxFromClient ?? (pax ? Math.round(total / pax) : null)
 
     let message = (data.body || '').trim()
     message += `\n\n💰 *Precio final del paquete:*\n*${currency} ${total.toLocaleString('es-AR')}* en total`
