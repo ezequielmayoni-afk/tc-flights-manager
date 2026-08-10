@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'no autorizado' }, { status: 401, headers })
     }
 
-    const body = (await req.json()) as { text?: string; pax?: number; total?: number; perPax?: number }
+    const body = (await req.json()) as { text?: string; pax?: number; total?: number; perPax?: number; hotelUrl?: string }
     const text = (body.text || '').trim()
     if (text.length < 40) {
       return NextResponse.json({ error: 'texto de cotización insuficiente' }, { status: 400, headers })
@@ -130,6 +130,8 @@ export async function POST(req: NextRequest) {
     // se usan tal cual y NO se confía en la suma que infiere la IA.
     const totalFromClient = Number.isFinite(body.total) && (body.total as number) > 0 ? (body.total as number) : null
     const perPaxFromClient = Number.isFinite(body.perPax) && (body.perPax as number) > 0 ? (body.perPax as number) : null
+    // URL del hotel (Google Maps armado en el cliente con nombre+ciudad del DOM).
+    const hotelUrl = typeof body.hotelUrl === 'string' && /^https:\/\/\S+$/.test(body.hotelUrl) ? body.hotelUrl : null
 
     const anthropic = getAnthropicClient()
     const res = await anthropic.messages.create({
@@ -168,6 +170,16 @@ export async function POST(req: NextRequest) {
     const perPax = perPaxFromClient ?? (pax ? Math.round(total / pax) : null)
 
     let message = (data.body || '').trim()
+    // Link del hotel (Google Maps): insertar justo debajo de la línea "📍 Ubicado en…"
+    // del hotel; si no está esa línea, se agrega al final del cuerpo.
+    if (hotelUrl) {
+      const line = `🔗 *Ver hotel:* ${hotelUrl}`
+      if (/📍 Ubicado en[^\n]*/.test(message)) {
+        message = message.replace(/(📍 Ubicado en[^\n]*)/, `$1\n${line}`)
+      } else {
+        message += `\n${line}`
+      }
+    }
     message += `\n\n💰 *Precio final del paquete:*\n*${currency} ${total.toLocaleString('es-AR')}* en total`
     if (perPax) {
       message += `\n👨‍👩‍👧‍👦 *${currency} ${perPax.toLocaleString('es-AR')} por persona*`
