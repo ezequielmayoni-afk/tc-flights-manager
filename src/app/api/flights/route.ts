@@ -169,6 +169,7 @@ async function createSingleFlight(
         start_date: start_date,
         end_date: end_date,
         quantity: modality.quantity,
+        sold: modality.sold ?? 0,
       })
     }
   }
@@ -396,6 +397,7 @@ export async function POST(request: NextRequest) {
           start_date: start_date,
           end_date: end_date,
           quantity: modality.quantity,
+          sold: modality.sold ?? 0,
         })
       }
     }

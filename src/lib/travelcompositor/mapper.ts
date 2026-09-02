@@ -95,6 +95,8 @@ export interface DBInventory {
   start_date: string
   end_date: string
   quantity: number
+  sold?: number | null
+  remaining_seats?: number | null
 }
 
 /**
@@ -246,7 +248,9 @@ export function mapModalityToTC(modality: DBModality, startDate: string, endDate
       start: inv.start_date,
       end: inv.end_date,
     },
-    quantity: inv.quantity,
+    // A TC se le manda lo que queda DISPONIBLE (total - vendidos), no el total,
+    // para que el cupo publicado refleje los lugares restantes.
+    quantity: Math.max(0, inv.remaining_seats ?? inv.quantity),
   })) || [{
     inventoryDate: {
       start: startDate,

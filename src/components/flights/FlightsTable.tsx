@@ -304,6 +304,8 @@ export function FlightsTable({ flights }: FlightsTableProps) {
   const [bulkSyncing, setBulkSyncing] = useState(false)
   const [bulkDeleting, setBulkDeleting] = useState(false)
   const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
+  // Por defecto solo mostrar vuelos por volar (fecha de salida hoy o futura).
+  const [showAllFlights, setShowAllFlights] = useState(false)
 
   const handleSyncClick = async (flightId: number): Promise<boolean> => {
     setSyncingFlightId(flightId)
@@ -663,9 +665,13 @@ export function FlightsTable({ flights }: FlightsTableProps) {
 
   // Filter and sort flights
   const filteredFlights = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10)
     // First filter
     const filtered = groupedFlights.filter(flight => {
       const { outboundDate, returnDate, outboundSegments } = getFlightDates(flight)
+
+      // Por defecto: solo vuelos por volar (salida hoy o futura). "Mostrar todos" lo desactiva.
+      if (!showAllFlights && (outboundDate || '') < todayStr) return false
       const paired = getPairedFlight(flight)
       const allSegments = paired
         ? [...(flight.leg_type === 'outbound' ? flight : paired).flight_segments, ...(flight.leg_type === 'return' ? flight : paired).flight_segments]
@@ -792,10 +798,22 @@ export function FlightsTable({ flights }: FlightsTableProps) {
       const comparison = aStr.localeCompare(bStr)
       return sortDirection === 'asc' ? comparison : -comparison
     })
-  }, [groupedFlights, filters, sortColumn, sortDirection, flights])
+  }, [groupedFlights, filters, sortColumn, sortDirection, flights, showAllFlights])
 
   return (
     <>
+      {/* Barra: filtro por-volar / mostrar todos */}
+      <div className="px-4 py-2 border-b flex items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">
+          {showAllFlights
+            ? `${filteredFlights.length} vuelos (todos)`
+            : `${filteredFlights.length} por volar`}
+        </span>
+        <Button variant="outline" size="sm" onClick={() => setShowAllFlights(v => !v)}>
+          {showAllFlights ? 'Solo por volar' : 'Mostrar todos'}
+        </Button>
+      </div>
+
       {/* Bulk actions bar */}
       {selectedIds.size > 0 && (
         <div className="px-4 py-2 bg-blue-50 border-b flex items-center justify-between">

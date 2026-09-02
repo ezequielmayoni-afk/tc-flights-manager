@@ -203,6 +203,7 @@ export default async function EditFlightPage({ params }: PageProps) {
         max_passengers: m.max_passengers || 10,
         on_request: m.on_request || false,
         quantity: inv?.quantity || 0,
+        sold: inv?.sold || 0,
       }
     })() : undefined,
   }

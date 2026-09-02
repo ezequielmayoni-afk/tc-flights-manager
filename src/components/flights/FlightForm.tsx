@@ -73,6 +73,7 @@ const defaultModality = {
   max_passengers: 10,
   on_request: false,
   quantity: 10,
+  sold: 0,
 }
 
 // Eliminamos el tab "segments" - ahora los segmentos van dentro de "general"
@@ -93,9 +94,12 @@ export function FlightForm({ initialData, airlines, airports, suppliers: initial
   const isEditing = !!initialData?.id
   const isSyncedWithTC = !!initialData?.tc_transport_id
 
+  const ALL_PRODUCT_TYPES = PRODUCT_TYPES.map(t => t.value)
+
   // Ensure modality has default values when editing
+  // product_types always defaults to all options (never partially checked)
   const formDefaults = initialData
-    ? { ...initialData, modality: initialData.modality || defaultModality }
+    ? { ...initialData, modality: initialData.modality || defaultModality, product_types: ALL_PRODUCT_TYPES }
     : {
       supplier_id: 18259, // Default: Sí, viajo
       base_id: '',
@@ -874,12 +878,34 @@ export function FlightForm({ initialData, airlines, airports, suppliers: initial
                   placeholder="Ej: 50"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Se aplicará para todo el rango de fechas del vuelo
+                  Total del cupo. Se aplica a todo el rango de fechas del vuelo.
                 </p>
               </div>
 
               <div className="space-y-2">
-                <label className="flex items-center gap-2 mt-6">
+                <Label>Vendidos</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  {...register('modality.sold', { valueAsNumber: true })}
+                  placeholder="Ej: 0"
+                />
+                {(() => {
+                  const qty = Number(watch('modality.quantity')) || 0
+                  const sold = Number(watch('modality.sold')) || 0
+                  const remaining = qty - sold
+                  return (
+                    <p className={`text-xs font-medium ${remaining < 0 ? 'text-red-600' : 'text-muted-foreground'}`}>
+                      Cupos restantes: <span className="font-bold">{remaining}</span>
+                      {remaining < 0 && ' (¡vendidos supera el total!)'}
+                      {' '}· es lo que queda disponible en TravelCompositor.
+                    </p>
+                  )
+                })()}
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className="flex items-center gap-2">
                   <input
                     type="checkbox"
                     {...register('modality.on_request')}

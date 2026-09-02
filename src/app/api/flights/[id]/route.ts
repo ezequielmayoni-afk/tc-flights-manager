@@ -219,12 +219,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       if (modalityError) {
         console.error('Error updating modality:', modalityError)
       } else if (createdModality && modality.quantity > 0) {
-        // Crear inventario con las fechas calculadas del tramo
+        // Crear inventario con las fechas calculadas del tramo.
+        // remaining_seats lo calcula un trigger de la BD (quantity - sold).
         const inventoryData = {
           modality_id: createdModality.id,
           start_date: start_date,
           end_date: end_date,
           quantity: modality.quantity,
+          sold: modality.sold ?? 0,
         }
 
         const { error: inventoryError } = await db
@@ -372,6 +374,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
             start_date: pairedStartDate,
             end_date: pairedEndDate,
             quantity: modality.quantity,
+            sold: modality.sold ?? 0,
           }
 
           const { error: pairedInventoryError } = await db
