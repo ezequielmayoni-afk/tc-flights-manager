@@ -265,6 +265,22 @@ function isExpired(dateRangeEnd: string | null): boolean {
   return endDate < today
 }
 
+// Estado "real" que se muestra en la tabla: derivado de los booleanos (no del
+// campo status crudo, que puede quedar desactualizado). Fuente única para el
+// render Y el filtro, así lo que ves coincide con lo que filtrás (y con el
+// módulo Marketing, que cuenta por send_to_marketing).
+function getDisplayStatus(pkg: {
+  date_range_end: string | null
+  send_to_marketing: boolean
+  send_to_design: boolean
+  status: string
+}): string {
+  if (isExpired(pkg.date_range_end)) return 'expired'
+  if (pkg.send_to_marketing) return 'in_marketing'
+  if (pkg.send_to_design) return 'in_design'
+  return pkg.status
+}
+
 function createSlug(title: string): string {
   return title
     .toLowerCase()
@@ -503,13 +519,11 @@ export function PackagesTable({ packages }: PackagesTableProps) {
       )
     }
 
-    // Filter by status
+    // Filter by status — usa el MISMO estado derivado que se muestra en la fila,
+    // no el campo status crudo (antes "En marketing" filtraba por status==='in_marketing'
+    // y dejaba afuera paquetes con send_to_marketing=true cuyo status quedó viejo).
     if (statusFilter !== 'all') {
-      if (statusFilter === 'expired') {
-        result = result.filter(pkg => isExpired(pkg.date_range_end))
-      } else {
-        result = result.filter(pkg => pkg.status === statusFilter && !isExpired(pkg.date_range_end))
-      }
+      result = result.filter(pkg => getDisplayStatus(pkg) === statusFilter)
     }
 
     // Filter by monitor status
@@ -1075,14 +1089,8 @@ export function PackagesTable({ packages }: PackagesTableProps) {
             ) : (
               paginatedPackages.map((pkg) => {
                 const expired = isExpired(pkg.date_range_end)
-                // Determinar estado real basado en booleanos, no en el campo status
-                const displayStatus = expired
-                  ? 'expired'
-                  : pkg.send_to_marketing
-                    ? 'in_marketing'
-                    : pkg.send_to_design
-                      ? 'in_design'
-                      : pkg.status
+                // Estado real derivado (misma fuente que el filtro).
+                const displayStatus = getDisplayStatus(pkg)
 
                 return (
                   <TableRow key={pkg.id} className={!pkg.tc_active || expired ? 'opacity-60' : ''}>
