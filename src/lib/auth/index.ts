@@ -11,21 +11,21 @@ export const ROLE_PERMISSIONS = {
     description: 'Acceso total al sistema',
     canAccessAdmin: true,
     readOnly: false,
-    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
+    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
   },
   marketing: {
     label: 'Marketing',
     description: 'Acceso admin (todo el sistema)',
     canAccessAdmin: true,
     readOnly: false,
-    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
+    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
   },
   producto: {
     label: 'Producto',
     description: 'Todo excepto Diseño y Marketing',
     canAccessAdmin: false,
     readOnly: false,
-    sections: ['cupos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote'],
+    sections: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote'],
   },
   diseño: {
     label: 'Diseño',
@@ -39,7 +39,7 @@ export const ROLE_PERMISSIONS = {
     description: 'Solo lectura: Paquetes y Comercial',
     canAccessAdmin: false,
     readOnly: true,
-    sections: ['productos', 'comercial', 'vendedores'],
+    sections: ['productos', 'comercial'],
   },
 } as const
 
