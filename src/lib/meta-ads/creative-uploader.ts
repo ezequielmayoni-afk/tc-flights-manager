@@ -267,13 +267,17 @@ export async function getPackageCreatives(tcPackageId: number): Promise<DriveCre
 
       if (!aspectRatio) continue
 
-      // Determine creative type from extension
-      const extension = fileName.substring(fileName.lastIndexOf('.'))
+      // Determine creative type from extension OR mimeType. Algunos archivos se
+      // suben SIN extensión en el nombre (ej. "4x5"/"9x16"); en ese caso la
+      // extensión no sirve y hay que mirar el mimeType de Drive.
+      const dotIdx = fileName.lastIndexOf('.')
+      const extension = dotIdx >= 0 ? fileName.substring(dotIdx) : ''
+      const mime = (file.mimeType || '').toLowerCase()
       let creativeType: CreativeType
 
-      if (IMAGE_EXTENSIONS.includes(extension)) {
+      if (IMAGE_EXTENSIONS.includes(extension) || mime.startsWith('image/')) {
         creativeType = 'IMAGE'
-      } else if (VIDEO_EXTENSIONS.includes(extension)) {
+      } else if (VIDEO_EXTENSIONS.includes(extension) || mime.startsWith('video/')) {
         creativeType = 'VIDEO'
       } else {
         continue // Skip unsupported file types
