@@ -174,6 +174,14 @@ export async function POST(request: NextRequest) {
                     })
                   } else {
                     console.error(`[Meta Ads] Failed to re-upload creative V${driveCreative.variant} ${driveCreative.aspectRatio}:`, uploadResult.error)
+                    // Reportar el error REAL (ej. formato de video no soportado por Meta)
+                    // en vez de que después salga el engañoso "No 4x5 creatives found".
+                    sendEvent('error', {
+                      package_id,
+                      variant: driveCreative.variant,
+                      aspect_ratio: driveCreative.aspectRatio,
+                      error: `V${driveCreative.variant} ${driveCreative.aspectRatio}: ${uploadResult.error || 'no se pudo subir a Meta'}`,
+                    })
                   }
 
                   // Small delay between uploads

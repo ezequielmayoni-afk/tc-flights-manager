@@ -623,12 +623,19 @@ export function PackageRowExpanded({
     }
   }
 
-  const handleUploadCreatives = async () => {
-    // Get variants that need uploading: from meta_creatives DB (not uploaded) + Drive-only variants
-    const metaPending = creatives.filter(c => c.upload_status !== 'uploaded')
-    const driveOnlyVariants = [...new Set(driveCreatives.map(c => c.variant))]
-      .filter(v => !creatives.some(c => c.variant === v && c.upload_status === 'uploaded'))
-    const variants = [...new Set([...metaPending.map(c => c.variant), ...driveOnlyVariants])].sort((a, b) => a - b)
+  const handleUploadCreatives = async (variantsOverride?: number[]) => {
+    let variants: number[]
+    if (variantsOverride && variantsOverride.length > 0) {
+      // Subida puntual (botón "Actualizar" de una variante): sube TODO lo que esa
+      // variante tenga en Drive (re-sube el material cambiado, ej. el 4x5 nuevo).
+      variants = variantsOverride.filter(v => driveCreatives.some(c => c.variant === v))
+    } else {
+      // Get variants that need uploading: from meta_creatives DB (not uploaded) + Drive-only variants
+      const metaPending = creatives.filter(c => c.upload_status !== 'uploaded')
+      const driveOnlyVariants = [...new Set(driveCreatives.map(c => c.variant))]
+        .filter(v => !creatives.some(c => c.variant === v && c.upload_status === 'uploaded'))
+      variants = [...new Set([...metaPending.map(c => c.variant), ...driveOnlyVariants])].sort((a, b) => a - b)
+    }
 
     if (variants.length === 0) {
       toast.info('Todos los creativos ya estan subidos')
@@ -1824,7 +1831,7 @@ export function PackageRowExpanded({
             <Button
               variant="default"
               size="sm"
-              onClick={handleUploadCreatives}
+              onClick={() => handleUploadCreatives()}
               disabled={uploadingCreatives || uploadAccounts.length === 0}
             >
               {uploadingCreatives ? (
@@ -2246,18 +2253,31 @@ export function PackageRowExpanded({
                     )
                   })()}
 
-                  {/* Sin anuncio todavía pero con creativos: subir lo pendiente + crear el anuncio de ESTA variante */}
+                  {/* Sin anuncio todavía: primero SUBIR el material nuevo a Meta; una vez
+                      subido el 4x5 (requerido), habilitar CREAR el anuncio de esta variante. */}
                   {!existingAd && hasCreatives && (
                     <div className="mt-2 flex justify-end">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleUpdateVariant(variant) }}
-                        disabled={creatingAds}
-                        className="text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded px-2 py-1 flex items-center gap-1"
-                        title="Sube a Meta la creatividad nueva de esta variante y crea su anuncio"
-                      >
-                        {creatingAds ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-                        Actualizar y crear anuncio
-                      </button>
+                      {creative4x5?.upload_status === 'uploaded' ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleUpdateVariant(variant) }}
+                          disabled={creatingAds || uploadingCreatives}
+                          className="text-[10px] font-semibold text-white bg-green-600 hover:bg-green-700 disabled:bg-gray-400 rounded px-2 py-1 flex items-center gap-1"
+                          title="Crear el anuncio de esta variante en Meta"
+                        >
+                          {creatingAds ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                          Crear anuncio
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleUploadCreatives([variant]) }}
+                          disabled={uploadingCreatives || creatingAds}
+                          className="text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded px-2 py-1 flex items-center gap-1"
+                          title="Subir a Meta las creatividades nuevas de esta variante (después vas a poder crear el anuncio)"
+                        >
+                          {uploadingCreatives ? <Loader2 className="h-3 w-3 animate-spin" /> : <UploadCloud className="h-3 w-3" />}
+                          Actualizar (subir a Meta)
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
