@@ -72,11 +72,21 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { packageIds, variants, ad_account_id } = body as {
+    const { packageIds, variants, ad_account_id, ad_account_ids } = body as {
       packageIds: number[]
       variants?: number[]
       ad_account_id?: string
+      ad_account_ids?: string[]
     }
+
+    // Cuenta principal (la que persiste en meta_creatives y usa "Crear anuncios"):
+    // la del paquete o, si no hay, la default del entorno.
+    const primaryAccount = ad_account_id || process.env.META_AD_ACCOUNT_ID || ''
+    const normAcc = (a: string) => (a || '').replace(/^act_/, '')
+    // Cuentas EXTRA: solo se les sube el material (no se persiste; "Crear anuncios"
+    // sigue usando la principal). Se excluye la principal para no duplicar.
+    const extraAccounts = (ad_account_ids || [])
+      .filter((a) => a && normAcc(a) !== normAcc(primaryAccount))
 
     if (!packageIds || !Array.isArray(packageIds) || packageIds.length === 0) {
       return new Response(JSON.stringify({ error: 'packageIds is required' }), {
@@ -190,6 +200,37 @@ export async function POST(request: NextRequest) {
                   variant: result.variant,
                   aspect_ratio: result.aspectRatio,
                   error: result.error,
+                })
+              }
+            }
+
+            // Cuentas EXTRA: subir el mismo material a su biblioteca, SIN persistir
+            // en la base (así "Crear anuncios" sigue usando solo la cuenta principal).
+            for (const extra of extraAccounts) {
+              sendEvent('progress', {
+                package_id: packageId,
+                status: 'starting',
+                message: `También subiendo a la cuenta ${extra}...`,
+              })
+              try {
+                await uploadPackageCreativesToMeta(pkg.tc_package_id, variants, extra, (fp) => {
+                  sendEvent('file_progress', {
+                    package_id: packageId,
+                    variant: fp.variant,
+                    aspect_ratio: fp.aspectRatio,
+                    creative_type: fp.creativeType,
+                    file_name: fp.fileName,
+                    percent: fp.percent,
+                    phase: fp.phase,
+                    index: fp.index,
+                    total: fp.total,
+                    ad_account_id: extra,
+                  })
+                })
+              } catch (e) {
+                sendEvent('error', {
+                  package_id: packageId,
+                  error: `Cuenta ${extra}: ${e instanceof Error ? e.message : 'error subiendo'}`,
                 })
               }
             }

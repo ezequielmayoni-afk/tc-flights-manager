@@ -156,6 +156,14 @@ const driveViewUrl = (fileId: string) => `https://drive.google.com/file/d/${file
 const driveThumbProxy = (fileId: string) => `/api/drive/thumbnail/${fileId}?sz=400`
 const driveFolderUrl = (folderId: string) => `https://drive.google.com/drive/folders/${folderId}`
 
+// Cuentas publicitarias a las que se puede subir el material. La primera es la
+// principal (la que persiste en la base y usa "Crear anuncios"); a las demás se
+// les sube solo el material a su biblioteca. Ambas tildadas por default.
+const AD_ACCOUNTS: { id: string; name: string }[] = [
+  { id: 'act_72068674', name: 'SRI TOUR' },
+  { id: 'act_271148251050653', name: 'SI VIAJO WEB' },
+]
+
 export function PackageRowExpanded({
   pkg,
   adAccountId,
@@ -176,6 +184,8 @@ export function PackageRowExpanded({
   const [generatingCopy, setGeneratingCopy] = useState(false)
   const [uploadingCreatives, setUploadingCreatives] = useState(false)
   const [uploadCreativesProgress, setUploadCreativesProgress] = useState({ current: 0, total: 0 })
+  // Cuentas publicitarias destino al subir (ambas tildadas por default).
+  const [uploadAccounts, setUploadAccounts] = useState<string[]>(AD_ACCOUNTS.map(a => a.id))
   // Progreso por archivo durante "Subir a Meta" (key = `${variant}-${aspectRatio}`)
   const [fileUploads, setFileUploads] = useState<Record<string, {
     variant: number
@@ -643,6 +653,7 @@ export function PackageRowExpanded({
           packageIds: [pkg.id],
           variants,
           ...(adAccountId ? { ad_account_id: adAccountId } : {}),
+          ad_account_ids: uploadAccounts,
         }),
       })
 
@@ -1782,11 +1793,30 @@ export function PackageRowExpanded({
             </Button>
           )}
           {(pendingCreatives.length > 0 || uploadingCreatives) && (
+            <div className="flex items-center gap-2 mr-1 rounded-md border px-2 py-1" title="Cuentas publicitarias a las que se sube el material">
+              <span className="text-[11px] text-muted-foreground">Cuentas:</span>
+              {AD_ACCOUNTS.map(acc => (
+                <label key={acc.id} className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="h-3.5 w-3.5"
+                    checked={uploadAccounts.includes(acc.id)}
+                    disabled={uploadingCreatives}
+                    onChange={(e) => setUploadAccounts(prev =>
+                      e.target.checked ? [...new Set([...prev, acc.id])] : prev.filter(x => x !== acc.id)
+                    )}
+                  />
+                  {acc.name}
+                </label>
+              ))}
+            </div>
+          )}
+          {(pendingCreatives.length > 0 || uploadingCreatives) && (
             <Button
               variant="default"
               size="sm"
               onClick={handleUploadCreatives}
-              disabled={uploadingCreatives}
+              disabled={uploadingCreatives || uploadAccounts.length === 0}
             >
               {uploadingCreatives ? (
                 <>
