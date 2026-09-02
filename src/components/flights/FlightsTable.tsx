@@ -543,8 +543,9 @@ export function FlightsTable({ flights }: FlightsTableProps) {
   }
 
   // Sort state
-  const [sortColumn, setSortColumn] = useState<SortColumn | null>(null)
-  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+  // Por defecto ordenado por fecha de salida (IN) ascendente: el más temprano primero.
+  const [sortColumn, setSortColumn] = useState<SortColumn | null>('dates')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
 
   const handleSort = (column: SortColumn) => {
     if (sortColumn === column) {
