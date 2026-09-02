@@ -1152,7 +1152,10 @@ export function PackageRowExpanded({
   }
 
   // Create ads for selected variants only
-  const handleCreateSelectedAds = async () => {
+  // Sube lo pendiente + crea los anuncios para las variantes indicadas.
+  // Usado por el botón bulk (variantes seleccionadas) y por el botón "Actualizar"
+  // de cada variante (una sola).
+  const runCreateAdsForVariants = async (targetVariants: number[], clearSelection = false) => {
     if (!adSetId?.trim()) {
       toast.error('Ingresa el ID del AdSet en la tabla')
       return
@@ -1163,8 +1166,8 @@ export function PackageRowExpanded({
       return
     }
 
-    // Check which selected variants have creatives in Drive
-    const selectedWithDriveCreatives = selectedVariants.filter(variant =>
+    // Check which target variants have creatives in Drive
+    const selectedWithDriveCreatives = targetVariants.filter(variant =>
       driveCreatives.some(c => c.variant === variant)
     )
 
@@ -1278,8 +1281,9 @@ export function PackageRowExpanded({
               setCreationProgress(prev => [...prev, `V${data.data.creative_variant}: Creado (${data.data.copies_count} copys)`])
             } else if (data.type === 'complete') {
               toast.success(`Creados ${data.data.created} anuncios`)
-              setSelectedVariants([])
+              if (clearSelection) setSelectedVariants([])
               await loadExistingAds()
+              await loadCreatives()
               onUpdate()
             } else if (data.type === 'error') {
               const errorMsg = data.data.error || data.data.message || 'Error desconocido'
@@ -1297,6 +1301,11 @@ export function PackageRowExpanded({
       setCreatingAds(false)
     }
   }
+
+  // Bulk: crea anuncios para las variantes seleccionadas.
+  const handleCreateSelectedAds = () => runCreateAdsForVariants(selectedVariants, true)
+  // Por variante: sube la creatividad nueva de esa variante y crea su anuncio.
+  const handleUpdateVariant = (variant: number) => runCreateAdsForVariants([variant], false)
 
   // Combine drive and meta creatives for counts
   const allCreativeVariants = new Set([
@@ -2236,6 +2245,21 @@ export function PackageRowExpanded({
                       </div>
                     )
                   })()}
+
+                  {/* Sin anuncio todavía pero con creativos: subir lo pendiente + crear el anuncio de ESTA variante */}
+                  {!existingAd && hasCreatives && (
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleUpdateVariant(variant) }}
+                        disabled={creatingAds}
+                        className="text-[10px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 rounded px-2 py-1 flex items-center gap-1"
+                        title="Sube a Meta la creatividad nueva de esta variante y crea su anuncio"
+                      >
+                        {creatingAds ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                        Actualizar y crear anuncio
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* DRIVE Column - Original thumbnails from Drive */}
