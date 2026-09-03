@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getCupoPackageIds } from '@/lib/packages/cupo'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 
@@ -108,16 +109,18 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (updates.send_to_design === true) {
       updates.send_to_design_at = new Date().toISOString()
 
-      // Enviar a diseño activa el monitoreo, igual que la acción masiva 'design'.
-      // Si ya estaba monitoreado no se toca, para no perder el target_price ni el
-      // estado de recotización que ya tenía.
+      // Enviar a diseño activa el monitoreo, igual que la acción masiva 'design',
+      // salvo en los paquetes de cupo. Si ya estaba monitoreado no se toca, para no
+      // perder el target_price ni el estado de recotización que ya tenía.
       const { data: current } = await db
         .from('packages')
         .select('monitor_enabled, current_price_per_pax')
         .eq('id', id)
         .single()
 
-      if (current && !current.monitor_enabled) {
+      const cupoPackageIds = await getCupoPackageIds(db, [Number(id)])
+
+      if (current && !current.monitor_enabled && !cupoPackageIds.has(Number(id))) {
         updates.monitor_enabled = true
         if (updates.requote_status === undefined) {
           updates.requote_status = 'pending'

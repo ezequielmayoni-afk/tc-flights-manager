@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { deactivatePackage, getPackageDetail } from '@/lib/travelcompositor/client'
 import { sendSlackMessage, buildCreativeRequestMessage, buildSentToMarketingMessage } from '@/lib/slack/client'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { getCupoPackageIds } from '@/lib/packages/cupo'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 
@@ -47,6 +48,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: fetchError.message }, { status: 500 })
     }
 
+    // Los paquetes de cupo no se monitorean: el precio no se recotiza contra el mercado.
+    const cupoPackageIds = action === 'design'
+      ? await getCupoPackageIds(db, (packages || []).map(p => p.id))
+      : new Set<number>()
+
     const results: PackageResult[] = []
 
     // Process each package individually
@@ -72,10 +78,10 @@ export async function POST(request: NextRequest) {
               creative_update_requested_by: 'Marketing',
             }
 
-            // Enviar a diseño activa el monitoreo (mismos campos que la acción 'monitor').
-            // Si el paquete ya estaba monitoreado no se toca, para no perder el
-            // target_price ni el estado de recotización que ya tenía.
-            if (!pkg.monitor_enabled) {
+            // Enviar a diseño activa el monitoreo (mismos campos que la acción 'monitor'),
+            // salvo en los paquetes de cupo. Si el paquete ya estaba monitoreado no se
+            // toca, para no perder el target_price ni el estado de recotización.
+            if (!pkg.monitor_enabled && !cupoPackageIds.has(pkg.id)) {
               updateData.monitor_enabled = true
               updateData.requote_status = 'pending'
               updateData.target_price = pkg.current_price_per_pax
