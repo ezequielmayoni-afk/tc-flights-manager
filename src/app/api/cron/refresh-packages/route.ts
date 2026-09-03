@@ -1,142 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
-import type { TCPackageDetailResponse } from '@/lib/travelcompositor/types'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { extractCosts, importNewPackages } from '@/lib/packages/import'
 
 // Vercel cron jobs have a 60s timeout on hobby, 300s on pro
-// We process packages in batches to stay within limits
-const BATCH_SIZE = 10
-const DELAY_BETWEEN_PACKAGES = 500 // ms
+export const maxDuration = 300
 
+// Cuántos paquetes ya existentes se refrescan por corrida y cuántos nuevos se
+// importan como máximo, para no pasarnos del límite de la función.
+const BATCH_SIZE = 60
+const IMPORT_LIMIT = 25
+const DELAY_BETWEEN_PACKAGES = 250 // ms
+// Margen de seguridad: dejamos de procesar al acercarnos al maxDuration.
+const TIME_BUDGET_MS = 260_000
 
-/**
- * Extract cost breakdown from package detail
- */
-function extractCosts(detail: TCPackageDetailResponse): {
-  airCost: number
-  landCost: number
-  agencyFee: number
-  flightDepartureDate: string | null
-  airlineCode: string | null
-  airlineName: string | null
-  flightNumbers: string | null
-} {
-  let airCost = 0
-  let landCost = 0
-  let agencyFee = 0
-  let flightDepartureDate: string | null = null
-  let airlineCode: string | null = null
-  let airlineName: string | null = null
-  const flightNumbersList: string[] = []
-
-  // Sum transport costs (air)
-  if (detail.transports && detail.transports.length > 0) {
-    for (const transport of detail.transports) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const transportAny = transport as any
-      const price = transportAny.priceBreakdown?.netProvider?.microsite?.amount
-        || transport.totalPrice?.amount
-        || 0
-      airCost += price
-
-      const fee = transportAny.priceBreakdown?.agencyFee?.microsite?.amount || 0
-      agencyFee += fee
-
-      if (!flightDepartureDate && transport.departureDate) {
-        flightDepartureDate = transport.departureDate
-      }
-      if (!airlineCode && transport.marketingAirlineCode) {
-        airlineCode = transport.marketingAirlineCode
-      }
-      if (!airlineName && transport.company) {
-        airlineName = transport.company
-      }
-      if (transport.transportNumber) {
-        flightNumbersList.push(transport.transportNumber)
-      }
-    }
-  }
-
-  // Sum hotel costs
-  if (detail.hotels && detail.hotels.length > 0) {
-    for (const hotel of detail.hotels) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const hotelAny = hotel as any
-      const price = hotelAny.priceBreakdown?.netProvider?.microsite?.amount
-        || hotel.totalPrice?.amount
-        || 0
-      landCost += price
-      const fee = hotelAny.priceBreakdown?.agencyFee?.microsite?.amount || 0
-      agencyFee += fee
-    }
-  }
-
-  // Sum transfer costs
-  if (detail.transfers && detail.transfers.length > 0) {
-    for (const transfer of detail.transfers) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const transferAny = transfer as any
-      const price = transferAny.priceBreakdown?.netProvider?.microsite?.amount
-        || transfer.totalPrice?.amount
-        || 0
-      landCost += price
-      const fee = transferAny.priceBreakdown?.agencyFee?.microsite?.amount || 0
-      agencyFee += fee
-    }
-  }
-
-  // Sum closed tour costs
-  if (detail.closedTours && detail.closedTours.length > 0) {
-    for (const tour of detail.closedTours) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const tourAny = tour as any
-      const price = tourAny.priceBreakdown?.netProvider?.microsite?.amount
-        || tour.totalPrice?.amount
-        || 0
-      landCost += price
-      const fee = tourAny.priceBreakdown?.agencyFee?.microsite?.amount || 0
-      agencyFee += fee
-    }
-  }
-
-  // Sum ticket costs
-  if (detail.tickets && detail.tickets.length > 0) {
-    for (const ticket of detail.tickets) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const ticketAny = ticket as any
-      const price = ticketAny.priceBreakdown?.netProvider?.microsite?.amount
-        || ticket.totalPrice?.amount
-        || 0
-      landCost += price
-      const fee = ticketAny.priceBreakdown?.agencyFee?.microsite?.amount || 0
-      agencyFee += fee
-    }
-  }
-
-  // Sum car costs
-  if (detail.cars && detail.cars.length > 0) {
-    for (const car of detail.cars) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const carAny = car as any
-      const price = carAny.priceBreakdown?.netProvider?.microsite?.amount
-        || car.totalPrice?.amount
-        || 0
-      landCost += price
-      const fee = carAny.priceBreakdown?.agencyFee?.microsite?.amount || 0
-      agencyFee += fee
-    }
-  }
-
-  return {
-    airCost,
-    landCost,
-    agencyFee,
-    flightDepartureDate,
-    airlineCode,
-    airlineName,
-    flightNumbers: flightNumbersList.length > 0 ? flightNumbersList.join('/') : null,
-  }
-}
 
 async function refreshPackage(db: ReturnType<typeof createAdminClient>, pkg: {
   id: number
@@ -283,8 +160,41 @@ export async function GET(request: NextRequest) {
   const db = createAdminClient()
   const startTime = Date.now()
 
-  console.log('[Cron] Starting daily package refresh...')
+  console.log('[Cron] Starting daily package sync...')
 
+  const outOfTime = () => Date.now() - startTime > TIME_BUDGET_MS
+
+  // 1) Importar los paquetes que están en TC y todavía no existen en hub.
+  //    Sin SEO: entran con seo_status 'pending' para completarlos a mano.
+  let newPackages
+  try {
+    newPackages = await importNewPackages(db, { limit: IMPORT_LIMIT, shouldStop: outOfTime })
+    console.log(`[Cron] Nuevos en TC: ${newPackages.detected}, importados: ${newPackages.imported}`)
+
+    if (newPackages.imported > 0 || newPackages.errors.length > 0) {
+      await db.from('package_sync_logs').insert({
+        package_id: null,
+        sync_type: 'cron_import_new',
+        status: newPackages.errors.length === 0 ? 'success' : 'partial',
+        details: {
+          tcTotal: newPackages.tcTotal,
+          detected: newPackages.detected,
+          imported: newPackages.imported,
+          errors: newPackages.errors,
+        },
+      })
+    }
+  } catch (error) {
+    console.error('[Cron] Error importando paquetes nuevos:', error)
+    newPackages = {
+      tcTotal: 0,
+      detected: 0,
+      imported: 0,
+      errors: [{ id: 0, title: 'import', error: error instanceof Error ? error.message : 'Unknown error' }],
+    }
+  }
+
+  // 2) Refrescar precios/costos de los paquetes ya cargados
   try {
     // Get all active packages that haven't expired
     const today = new Date().toISOString().split('T')[0]
@@ -306,6 +216,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: true,
         message: 'No packages to refresh',
+        newPackages,
         processed: 0,
       })
     }
@@ -321,6 +232,11 @@ export async function GET(request: NextRequest) {
     }
 
     for (const pkg of packages) {
+      if (outOfTime()) {
+        console.warn(`[Cron] Corte por tiempo tras ${results.processed} paquetes`)
+        break
+      }
+
       const result = await refreshPackage(db, pkg)
       results.processed++
 
@@ -336,6 +252,18 @@ export async function GET(request: NextRequest) {
           tc_id: pkg.tc_package_id,
           error: result.error || 'Unknown error',
         })
+
+        // Un paquete que falla no debe taponar la cola: el orden es por
+        // last_sync_at y si nunca se actualiza queda primero para siempre.
+        // Si TC dice que ya no existe, además lo damos de baja.
+        const goneFromTC = (result.error || '').includes('404')
+        await db
+          .from('packages')
+          .update({
+            last_sync_at: new Date().toISOString(),
+            ...(goneFromTC ? { tc_active: false } : {}),
+          })
+          .eq('id', pkg.id)
       }
 
       // Add delay between packages to avoid rate limiting
@@ -353,6 +281,8 @@ export async function GET(request: NextRequest) {
       sync_type: 'cron_batch',
       status: results.failed === 0 ? 'success' : 'partial',
       details: {
+        newPackagesDetected: newPackages.detected,
+        newPackagesImported: newPackages.imported,
         processed: results.processed,
         successCount: results.successCount,
         failed: results.failed,
@@ -363,7 +293,8 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({
-      success: results.failed === 0,
+      success: results.failed === 0 && newPackages.errors.length === 0,
+      newPackages,
       ...results,
       duration: `${duration}s`,
     })
