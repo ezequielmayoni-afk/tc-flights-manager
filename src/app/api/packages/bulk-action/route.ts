@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     // Get package details first (include current_price_per_pax for monitor action, date_range_end for marketing expiration)
     const { data: packages, error: fetchError } = await db
       .from('packages')
-      .select('id, tc_package_id, title, current_price_per_pax, date_range_end')
+      .select('id, tc_package_id, title, current_price_per_pax, date_range_end, monitor_enabled')
       .in('id', packageIds)
 
     if (fetchError) {
@@ -70,6 +70,15 @@ export async function POST(request: NextRequest) {
               creative_update_reason: designReason,
               creative_update_requested_at: new Date().toISOString(),
               creative_update_requested_by: 'Marketing',
+            }
+
+            // Enviar a diseño activa el monitoreo (mismos campos que la acción 'monitor').
+            // Si el paquete ya estaba monitoreado no se toca, para no perder el
+            // target_price ni el estado de recotización que ya tenía.
+            if (!pkg.monitor_enabled) {
+              updateData.monitor_enabled = true
+              updateData.requote_status = 'pending'
+              updateData.target_price = pkg.current_price_per_pax
             }
 
             // Create creative request entry

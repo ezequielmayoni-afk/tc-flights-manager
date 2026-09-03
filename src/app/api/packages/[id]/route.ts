@@ -107,6 +107,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // Add timestamps for workflow fields
     if (updates.send_to_design === true) {
       updates.send_to_design_at = new Date().toISOString()
+
+      // Enviar a diseño activa el monitoreo, igual que la acción masiva 'design'.
+      // Si ya estaba monitoreado no se toca, para no perder el target_price ni el
+      // estado de recotización que ya tenía.
+      const { data: current } = await db
+        .from('packages')
+        .select('monitor_enabled, current_price_per_pax')
+        .eq('id', id)
+        .single()
+
+      if (current && !current.monitor_enabled) {
+        updates.monitor_enabled = true
+        if (updates.requote_status === undefined) {
+          updates.requote_status = 'pending'
+        }
+        updates.target_price = current.current_price_per_pax
+      }
     }
     if (updates.design_completed === true) {
       updates.design_completed_at = new Date().toISOString()
