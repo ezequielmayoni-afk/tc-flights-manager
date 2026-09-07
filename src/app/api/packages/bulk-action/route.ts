@@ -489,10 +489,12 @@ export async function POST(request: NextRequest) {
     console.log(`[Bulk Action] ${action}: ${successCount} success, ${errorCount} errors`)
 
     // Un evento por paquete: sin esto no queda rastro de quién movió qué ni cuándo.
+    // 'expired' se saltea porque expirePackageInTC ya registra su propio evento
+    // con más detalle (si TC respondió bien, el error, el cupo que lo motivó).
     const label = ACTION_LABELS[action] || { message: action, source: 'paquetes' as LogSource }
     await logEvents(
       db,
-      results.map(r => ({
+      (action === 'expired' ? [] : results).map(r => ({
         source: label.source,
         action: `package.${action}`,
         level: r.status === 'error' ? ('error' as const) : ('info' as const),
