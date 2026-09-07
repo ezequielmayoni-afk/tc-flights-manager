@@ -25,6 +25,8 @@ interface TCSegment {
   arrivalAirport: string
   departureDate: string
   marketingAirlineCode: string
+  /** Número de vuelo tal como lo manda TC en la reserva, ej "3812". */
+  flightNumber?: string
   bookingClass?: string
 }
 
@@ -34,59 +36,66 @@ async function findFlightBySegment(
   supplierId: number,
   isReturn: boolean = false
 ) {
-  // Extract date in YYYYMMDD format from departureDate (e.g., "2026-04-30T12:00:00" -> "20260430")
-  const dateStr = segment.departureDate.split('T')[0].replace(/-/g, '')
-  const legType = isReturn ? 'VUELTA' : 'IDA'
+  const fecha = segment.departureDate.split('T')[0]
+  const legType = isReturn ? 'return' : 'outbound'
 
-  // Build base_id pattern: AR-EZE-PUJ-20260430-IDA
-  const baseIdPattern = `${segment.marketingAirlineCode}-%-${dateStr}-${legType}`
+  console.log(`[Webhook] Buscando cupo: proveedor=${supplierId}, ${segment.departureAirport} → ${segment.arrivalAirport}, ${fecha}, tramo ${legType}, vuelo ${segment.marketingAirlineCode}${segment.flightNumber}`)
 
-  console.log(`[Webhook] Finding flight: supplier=${supplierId}, ${segment.departureAirport} → ${segment.arrivalAirport}, date: ${dateStr}, leg: ${legType}`)
-  console.log(`[Webhook] Searching base_id pattern: ${baseIdPattern}`)
-
-  // Search by supplier_id + base_id pattern + start_date
-  const { data: flights } = await db
+  // Se traen los candidatos del día con sus segmentos y se elige en código.
+  // Antes se filtraba por un patrón de base_id (JA-%-20270220-IDA) que no
+  // cumplen los cupos con base_id numérico, y los fallbacks no miraban ni el
+  // tramo ni la ruta: una vuelta de otro cupo que sale el mismo día se quedaba
+  // con la reserva. Pasó con SIV-2895 el 07/09.
+  const { data: candidatos } = await db
     .from('flights')
-    .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code')
+    .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code, leg_type, flight_segments(departure_location_code, arrival_location_code, num_service, sort_order)')
     .eq('supplier_id', supplierId)
-    .eq('start_date', segment.departureDate.split('T')[0])
+    .eq('start_date', fecha)
     .eq('airline_code', segment.marketingAirlineCode)
-    .ilike('base_id', baseIdPattern)
+    .order('id')
 
-  if (flights && flights.length > 0) {
-    console.log(`[Webhook] Found ${flights.length} flights matching pattern for supplier ${supplierId}`)
-    return flights[0]
+  if (!candidatos || candidatos.length === 0) {
+    console.log('[Webhook] Sin cupos de esa aerolínea y fecha para el proveedor')
+    return null
   }
 
-  // Fallback 1: try matching by supplier_id + start_date + airports in name/base_id
-  const { data: fallbackFlights } = await db
-    .from('flights')
-    .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code')
-    .eq('supplier_id', supplierId)
-    .eq('start_date', segment.departureDate.split('T')[0])
-    .or(`name.ilike.%${segment.departureAirport}%,base_id.ilike.%${segment.departureAirport}%`)
+  // El tramo es lo primero que tiene que coincidir: una ida nunca se imputa a
+  // una vuelta, por más que vuelen el mismo día.
+  const delTramo = candidatos.filter(f => (f.leg_type || 'outbound') === legType)
+  const pool = delTramo.length > 0 ? delTramo : candidatos
 
-  if (fallbackFlights && fallbackFlights.length > 0) {
-    console.log(`[Webhook] Fallback 1 found ${fallbackFlights.length} flights for supplier ${supplierId}`)
-    return fallbackFlights[0]
+  const soloDigitos = (v: string | null | undefined) => (v || '').replace(/\D/g, '')
+  const numeroReserva = soloDigitos(segment.flightNumber)
+
+  const rutaCoincide = (f: typeof pool[number]) => {
+    const segs = f.flight_segments || []
+    if (segs.length === 0) return false
+    const origen = segs[0]?.departure_location_code
+    const destino = segs[segs.length - 1]?.arrival_location_code
+    return origen === segment.departureAirport && destino === segment.arrivalAirport
   }
 
-  // Fallback 2: try matching by just supplier_id + start_date + airline_code
-  // This is the simplest match - useful when base_id doesn't follow standard pattern
-  const { data: simpleFlights } = await db
-    .from('flights')
-    .select('id, tc_transport_id, name, supplier_id, base_id, start_date, airline_code')
-    .eq('supplier_id', supplierId)
-    .eq('start_date', segment.departureDate.split('T')[0])
-    .eq('airline_code', segment.marketingAirlineCode)
+  const numeroCoincide = (f: typeof pool[number]) =>
+    !!numeroReserva && (f.flight_segments || []).some(s => soloDigitos(s.num_service) === numeroReserva)
 
-  if (simpleFlights && simpleFlights.length > 0) {
-    console.log(`[Webhook] Fallback 2 (simple match) found ${simpleFlights.length} flights for supplier ${supplierId}, airline ${segment.marketingAirlineCode}`)
-    return simpleFlights[0]
+  // De más preciso a menos: ruta + número, después ruta, después lo que quede.
+  const porRutaYNumero = pool.filter(f => rutaCoincide(f) && numeroCoincide(f))
+  const porRuta = pool.filter(rutaCoincide)
+  const elegido = porRutaYNumero[0] || porRuta[0] || (delTramo.length > 0 ? delTramo[0] : null)
+
+  if (!elegido) {
+    console.log('[Webhook] Ningún cupo del mismo tramo coincide con la ruta')
+    return null
   }
 
-  console.log(`[Webhook] No flight found for segment (supplier: ${supplierId})`)
-  return null
+  const criterio = porRutaYNumero[0] ? 'ruta + número de vuelo' : porRuta[0] ? 'ruta' : 'solo tramo y fecha'
+  console.log(`[Webhook] Cupo elegido: ${elegido.base_id} (id ${elegido.id}) por ${criterio}`)
+
+  if (!porRuta[0]) {
+    console.warn(`[Webhook] ATENCIÓN: se imputó por tramo y fecha sin verificar la ruta (${segment.departureAirport}→${segment.arrivalAirport})`)
+  }
+
+  return elegido
 }
 
 // Update inventory (sold count) and check for auto-deactivation
