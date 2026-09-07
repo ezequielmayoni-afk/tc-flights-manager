@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { logSyncOperation } from '@/lib/logger'
-import { getBooking, deleteTransport, validateTransportPrice } from '@/lib/travelcompositor/client'
+import { getBooking, deleteTransport, validateTransportPrice, tcClient } from '@/lib/travelcompositor/client'
+import { mapModalityToTC } from '@/lib/travelcompositor/mapper'
 import type { TCBookingTransportService, TCBookingResponse } from '@/lib/travelcompositor/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -98,6 +99,105 @@ async function findFlightBySegment(
   return elegido
 }
 
+/**
+ * Empuja a TC los lugares que quedan en un cupo.
+ *
+ * Hasta ahora la reserva descontaba el lugar en hub pero TC seguía publicando
+ * la cantidad vieja, así que el cupo seguía vendiéndose allá. Solo se tocaba TC
+ * cuando el vuelo se agotaba del todo, para desactivarlo.
+ *
+ * Nunca lanza: si TC falla, la reserva ya está registrada en hub y lo que
+ * corresponde es dejar el vuelo marcado en error para poder reintentarlo, no
+ * hacer fallar el webhook (TC lo reintentaría entero y duplicaría el descuento).
+ */
+async function pushInventoryToTC(
+  db: ReturnType<typeof createAdminClient>,
+  flightId: number
+): Promise<{ ok: boolean; error?: string; quantity?: number }> {
+  try {
+    const { data: flight } = await db
+      .from('flights')
+      .select('id, base_id, supplier_id, tc_transport_id, start_date, end_date, modalities(*, modality_inventories(*))')
+      .eq('id', flightId)
+      .single()
+
+    if (!flight?.tc_transport_id) {
+      return { ok: false, error: 'El cupo no está sincronizado con TC todavía' }
+    }
+
+    const modality = (flight.modalities || [])[0]
+    if (!modality) {
+      return { ok: false, error: 'El cupo no tiene modalidad cargada' }
+    }
+
+    const tcModality = mapModalityToTC(modality, flight.start_date, flight.end_date)
+    const quantity = tcModality.inventories?.[0]?.quantity
+
+    const result = await tcClient.syncModality(
+      flight.tc_transport_id,
+      tcModality,
+      true, // ya existe: se actualiza
+      flight.supplier_id ?? undefined
+    )
+
+    await db
+      .from('flights')
+      .update({
+        sync_status: result.success ? 'synced' : 'error',
+        sync_error: result.success ? null : result.error,
+        last_sync_at: new Date().toISOString(),
+      })
+      .eq('id', flightId)
+
+    await logSyncOperation({
+      entity_type: 'flight',
+      entity_id: flightId,
+      action: 'update',
+      direction: 'push',
+      status: result.success ? 'success' : 'error',
+      request_payload: { reason: 'reserva', modality: modality.code, quantity },
+      response_payload: { tc_transport_id: flight.tc_transport_id },
+      error_message: result.success ? undefined : result.error,
+    })
+
+    console.log(`[Inventory] Cupo ${flight.base_id} → TC ${flight.tc_transport_id}: ${quantity} lugares (${result.success ? 'ok' : result.error})`)
+    return { ok: result.success, error: result.error, quantity }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error(`[Inventory] No se pudo empujar el cupo ${flightId} a TC:`, message)
+    return { ok: false, error: message }
+  }
+}
+
+/**
+ * Aplica un cambio de lugares a las DOS piernas del cupo.
+ *
+ * Al crear una reserva se recorre cada segmento y se descuenta de la ida y de
+ * la vuelta por separado, pero en `reservations` queda guardada una sola
+ * pierna. Si al cancelar o modificar se usa solo esa, la otra queda con los
+ * lugares vendidos para siempre y el cupo se va desangrando.
+ */
+async function updateInventoryBothLegs(
+  db: ReturnType<typeof createAdminClient>,
+  flightId: number,
+  passengersDelta: number
+): Promise<{ soldOut: boolean; remaining: number; tcTransportId?: string }> {
+  const principal = await updateInventory(db, flightId, passengersDelta)
+
+  const { data: flight } = await db
+    .from('flights')
+    .select('paired_flight_id')
+    .eq('id', flightId)
+    .single()
+
+  if (flight?.paired_flight_id) {
+    console.log(`[Inventory] Aplicando el mismo cambio a la pierna pareja ${flight.paired_flight_id}`)
+    await updateInventory(db, flight.paired_flight_id, passengersDelta)
+  }
+
+  return principal
+}
+
 // Update inventory (sold count) and check for auto-deactivation
 // Uses atomic SQL function to prevent race conditions
 async function updateInventory(
@@ -125,6 +225,10 @@ async function updateInventory(
   const { sold_out: soldOut, remaining, new_sold: newSold, quantity, tc_transport_id: tcTransportId } = result
 
   console.log(`[Inventory] Flight ${flightId}: sold=${newSold}, quantity=${quantity}, remaining=${remaining} (atomic update)`)
+
+  // Reflejar en TC los lugares que quedan. Vale tanto para una venta (bajan)
+  // como para una cancelación (vuelven).
+  await pushInventoryToTC(db, flightId)
 
   // Check if sold out (remaining = 0)
   if (soldOut) {
@@ -473,7 +577,7 @@ async function handleModifyBooking(
   // Update inventory if passengers changed
   let inventoryResult = null
   if (existing.flight_id && passengersDelta !== 0) {
-    inventoryResult = await updateInventory(db, existing.flight_id, passengersDelta)
+    inventoryResult = await updateInventoryBothLegs(db, existing.flight_id, passengersDelta)
   }
 
   return {
@@ -527,7 +631,7 @@ async function handleCancelBooking(
   // Return seats to inventory
   let inventoryResult = null
   if (existing.flight_id && passengersToReturn !== 0) {
-    inventoryResult = await updateInventory(db, existing.flight_id, passengersToReturn)
+    inventoryResult = await updateInventoryBothLegs(db, existing.flight_id, passengersToReturn)
   }
 
   return {
