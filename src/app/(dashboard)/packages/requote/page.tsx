@@ -15,6 +15,9 @@ type PackageNeedingRequote = {
   requote_price: number | null
   requote_variance_pct: number | null
   last_requote_at: string | null
+  needs_manual_since: string | null
+  manual_quote_completed_at: string | null
+  requote_status: string | null
   air_cost: number | null
   land_cost: number | null
   adults_count: number
@@ -59,6 +62,9 @@ async function getPackagesNeedingRequote(): Promise<PackageNeedingRequote[]> {
       requote_price,
       requote_variance_pct,
       last_requote_at,
+      needs_manual_since,
+      manual_quote_completed_at,
+      requote_status,
       air_cost,
       land_cost,
       adults_count,
@@ -80,6 +86,9 @@ async function getPackagesNeedingRequote(): Promise<PackageNeedingRequote[]> {
     `)
     .eq('requote_status', 'needs_manual')
     .eq('monitor_enabled', true)
+    // Lo más urgente primero: el que entró antes es el que está más cerca de
+    // vencer. La variación de precio queda como desempate.
+    .order('needs_manual_since', { ascending: true, nullsFirst: false })
     .order('requote_variance_pct', { ascending: false })
 
   if (error) {

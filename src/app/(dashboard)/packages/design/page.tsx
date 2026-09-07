@@ -60,6 +60,8 @@ async function getDesignPackages(): Promise<PackageForDesign[]> {
     `)
     .eq('send_to_design', true)
     .order('design_completed', { ascending: true })
+    // Dentro de los pendientes, primero el que vence antes.
+    .order('design_deadline', { ascending: true, nullsFirst: false })
     .order('send_to_design_at', { ascending: false })
 
   if (error) {
@@ -85,6 +87,7 @@ async function getPendingCreativeRequests() {
       status,
       requested_by,
       created_at,
+      deadline_at,
       requested_variants,
       packages:package_id (
         title,
@@ -93,8 +96,9 @@ async function getPendingCreativeRequests() {
       )
     `)
     .in('status', ['pending', 'in_progress'])
-    .order('priority', { ascending: true })
-    .order('created_at', { ascending: false })
+    // Antes ordenaba por priority, que es texto: alfabéticamente 'urgent' queda
+    // último, o sea justo al revés de lo que se quiere. Se ordena por vencimiento.
+    .order('deadline_at', { ascending: true, nullsFirst: false })
 
   if (error) {
     console.error('Error fetching creative requests:', error)

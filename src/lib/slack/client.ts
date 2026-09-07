@@ -757,3 +757,79 @@ export function buildSentToMarketingMessage(data: {
     ],
   }
 }
+
+/**
+ * Aviso consolidado de tareas vencidas (cotización manual o diseño).
+ *
+ * Un solo builder para los dos casos: cambia a quién se menciona, el texto y a
+ * qué pantalla lleva el botón, pero la forma del mensaje es la misma.
+ */
+export function buildDeadlineSummaryMessage(data: {
+  kind: 'requote' | 'design'
+  items: Array<{
+    packageId: number
+    tcPackageId: number
+    packageTitle: string
+    deadline: string
+    hoursOverdue: number
+  }>
+  systemUrl: string
+  mentionUsers?: string
+}): SlackMessage {
+  const count = data.items.length
+  const isRequote = data.kind === 'requote'
+
+  const title = isRequote
+    ? `⏰ ${count} cotización${count > 1 ? 'es' : ''} manual${count > 1 ? 'es' : ''} vencida${count > 1 ? 's' : ''}`
+    : `⏰ ${count} pedido${count > 1 ? 's' : ''} de diseño vencido${count > 1 ? 's' : ''}`
+
+  const intro = isRequote
+    ? `pasaron más de 48 h desde que ${count > 1 ? 'estos paquetes entraron' : 'este paquete entró'} a revisión de cotización manual y sigue${count > 1 ? 'n' : ''} sin resolver:`
+    : `pasaron más de 48 h desde que se pidió el creativo y sigue${count > 1 ? 'n' : ''} sin completar:`
+
+  const list = data.items
+    .map(item => {
+      const overdue = item.hoursOverdue >= 48
+        ? `${Math.round(item.hoursOverdue / 24)} d`
+        : `${Math.round(item.hoursOverdue)} h`
+      return `• <${data.systemUrl}/packages/${item.packageId}|${item.tcPackageId}> - ${item.packageTitle}\n   venció hace ${overdue}`
+    })
+    .join('\n')
+
+  const ctaPath = isRequote ? '/packages/requote' : '/packages/design'
+  const ctaLabel = isRequote ? 'Ir a Cotización manual' : 'Ir a Diseño'
+
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: title, emoji: true },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: data.mentionUsers ? `${data.mentionUsers} — ${intro}` : intro.charAt(0).toUpperCase() + intro.slice(1),
+      },
+    },
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: list },
+    },
+    { type: 'divider' },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: ctaLabel },
+          url: `${data.systemUrl}${ctaPath}`,
+        },
+      ],
+    },
+  ]
+
+  return {
+    blocks,
+    attachments: [{ color: '#e74c3c' }],
+  }
+}

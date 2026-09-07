@@ -78,6 +78,11 @@ export async function PUT(request: NextRequest) {
       'notify_creative_completed',
       'notify_ad_underperforming',
       'notify_needs_manual_quote',
+      // notify_new_package_imported faltaba: la UI mostraba el toggle pero al
+      // no estar en la whitelist el cambio se descartaba en silencio.
+      'notify_new_package_imported',
+      'notify_requote_deadline',
+      'notify_design_deadline',
       'price_change_threshold_pct',
       'ctr_threshold_pct',
       'cpl_threshold',

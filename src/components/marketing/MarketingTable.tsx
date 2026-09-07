@@ -306,8 +306,9 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [selectedPackageIds, setSelectedPackageIds] = useState<Set<number>>(new Set())
   const [bulkModalOpen, setBulkModalOpen] = useState(false)
   const [syncingMetaAdsPkgId, setSyncingMetaAdsPkgId] = useState<number | null>(null)
-  const [sortColumn, setSortColumn] = useState<ColumnKey | null>(null)
-  const [sortDir, setSortDir] = useState<SortDirection>(null)
+  // Por defecto la lista ordena por vencimiento, lo más próximo primero.
+  const [sortColumn, setSortColumn] = useState<ColumnKey | null>('vencimiento')
+  const [sortDir, setSortDir] = useState<SortDirection>('asc')
   const [campaignFilter, setCampaignFilter] = useState<string>('all')
   const [adsetFilter, setAdsetFilter] = useState<string>('all')
   const [pendingRequests, setPendingRequests] = useState<Record<number, number>>({}) // package_id -> request_id
@@ -1134,6 +1135,16 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const sortedPackages = [...filteredPackages].sort((a, b) => {
     if (!sortColumn || !sortDir) return 0
     const dir = sortDir === 'asc' ? 1 : -1
+
+    // Los que no tienen vencimiento van siempre al final, en las dos
+    // direcciones: si no, con orden ascendente tapan lo que está por vencer.
+    if (sortColumn === 'vencimiento') {
+      const da = a.marketing_expiration_date
+      const db_ = b.marketing_expiration_date
+      if (!da && !db_) return 0
+      if (!da) return 1
+      if (!db_) return -1
+    }
 
     const getValue = (pkg: Package): string | number => {
       switch (sortColumn) {

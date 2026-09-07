@@ -37,6 +37,14 @@ import {
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
+import {
+  deadlineState,
+  formatDeadlineLabel,
+  toDate,
+  toDateTimeLocalValue,
+  fromDateTimeLocalValue,
+  type DeadlineState,
+} from '@/lib/deadlines'
 import { useRouter } from 'next/navigation'
 import { DesignModal } from './DesignModal'
 import { AIGeneratorModal } from '@/components/design/AIGeneratorModal'
@@ -110,23 +118,6 @@ function getDaysUntilExpiration(dateRangeEnd: string | null): number | null {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
 }
 
-function getDaysUntilDeadline(deadline: string | null): number | null {
-  if (!deadline) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const deadlineDate = new Date(deadline + 'T00:00:00')
-  const diffTime = deadlineDate.getTime() - today.getTime()
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-}
-
-function isDeadlinePassed(deadline: string | null): boolean {
-  if (!deadline) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const deadlineDate = new Date(deadline + 'T00:00:00')
-  return deadlineDate < today
-}
-
 const statusLabels: Record<string, string> = {
   imported: 'Importado',
   reviewing: 'En revisión',
@@ -176,13 +167,15 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
 
   // Memoized date calculations for all packages (avoids recalculating on every render)
   const packageDateInfo = useMemo(() => {
-    const info: Record<number, { expired: boolean; daysLeft: number | null; deadlineDays: number | null; deadlinePassed: boolean }> = {}
+    const info: Record<number, { expired: boolean; daysLeft: number | null; deadline: Date | null; deadlineState: DeadlineState }> = {}
     for (const pkg of packages) {
+      const deadline = toDate(pkg.design_deadline)
       info[pkg.id] = {
         expired: isExpired(pkg.date_range_end),
         daysLeft: getDaysUntilExpiration(pkg.date_range_end),
-        deadlineDays: getDaysUntilDeadline(pkg.design_deadline),
-        deadlinePassed: isDeadlinePassed(pkg.design_deadline),
+        deadline,
+        // Un pedido terminado nunca figura vencido, por más que la fecha haya pasado.
+        deadlineState: deadlineState(deadline, pkg.design_completed),
       }
     }
     return info
@@ -317,7 +310,7 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
       const res = await fetch(`/api/packages/${packageId}/deadline`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ design_deadline: deadline || null }),
+        body: JSON.stringify({ design_deadline: fromDateTimeLocalValue(deadline) }),
       })
 
       if (!res.ok) {
@@ -531,22 +524,25 @@ export function DesignTable({ packages, creativeCounts }: DesignTableProps) {
                 <TableCell>
                   <div className="flex flex-col gap-1">
                     <Input
-                      type="date"
-                      value={pkg.design_deadline || ''}
+                      type="datetime-local"
+                      value={toDateTimeLocalValue(pkg.design_deadline)}
                       onChange={(e) => handleDeadlineChange(pkg.id, e.target.value)}
-                      className="h-8 w-32 text-xs"
+                      className="h-8 w-44 text-xs"
                     />
-                    {pkg.design_deadline && (() => {
-                      const daysLeft = getDaysUntilDeadline(pkg.design_deadline)
-                      const passed = isDeadlinePassed(pkg.design_deadline)
-                      if (passed) {
-                        return <span className="text-xs text-red-600 font-medium">Vencido</span>
-                      }
-                      if (daysLeft !== null) {
-                        const colorClass = daysLeft <= 2 ? 'text-red-600' : daysLeft <= 5 ? 'text-amber-600' : 'text-muted-foreground'
-                        return <span className={`text-xs ${colorClass}`}>{daysLeft} días</span>
-                      }
-                      return null
+                    {(() => {
+                      const info = packageDateInfo[pkg.id]
+                      if (!info?.deadline) return null
+                      const state = info.deadlineState
+                      const color = state === 'overdue'
+                        ? 'text-red-600 font-medium'
+                        : state === 'soon'
+                          ? 'text-amber-600'
+                          : 'text-muted-foreground'
+                      return (
+                        <span className={`text-xs ${color}`}>
+                          {formatDeadlineLabel(info.deadline, pkg.design_completed)}
+                        </span>
+                      )
                     })()}
                   </div>
                 </TableCell>

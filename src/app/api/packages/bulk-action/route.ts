@@ -318,6 +318,10 @@ export async function POST(request: NextRequest) {
               requote_price: pkg.current_price_per_pax,
               target_price: pkg.current_price_per_pax,
               last_requote_at: new Date().toISOString(),
+              // Este es el camino que usa la pantalla de cotización manual;
+              // antes solo el PATCH individual dejaba registro de cuándo se
+              // completó, así que el histórico quedaba incompleto.
+              manual_quote_completed_at: new Date().toISOString(),
             }
             break
 

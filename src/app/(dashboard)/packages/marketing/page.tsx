@@ -49,7 +49,8 @@ export default async function MarketingPage() {
       tc_active
     `)
     .eq('send_to_marketing', true)
-    .order('created_at', { ascending: false })
+    // Mismo orden que la tabla en el cliente, para que no salte al hidratar.
+    .order('marketing_expiration_date', { ascending: true, nullsFirst: false })
 
   // Sync ads_created_count for all packages (recalculate from meta_ads table)
   if (packages && packages.length > 0) {
@@ -100,6 +101,7 @@ export default async function MarketingPage() {
       status,
       requested_by,
       created_at,
+      deadline_at,
       requested_variants,
       packages:package_id (
         title,

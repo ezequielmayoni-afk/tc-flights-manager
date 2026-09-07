@@ -19,6 +19,8 @@ interface NotificationSettings {
   notify_ad_underperforming: boolean
   notify_needs_manual_quote: boolean
   notify_new_package_imported: boolean
+  notify_requote_deadline: boolean
+  notify_design_deadline: boolean
   price_change_threshold_pct: number
   ctr_threshold_pct: number
   cpl_threshold: number
@@ -314,6 +316,42 @@ export default function NotificationSettingsPage() {
               className="h-5 w-5 rounded border-gray-300"
             />
           </label>
+
+          <label className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+            <div>
+              <p className="font-medium">Cotización Manual Vencida</p>
+              <p className="text-sm text-muted-foreground">
+                Avisar cuando una cotización manual lleva más de 48 h sin resolverse (menciona a Marcelo y a Eze)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.notify_requote_deadline}
+              onChange={(e) => updateSetting('notify_requote_deadline', e.target.checked)}
+              className="h-5 w-5 rounded border-gray-300"
+            />
+          </label>
+
+          <label className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer">
+            <div>
+              <p className="font-medium">Pedido de Diseño Vencido</p>
+              <p className="text-sm text-muted-foreground">
+                Avisar cuando un pedido de creativos lleva más de 48 h sin completarse (menciona a Maru, Ángela y Eze)
+              </p>
+            </div>
+            <input
+              type="checkbox"
+              checked={settings.notify_design_deadline}
+              onChange={(e) => updateSetting('notify_design_deadline', e.target.checked)}
+              className="h-5 w-5 rounded border-gray-300"
+            />
+          </label>
+
+          <p className="text-xs text-muted-foreground px-3">
+            Los avisos salen siempre al canal del webhook configurado arriba. Los canales de
+            diseño y marketing son solo etiquetas para el registro: el webhook de Slack está
+            atado a un único canal, así que a cada persona se la avisa mencionándola.
+          </p>
         </div>
       </div>
 

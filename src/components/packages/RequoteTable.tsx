@@ -29,6 +29,14 @@ import {
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { CreativeRequestModal } from './CreativeRequestModal'
+import {
+  REQUOTE_SLA_HOURS,
+  deadlineFrom,
+  deadlineState,
+  formatDeadlineLabel,
+  formatDateTime,
+  DEADLINE_BADGE_STYLES,
+} from '@/lib/deadlines'
 
 type PackageNeedingRequote = {
   id: number
@@ -42,6 +50,9 @@ type PackageNeedingRequote = {
   requote_price: number | null
   requote_variance_pct: number | null
   last_requote_at: string | null
+  needs_manual_since: string | null
+  manual_quote_completed_at: string | null
+  requote_status: string | null
   air_cost: number | null
   land_cost: number | null
   adults_count: number
@@ -296,6 +307,7 @@ export function RequoteTable({ packages }: RequoteTableProps) {
             <TableHead className="text-xs">Salida</TableHead>
             <TableHead className="text-xs text-center">Servicios</TableHead>
             <TableHead className="text-xs text-center">Estado</TableHead>
+            <TableHead className="text-xs text-center">Vencimiento</TableHead>
             <TableHead className="text-xs">Aéreo</TableHead>
             <TableHead className="text-xs">Tierra</TableHead>
             <TableHead className="text-xs text-right">Precio Obj.</TableHead>
@@ -395,6 +407,30 @@ export function RequoteTable({ packages }: RequoteTableProps) {
                       <Badge className={statusColors[realStatus] || statusColors.imported}>
                         {statusLabels[realStatus] || realStatus}
                       </Badge>
+                    )
+                  })()}
+                </TableCell>
+
+                {/* Vencimiento: 48 h desde que entró a revisión */}
+                <TableCell className="text-center">
+                  {(() => {
+                    const deadline = deadlineFrom(pkg.needs_manual_since, REQUOTE_SLA_HOURS)
+                    const completed = !!pkg.manual_quote_completed_at || pkg.requote_status === 'completed'
+                    const state = deadlineState(deadline, completed)
+
+                    if (!deadline) {
+                      return <span className="text-xs text-muted-foreground">—</span>
+                    }
+
+                    return (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Badge variant="outline" className={`text-xs ${DEADLINE_BADGE_STYLES[state]}`}>
+                          {formatDeadlineLabel(deadline, completed)}
+                        </Badge>
+                        <span className="text-[10px] text-muted-foreground">
+                          {formatDateTime(deadline)}
+                        </span>
+                      </div>
                     )
                   })()}
                 </TableCell>

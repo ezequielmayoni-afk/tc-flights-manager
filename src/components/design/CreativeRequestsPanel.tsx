@@ -15,6 +15,12 @@ import {
 } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
+import {
+  toDate,
+  deadlineState,
+  formatDeadlineLabel,
+  DEADLINE_BADGE_STYLES,
+} from '@/lib/deadlines'
 import { DesignRowExpanded } from '@/components/packages/DesignRowExpanded'
 
 /**
@@ -49,6 +55,7 @@ interface CreativeRequest {
   status: 'pending' | 'in_progress'
   requested_by: string
   created_at: string
+  deadline_at: string | null
   requested_variants: number[] | null
   packages: {
     title: string
@@ -254,6 +261,16 @@ export function CreativeRequestsPanel({ requests: initialRequests }: CreativeReq
                       <span>
                         hace {formatDistanceToNow(new Date(request.created_at), { locale: es })}
                       </span>
+                      {(() => {
+                        const deadline = toDate(request.deadline_at)
+                        if (!deadline) return null
+                        const state = deadlineState(deadline, false)
+                        return (
+                          <Badge variant="outline" className={`text-xs ${DEADLINE_BADGE_STYLES[state]}`}>
+                            {formatDeadlineLabel(deadline, false)}
+                          </Badge>
+                        )
+                      })()}
                       {request.packages?.current_price_per_pax && (
                         <span>
                           Precio: {request.packages.currency}{' '}

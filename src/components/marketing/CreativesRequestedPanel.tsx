@@ -12,8 +12,11 @@ import {
 import { format, formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-/** Horas hasta el vencimiento de una solicitud de creativos */
-const SLA_HOURS = 48
+import { DESIGN_SLA_HOURS, toDate, deadlineFrom } from '@/lib/deadlines'
+
+/** Horas hasta el vencimiento de una solicitud de creativos.
+ *  El valor vive en @/lib/deadlines: antes estaba duplicado acá y en DesignTable. */
+const SLA_HOURS = DESIGN_SLA_HOURS
 
 interface RequestedRequest {
   id: number
@@ -25,6 +28,7 @@ interface RequestedRequest {
   status: 'pending' | 'in_progress'
   requested_by: string
   created_at: string
+  deadline_at: string | null
   requested_variants: number[] | null
   packages: {
     title: string
@@ -52,10 +56,13 @@ export function CreativesRequestedPanel({ requests }: CreativesRequestedPanelPro
   if (requests.length === 0) return null
 
   const now = Date.now()
-  const getExpiresAt = (createdAt: string) =>
-    new Date(createdAt).getTime() + SLA_HOURS * 60 * 60 * 1000
+  // Se usa el deadline persistido; el cálculo sobre created_at queda de respaldo
+  // para las solicitudes viejas que puedan no tenerlo.
+  const getExpiresAt = (request: { created_at: string; deadline_at: string | null }) =>
+    (toDate(request.deadline_at) ?? deadlineFrom(request.created_at, SLA_HOURS))?.getTime()
+      ?? new Date(request.created_at).getTime() + SLA_HOURS * 60 * 60 * 1000
 
-  const expiredCount = requests.filter(r => now > getExpiresAt(r.created_at)).length
+  const expiredCount = requests.filter(r => now > getExpiresAt(r)).length
   const hasExpired = expiredCount > 0
 
   return (
@@ -93,7 +100,7 @@ export function CreativesRequestedPanel({ requests }: CreativesRequestedPanelPro
         <div className="divide-y">
           {requests.map((request) => {
             const createdDate = new Date(request.created_at)
-            const expiresAt = getExpiresAt(request.created_at)
+            const expiresAt = getExpiresAt(request)
             const expiresDate = new Date(expiresAt)
             const isExpired = now > expiresAt
 

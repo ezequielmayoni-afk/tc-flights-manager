@@ -9,6 +9,7 @@ import {
   sendSlackMessage,
   buildManualQuoteSummaryMessage,
 } from '@/lib/slack/client'
+import { mentions } from '@/lib/slack/mentions'
 
 function getSupabaseClient() {
   return createClient(
@@ -19,8 +20,9 @@ function getSupabaseClient() {
 
 const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
-// Marcelo's Slack mention - can be configured as @marcelo or Slack user ID <@UXXXXXXXX>
-const MARCELO_MENTION = '@Marcelo'
+// Antes decía '@Marcelo' en texto plano, que Slack no convierte en mención: el
+// aviso salía pero no le notificaba a nadie. Con el formato <@Uxxxx> sí llega.
+const MARCELO_MENTION = mentions(['marcelo'])
 
 interface NotificationResult {
   tc_package_id: number
