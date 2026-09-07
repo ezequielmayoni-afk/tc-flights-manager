@@ -1,4 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
+import {
+  loadFlightsForMatch,
+  buildFlightMatchIndex,
+  matchPackageFlights,
+  aggregatePackageCupos,
+} from '@/lib/packages/flight-match'
 import { ComercialDashboard } from '@/components/comercial/ComercialDashboard'
 import type { PackageForComercial } from '@/types/comercial'
 
@@ -87,122 +93,10 @@ export default async function ComercialPage() {
     console.error('[Comercial Page] Error fetching packages:', error)
   }
 
-  // Fetch all flights with segments and cupo data for matching
-  const { data: allFlights } = await db
-    .from('flights')
-    .select(`
-      id,
-      supplier_id,
-      airline_code,
-      start_date,
-      end_date,
-      flight_segments (
-        departure_location_code,
-        arrival_location_code,
-        num_service
-      ),
-      modalities (
-        modality_inventories (
-          quantity,
-          sold,
-          remaining_seats
-        )
-      )
-    `)
-    .eq('active', true)
-
-  // Build a map to match flights by route + airline + date
-  // Key format: "AIRLINE-ORIGIN-DEST" -> array of flights with date ranges
-  type FlightMatch = {
-    flight_id: number
-    supplier_id: number
-    start_date: string
-    end_date: string
-    flight_numbers: string[]
-    cupos: { total: number; sold: number; remaining: number }
-  }
-  const flightMatchMap = new Map<string, FlightMatch[]>()
-
-  if (allFlights) {
-    for (const flight of allFlights) {
-      // Calculate cupos from modalities
-      let total = 0
-      let sold = 0
-      let remaining = 0
-      for (const modality of flight.modalities || []) {
-        for (const inventory of modality.modality_inventories || []) {
-          total += inventory.quantity || 0
-          sold += inventory.sold || 0
-          remaining += inventory.remaining_seats ?? inventory.quantity ?? 0
-        }
-      }
-
-      // Get flight routes from segments
-      const segments = flight.flight_segments || []
-      if (segments.length === 0) continue
-
-      // Use first segment's origin and last segment's destination
-      const origin = segments[0]?.departure_location_code
-      const destination = segments[segments.length - 1]?.arrival_location_code
-      const flightNumbers = segments.map((s: { num_service: string | null }) => s.num_service).filter((x): x is string => x !== null)
-
-      if (!origin || !destination) continue
-
-      const key = `${flight.airline_code}-${origin}-${destination}`
-
-      const matchData: FlightMatch = {
-        flight_id: flight.id,
-        supplier_id: flight.supplier_id,
-        start_date: flight.start_date,
-        end_date: flight.end_date,
-        flight_numbers: flightNumbers,
-        cupos: { total, sold, remaining },
-      }
-
-      if (!flightMatchMap.has(key)) {
-        flightMatchMap.set(key, [])
-      }
-      flightMatchMap.get(key)!.push(matchData)
-    }
-  }
-
-  // Function to match a package transport with local flights
-  function findMatchingFlight(transport: {
-    marketing_airline_code?: string | null
-    origin_code?: string | null
-    destination_code?: string | null
-    departure_date?: string | null
-    transport_number?: string | null
-  }): FlightMatch | null {
-    const airline = transport.marketing_airline_code
-    const origin = transport.origin_code
-    const dest = transport.destination_code
-    const depDate = transport.departure_date
-    const flightNum = transport.transport_number
-
-    if (!airline || !origin || !dest) return null
-
-    const key = `${airline}-${origin}-${dest}`
-    const candidates = flightMatchMap.get(key)
-    if (!candidates || candidates.length === 0) return null
-
-    // Find flight where departure_date is within start_date and end_date
-    // Match by route + date is sufficient, flight number is optional
-    for (const candidate of candidates) {
-      if (depDate) {
-        const dep = new Date(depDate)
-        const start = new Date(candidate.start_date)
-        const end = new Date(candidate.end_date)
-        if (dep >= start && dep <= end) {
-          // Match found by route + date - return it
-          return candidate
-        }
-      }
-    }
-
-    // No date match found
-    return null
-  }
+  // Cupos cargados en Vuelos, para cruzarlos con los tramos de cada paquete.
+  // La lógica de matcheo vive en @/lib/packages/flight-match.
+  const allFlights = await loadFlightsForMatch(db)
+  const flightIndex = buildFlightMatchIndex(allFlights)
 
   // Get all suppliers from the suppliers table (needed for enrichment)
   const { data: suppliersData } = await db
@@ -224,26 +118,16 @@ export default async function ComercialPage() {
     let matched_supplier_id: number | null = null
     let matched_supplier_name: string | null = null
 
-    for (const transport of pkg.package_transports || []) {
-      // Try to match with local flights by route + airline + date
-      const matchedFlight = findMatchingFlight({
-        marketing_airline_code: transport.marketing_airline_code,
-        origin_code: transport.origin_code,
-        destination_code: transport.destination_code,
-        departure_date: transport.departure_date,
-        transport_number: transport.transport_number,
-      })
+    const matches = matchPackageFlights(flightIndex, pkg.package_transports || [])
+    const cupos = aggregatePackageCupos(matches)
+    cupos_total = cupos.total
+    cupos_sold = cupos.sold
+    cupos_remaining = cupos.remaining
 
-      if (matchedFlight) {
-        cupos_total = Math.max(cupos_total, matchedFlight.cupos.total)
-        cupos_sold = Math.max(cupos_sold, matchedFlight.cupos.sold)
-        cupos_remaining = Math.max(cupos_remaining, matchedFlight.cupos.remaining)
-        // Use the supplier from the matched local flight
-        if (!matched_supplier_id) {
-          matched_supplier_id = matchedFlight.supplier_id
-          matched_supplier_name = supplierIdToName.get(matchedFlight.supplier_id) || null
-        }
-      }
+    const firstSupplierId = matches.find(m => m.supplierId !== null)?.supplierId ?? null
+    if (firstSupplierId !== null) {
+      matched_supplier_id = firstSupplierId
+      matched_supplier_name = supplierIdToName.get(firstSupplierId) || null
     }
 
     return {

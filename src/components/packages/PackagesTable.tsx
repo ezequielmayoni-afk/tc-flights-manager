@@ -66,6 +66,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import type { CupoInfoMap } from '@/types/cupo-info'
 import { DesignModal } from './DesignModal'
 import { SendToDesignModal } from './SendToDesignModal'
 import { DescriptionBodyModal } from './DescriptionBodyModal'
@@ -146,6 +147,8 @@ type PackageWithDestinations = {
 
 interface PackagesTableProps {
   packages: PackageWithDestinations[]
+  /** Qué paquetes están armados con cupo propio. Ver getCupoInfo en la página. */
+  cupoInfo?: CupoInfoMap
 }
 
 type SortField = 'tc_creation_date' | 'tc_package_id' | 'title' | 'date_range_start' | 'flight_departure_date' | 'air_cost' | 'land_cost' | 'agency_fee' | 'current_price_per_pax' | 'status' | 'monitor_enabled' | 'target_price' | 'requote_price' | 'last_requote_at' | 'nights_count'
@@ -406,7 +409,7 @@ function ResizableHeader({
 
 const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50, 100]
 
-export function PackagesTable({ packages }: PackagesTableProps) {
+export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
   const router = useRouter()
   const { isReadOnly } = useAuth()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -415,6 +418,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
   const [searchText, setSearchText] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [monitorFilter, setMonitorFilter] = useState<string>('all')
+  const [cupoFilter, setCupoFilter] = useState<string>('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(25)
   const [refreshingId, setRefreshingId] = useState<number | null>(null)
@@ -526,6 +530,15 @@ export function PackagesTable({ packages }: PackagesTableProps) {
       result = result.filter(pkg => getDisplayStatus(pkg) === statusFilter)
     }
 
+    // Filtrar por cupo propio
+    if (cupoFilter === 'cupo') {
+      result = result.filter(pkg => !!cupoInfo[pkg.id])
+    } else if (cupoFilter === 'cupo_agotado') {
+      result = result.filter(pkg => (cupoInfo[pkg.id]?.flights || []).some(f => f.remaining === 0))
+    } else if (cupoFilter === 'sin_cupo') {
+      result = result.filter(pkg => !cupoInfo[pkg.id])
+    }
+
     // Filter by monitor status
     if (monitorFilter !== 'all') {
       switch (monitorFilter) {
@@ -626,7 +639,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     }
 
     return result
-  }, [packages, searchText, statusFilter, monitorFilter, sortField, sortDirection])
+  }, [packages, searchText, statusFilter, monitorFilter, cupoFilter, cupoInfo, sortField, sortDirection])
 
   // Pagination
   const totalPages = Math.ceil(filteredAndSortedPackages.length / itemsPerPage)
@@ -677,6 +690,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     setSearchText('')
     setStatusFilter('all')
     setMonitorFilter('all')
+    setCupoFilter('all')
   }
 
   const handleRefreshPackage = async (packageId: number) => {
@@ -706,7 +720,7 @@ export function PackagesTable({ packages }: PackagesTableProps) {
     }
   }
 
-  const hasFilters = searchText || statusFilter !== 'all' || monitorFilter !== 'all'
+  const hasFilters = searchText || statusFilter !== 'all' || monitorFilter !== 'all' || cupoFilter !== 'all'
 
   const handleRunRequote = async () => {
     setRequoteRunning(true)
@@ -917,6 +931,17 @@ export function PackagesTable({ packages }: PackagesTableProps) {
             <SelectItem value="completed">Completado</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={cupoFilter} onValueChange={(v) => { setCupoFilter(v); setCurrentPage(1) }}>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Cupo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="cupo">Solo paquetes de cupo</SelectItem>
+            <SelectItem value="cupo_agotado">Cupo agotado</SelectItem>
+            <SelectItem value="sin_cupo">Sin cupo propio</SelectItem>
+          </SelectContent>
+        </Select>
         {hasFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters}>
             <X className="h-4 w-4 mr-1" />
@@ -1123,6 +1148,47 @@ export function PackagesTable({ packages }: PackagesTableProps) {
                         >
                           {pkg.title}
                         </a>
+                        {(() => {
+                          const info = cupoInfo[pkg.id]
+                          if (!info) return null
+
+                          // Sin vuelo local: es de cupo por circuito cerrado.
+                          if (info.flights.length === 0) {
+                            return (
+                              <Badge
+                                variant="outline"
+                                className="mt-1 text-[10px] bg-slate-100 text-slate-600 border-slate-200"
+                                title="Armado con cupo propio (circuito cerrado, sin vuelo cargado en Vuelos)"
+                              >
+                                Cupo
+                              </Badge>
+                            )
+                          }
+
+                          const agotado = info.flights.some(f => f.remaining === 0)
+                          return (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {info.flights.map(f => (
+                                <Badge
+                                  key={f.flightId}
+                                  variant="outline"
+                                  className={`text-[10px] ${
+                                    f.remaining === 0
+                                      ? 'bg-red-100 text-red-700 border-red-200'
+                                      : 'bg-blue-50 text-blue-700 border-blue-200'
+                                  }`}
+                                  title={`Cupo ${f.baseId} · sale ${f.startDate} · ${f.remaining} de ${f.total} lugares libres${
+                                    f.confidence === 'media' ? ' (relacionado por ruta y fecha)' : ''
+                                  }`}
+                                >
+                                  Cupo {f.baseId}
+                                  {f.remaining === 0 ? ' · agotado' : ` · ${f.remaining}`}
+                                </Badge>
+                              ))}
+                              {agotado && <span className="sr-only">cupo agotado</span>}
+                            </div>
+                          )
+                        })()}
                       </div>
                     </TableCell>
 

@@ -20,15 +20,16 @@ const SECTION_ROUTES: Record<string, string> = {
   '/packages/requote': 'requote',
   '/packages/seo': 'seo',
   '/packages': 'productos',
+  '/tareas': 'tareas',
   '/rendimiento': 'rendimiento',
   '/vendedores': 'vendedores',
 }
 
 // Role permissions (must match client-side config)
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote', 'tareas'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote', 'tareas'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote', 'tareas'],
   diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial', 'vendedores'],
 }

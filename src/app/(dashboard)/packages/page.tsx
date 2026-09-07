@@ -3,6 +3,10 @@ import { Header } from '@/components/layout/Header'
 import { Package, Eye, AlertCircle } from 'lucide-react'
 import { PackagesTable } from '@/components/packages/PackagesTable'
 import { PackageImportButton } from '@/components/packages/PackageImportButton'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { getCupoPackageIds } from '@/lib/packages/cupo'
+import { findFlightsForPackages } from '@/lib/packages/flight-match'
+import type { CupoInfoMap } from '@/types/cupo-info'
 
 type PackageWithDestinations = {
   id: number
@@ -159,8 +163,66 @@ async function getStats() {
   }
 }
 
+/**
+ * Marca qué paquetes están armados con cupo propio y, cuando se puede,
+ * con cuál. Son 3 queries en total: nada por fila.
+ */
+async function getCupoInfo(packages: PackageWithDestinations[]): Promise<CupoInfoMap> {
+  const db = createAdminClient()
+  const ids = packages.map(p => p.id)
+  if (ids.length === 0) return {}
+
+  const cupoIds = await getCupoPackageIds(db, ids)
+  if (cupoIds.size === 0) return {}
+
+  const flightsByPackage = await findFlightsForPackages(db, [...cupoIds])
+
+  const info: CupoInfoMap = {}
+  for (const id of cupoIds) {
+    const matches = flightsByPackage.get(id) || []
+
+    // Ida y vuelta son el mismo cupo comercial: se muestra una sola etiqueta,
+    // con la ida como referencia y los lugares de la pierna más ajustada (si la
+    // vuelta está llena, el paquete tampoco se puede vender).
+    const porCupo = new Map<number, typeof info[number]['flights'][number]>()
+    for (const m of matches) {
+      const claveGrupo = Math.min(m.flightId, m.flight.paired_flight_id ?? m.flightId)
+      const esIda = m.flight.leg_type !== 'return'
+      const actual = porCupo.get(claveGrupo)
+
+      const candidato = {
+        flightId: m.flightId,
+        baseId: (m.flight.base_id || '').replace(/-(IDA|VUELTA)$/, ''),
+        startDate: m.flight.start_date,
+        remaining: m.cupos.remaining,
+        total: m.cupos.total,
+        confidence: m.confidence,
+      }
+
+      if (!actual) {
+        porCupo.set(claveGrupo, candidato)
+      } else {
+        porCupo.set(claveGrupo, {
+          // La etiqueta y la fecha salen de la ida.
+          ...(esIda ? candidato : actual),
+          remaining: Math.min(actual.remaining, candidato.remaining),
+          total: Math.max(actual.total, candidato.total),
+          // Si alguna pierna matcheó flojo, se avisa.
+          confidence: actual.confidence === 'media' || candidato.confidence === 'media' ? 'media' : 'alta',
+        })
+      }
+    }
+
+    // Los circuitos cerrados son de cupo pero no tienen vuelo cargado en hub:
+    // igual se marcan, sin detalle.
+    info[id] = { flights: [...porCupo.values()] }
+  }
+  return info
+}
+
 export default async function PackagesPage() {
   const [packages, stats] = await Promise.all([getPackages(), getStats()])
+  const cupoInfo = await getCupoInfo(packages)
 
   return (
     <div className="flex flex-col h-full">
@@ -202,7 +264,7 @@ export default async function PackagesPage() {
         </div>
 
         <div className="bg-white rounded-lg border">
-          <PackagesTable packages={packages} />
+          <PackagesTable packages={packages} cupoInfo={cupoInfo} />
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ import { deactivatePackage, getPackageDetail } from '@/lib/travelcompositor/clie
 import { sendSlackMessage, buildCreativeRequestMessage, buildSentToMarketingMessage } from '@/lib/slack/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCupoPackageIds } from '@/lib/packages/cupo'
+import { expirePackageInTC } from '@/lib/packages/expire'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 import { logEvents, type LogSource } from '@/lib/logs'
@@ -247,18 +248,31 @@ export async function POST(request: NextRequest) {
               })
             }
             break
-          case 'expired':
-            // First, try to deactivate in TravelCompositor
-            const tcExpiredResult = await deactivatePackage(pkg.tc_package_id)
-            if (!tcExpiredResult.success) {
-              tcError = tcExpiredResult.error || 'Error al desactivar en TC'
-            }
+          case 'expired': {
+            // La baja vive en @/lib/packages/expire para que sea idéntica acá y
+            // en la pantalla de cupos agotados. Como esa función ya escribe en
+            // la base, se sale acá con el resultado propio en vez de caer al
+            // update genérico de abajo (que con un objeto vacío fallaría).
+            const expired = await expirePackageInTC(
+              db,
+              { id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title },
+              user ? { id: user.id, email: user.email } : null,
+              { reason: 'acción masiva' }
+            )
 
-            updateData = {
-              status: 'expired',
-              tc_active: false,
-            }
-            break
+            results.push({
+              id: pkg.id,
+              tc_package_id: pkg.tc_package_id,
+              title: pkg.title,
+              status: expired.tcError || expired.dbError ? 'error' : 'success',
+              error: expired.dbError
+                ? `Error al actualizar en hub: ${expired.dbError}`
+                : expired.tcError
+                  ? `Marcado vencido en hub, pero TC falló: ${expired.tcError}`
+                  : undefined,
+            })
+            continue
+          }
 
           case 'delete':
             // First, try to deactivate in TravelCompositor

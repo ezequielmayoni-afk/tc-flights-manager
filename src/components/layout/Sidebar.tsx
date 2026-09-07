@@ -15,7 +15,7 @@ import {
   Ticket,
   Briefcase,
   MapPin,
-  RefreshCw,
+  ClipboardList,
   Search,
   Palette,
   Megaphone,
@@ -45,7 +45,6 @@ const cuposItems: NavItem[] = [
 
 const productosItems: NavItem[] = [
   { name: 'Paquetes', href: '/packages', icon: Briefcase, section: 'productos' },
-  { name: 'Cotización manual', href: '/packages/requote', icon: RefreshCw, section: 'requote' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
   { name: 'Diseño', href: '/packages/design', icon: Palette, section: 'diseño' },
   { name: 'Video', href: 'https://hub.siviajo.com:8095', icon: Video, section: 'diseño', external: true },
@@ -55,9 +54,9 @@ const productosItems: NavItem[] = [
 
 // Role permissions - must match middleware
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas'],
   diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial'],
 }
@@ -204,6 +203,22 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+        {/* Tareas pendientes: lo primero que se mira cada mañana */}
+        {canAccessSection('tareas') && (
+          <Link
+            href="/tareas"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              pathname === '/tareas'
+                ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
+                : 'text-white/70 hover:bg-[#283593] hover:text-white'
+            )}
+          >
+            <ClipboardList className="h-5 w-5" />
+            Tareas pendientes
+          </Link>
+        )}
+
         {/* CUPOS Group */}
         {visibleCuposItems.length > 0 && (
           <div>

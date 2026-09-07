@@ -522,7 +522,7 @@ export function buildNeedsManualQuoteMessage(data: {
           {
             type: 'button',
             text: { type: 'plain_text', text: 'Ir a Recotización Manual' },
-            url: `${data.systemUrl}/packages/requote`,
+            url: `${data.systemUrl}/tareas`,
           },
         ],
       },
@@ -688,7 +688,7 @@ export function buildManualQuoteSummaryMessage(data: {
         {
           type: 'button',
           text: { type: 'plain_text', text: 'Ir a Recotización' },
-          url: `${data.systemUrl}/packages/requote`,
+          url: `${data.systemUrl}/tareas`,
         },
       ],
     }
@@ -796,8 +796,8 @@ export function buildDeadlineSummaryMessage(data: {
     })
     .join('\n')
 
-  const ctaPath = isRequote ? '/packages/requote' : '/packages/design'
-  const ctaLabel = isRequote ? 'Ir a Cotización manual' : 'Ir a Diseño'
+  const ctaPath = isRequote ? '/tareas' : '/packages/design'
+  const ctaLabel = isRequote ? 'Ir a Tareas pendientes' : 'Ir a Diseño'
 
   const blocks: SlackBlock[] = [
     {
@@ -832,4 +832,64 @@ export function buildDeadlineSummaryMessage(data: {
     blocks,
     attachments: [{ color: '#e74c3c' }],
   }
+}
+
+/**
+ * Aviso a marketing cuando un paquete se da de baja porque su cupo se agotó.
+ * El texto "dar de baja, el paquete ID X" es el que pidió el equipo.
+ */
+export function buildCupoSoldOutMessage(data: {
+  packageId: number
+  tcPackageId: number
+  packageTitle: string
+  flightLabel: string
+  departureDate: string
+  cuposTotal: number
+  systemUrl: string
+  requestedByEmail?: string | null
+}): SlackMessage {
+  const blocks: SlackBlock[] = [
+    {
+      type: 'header',
+      text: { type: 'plain_text', text: '🚫 Cupo agotado — dar de baja', emoji: true },
+    },
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `*dar de baja, el paquete ID ${data.tcPackageId}*\n${data.packageTitle}`,
+      },
+    },
+    {
+      type: 'section',
+      fields: [
+        { type: 'mrkdwn', text: `*Cupo*\n${data.flightLabel}` },
+        { type: 'mrkdwn', text: `*Salida*\n${data.departureDate}` },
+        { type: 'mrkdwn', text: `*Lugares*\n0 de ${data.cuposTotal} disponibles` },
+        { type: 'mrkdwn', text: `*Dado de baja por*\n${data.requestedByEmail || 'sistema'}` },
+      ],
+    },
+    {
+      type: 'context',
+      elements: [
+        {
+          type: 'mrkdwn',
+          text: 'El paquete ya fue desactivado en TravelCompositor. Falta bajar los anuncios que lo estén promocionando.',
+        },
+      ],
+    },
+    { type: 'divider' },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Ver Paquete' },
+          url: `${data.systemUrl}/packages/${data.packageId}`,
+        },
+      ],
+    },
+  ]
+
+  return { blocks, attachments: [{ color: '#e74c3c' }] }
 }

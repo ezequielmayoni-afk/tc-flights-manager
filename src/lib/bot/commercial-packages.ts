@@ -1,5 +1,12 @@
 import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import {
+  loadFlightsForMatch,
+  buildFlightMatchIndex,
+  matchPackageFlights,
+  aggregatePackageCupos,
+  type FlightMatchIndex,
+} from '@/lib/packages/flight-match'
 
 type ApiAuthResult =
   | { ok: true }
@@ -89,30 +96,9 @@ interface RawPackageRow {
   package_tickets: RawPackageTicket[] | null
 }
 
-interface FlightSegment {
-  departure_location_code: string | null
-  arrival_location_code: string | null
-  num_service: string | null
-}
 
-interface ModalityInventory {
-  quantity: number | null
-  sold: number | null
-  remaining_seats: number | null
-}
 
-interface FlightModality {
-  modality_inventories: ModalityInventory[] | null
-}
 
-interface RawFlightRow {
-  supplier_id: number | null
-  airline_code: string | null
-  start_date: string | null
-  end_date: string | null
-  flight_segments: FlightSegment[] | null
-  modalities: FlightModality[] | null
-}
 
 interface Cupos {
   total: number
@@ -120,14 +106,8 @@ interface Cupos {
   remaining: number
 }
 
-interface FlightMatch {
-  startDate: string
-  endDate: string
-  cupos: Cupos
-}
-
 interface NormalizationContext {
-  flightMatchMap: Map<string, FlightMatch[]>
+  flightIndex: FlightMatchIndex | null
 }
 
 export interface CommercialPackage {
@@ -441,71 +421,15 @@ async function buildNormalizationContext(rawPackages: RawPackageRow[]): Promise<
   )
 
   if (!hasFlightsToMatch) {
-    return { flightMatchMap: new Map() }
+    return { flightIndex: null }
   }
 
   const db = createAdminClient()
-  const { data, error } = await db
-    .from('flights')
-    .select(`
-      supplier_id,
-      airline_code,
-      start_date,
-      end_date,
-      flight_segments (
-        departure_location_code,
-        arrival_location_code,
-        num_service
-      ),
-      modalities (
-        modality_inventories (
-          quantity,
-          sold,
-          remaining_seats
-        )
-      )
-    `)
-    .eq('active', true)
+  const flights = await loadFlightsForMatch(db)
 
-  if (error) {
-    console.error('[Bot Packages API] Failed to fetch cupos data:', error)
-    return { flightMatchMap: new Map() }
-  }
-
-  return {
-    flightMatchMap: buildFlightMatchMap((data || []) as RawFlightRow[]),
-  }
+  return { flightIndex: buildFlightMatchIndex(flights) }
 }
 
-function buildFlightMatchMap(flights: RawFlightRow[]): Map<string, FlightMatch[]> {
-  const map = new Map<string, FlightMatch[]>()
-
-  for (const flight of flights) {
-    const airlineCode = flight.airline_code
-    const startDate = flight.start_date
-    const endDate = flight.end_date
-    const segments = flight.flight_segments || []
-
-    if (!airlineCode || !startDate || !endDate || segments.length === 0) continue
-
-    const origin = segments[0]?.departure_location_code
-    const destination = segments[segments.length - 1]?.arrival_location_code
-    if (!origin || !destination) continue
-
-    const key = buildFlightKey(airlineCode, origin, destination)
-    const match: FlightMatch = {
-      startDate,
-      endDate,
-      cupos: calculateCupos(flight.modalities || []),
-    }
-
-    const current = map.get(key) || []
-    current.push(match)
-    map.set(key, current)
-  }
-
-  return map
-}
 
 function normalizePackage(pkg: RawPackageRow, context: NormalizationContext): CommercialPackage {
   const destinations = pkg.package_destinations || []
@@ -514,7 +438,9 @@ function normalizePackage(pkg: RawPackageRow, context: NormalizationContext): Co
   const transfers = pkg.package_transfers || []
   const tours = pkg.package_closed_tours || []
   const tickets = pkg.package_tickets || []
-  const cupos = matchPackageCupos(transports, context.flightMatchMap)
+  const cupos = context.flightIndex
+    ? aggregatePackageCupos(matchPackageFlights(context.flightIndex, transports))
+    : { total: 0, sold: 0, remaining: 0 }
   const vertical = detectVertical(pkg)
   const availability = buildAvailability(pkg, cupos)
   const commercialStatus = buildCommercialStatus(pkg, availability)
@@ -585,50 +511,7 @@ function normalizePackage(pkg: RawPackageRow, context: NormalizationContext): Co
   return normalizedPackage
 }
 
-function matchPackageCupos(transports: RawPackageTransport[], flightMatchMap: Map<string, FlightMatch[]>): Cupos {
-  let total = 0
-  let sold = 0
-  let remaining = 0
 
-  for (const transport of transports) {
-    if (!transport.marketing_airline_code || !transport.origin_code || !transport.destination_code || !transport.departure_date) {
-      continue
-    }
-
-    const key = buildFlightKey(transport.marketing_airline_code, transport.origin_code, transport.destination_code)
-    const candidates = flightMatchMap.get(key) || []
-    const departureDate = new Date(transport.departure_date)
-
-    for (const candidate of candidates) {
-      const startDate = new Date(candidate.startDate)
-      const endDate = new Date(candidate.endDate)
-
-      if (departureDate >= startDate && departureDate <= endDate) {
-        total = Math.max(total, candidate.cupos.total)
-        sold = Math.max(sold, candidate.cupos.sold)
-        remaining = Math.max(remaining, candidate.cupos.remaining)
-      }
-    }
-  }
-
-  return { total, sold, remaining }
-}
-
-function calculateCupos(modalities: FlightModality[]): Cupos {
-  let total = 0
-  let sold = 0
-  let remaining = 0
-
-  for (const modality of modalities) {
-    for (const inventory of modality.modality_inventories || []) {
-      total += inventory.quantity || 0
-      sold += inventory.sold || 0
-      remaining += inventory.remaining_seats ?? inventory.quantity ?? 0
-    }
-  }
-
-  return { total, sold, remaining }
-}
 
 function buildAvailability(pkg: RawPackageRow, cupos: Cupos): CommercialPackage['availability'] {
   if (!pkg.tc_active) {
@@ -802,9 +685,6 @@ function parseMonthRange(month?: string): { dateFrom: string; dateTo: string } |
   }
 }
 
-function buildFlightKey(airlineCode: string, originCode: string, destinationCode: string): string {
-  return `${airlineCode}-${originCode}-${destinationCode}`.toUpperCase()
-}
 
 function normalizeSearchText(value: string): string {
   return value
