@@ -2,101 +2,55 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
+import { getLogFeed } from '@/lib/logs/feed'
 
-// Cliente sin tipos para evitar errores de tipado con sync_logs
-
+/**
+ * Feed unificado de actividad del sistema. La normalización de las cinco
+ * fuentes vive en @/lib/logs/feed.
+ */
 export async function GET(request: NextRequest) {
   const { authorized } = await checkSectionAccess('cupos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
-  const supabase = createAdminClient()
-  const searchParams = request.nextUrl.searchParams
+  const params = request.nextUrl.searchParams
 
-  // Filters
-  const status = searchParams.get('status')
-  const entityType = searchParams.get('entity_type')
-  const search = searchParams.get('search')
-  const limit = parseInt(searchParams.get('limit') || '100')
-  const offset = parseInt(searchParams.get('offset') || '0')
-
-  let query = supabase
-    .from('sync_logs')
-    .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (status && status !== 'all') {
-    query = query.eq('status', status)
-  }
-
-  if (entityType && entityType !== 'all') {
-    query = query.eq('entity_type', entityType)
-  }
-
-  if (search) {
-    query = query.or(`error_message.ilike.%${search}%,action.ilike.%${search}%`)
-  }
-
-  const { data: logs, error, count } = await query
-
-  if (error) {
-    return errorResponse(error)
-  }
-
-  return NextResponse.json({ logs, total: count })
-}
-
-export async function POST(request: NextRequest) {
-  const { authorized } = await checkSectionAccess('cupos')
-  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
-
-  const supabase = createAdminClient()
-  const body = await request.json()
-
-  // Mapear campos a las columnas reales de sync_logs
-  const { data, error } = await supabase
-    .from('sync_logs')
-    .insert({
-      entity_type: body.entity_type || 'flight',
-      entity_id: body.entity_id || body.flight_id || 0,
-      action: body.action || 'update',
-      direction: body.direction || 'push',
-      status: body.status || 'error',
-      request_payload: body.request_payload || body.request_data,
-      response_payload: body.response_payload || body.response_data,
-      error_message: body.error_message || body.message,
+  try {
+    const result = await getLogFeed(createAdminClient(), {
+      origins: (params.get('origins') || 'all').split(','),
+      level: params.get('level') || 'all',
+      search: params.get('search') || '',
+      since: params.get('since'),
+      until: params.get('until'),
+      limit: parseInt(params.get('limit') || '100'),
+      offset: parseInt(params.get('offset') || '0'),
     })
-    .select()
-    .single()
-
-  if (error) {
-    console.error('Error saving log:', error)
+    return NextResponse.json(result)
+  } catch (error) {
     return errorResponse(error)
   }
-
-  return NextResponse.json(data)
 }
 
-// Delete old logs (cleanup)
+/**
+ * Limpieza: borra eventos anteriores a N días en todas las fuentes propias.
+ * No toca notification_logs ni ai_generation_logs, que son historial de negocio.
+ */
 export async function DELETE(request: NextRequest) {
   const { authorized } = await checkSectionAccess('cupos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
-  const supabase = createAdminClient()
-  const searchParams = request.nextUrl.searchParams
-  const days = parseInt(searchParams.get('days') || '30')
+  const db = createAdminClient()
+  const days = parseInt(request.nextUrl.searchParams.get('days') || '30')
 
-  const cutoffDate = new Date()
-  cutoffDate.setDate(cutoffDate.getDate() - days)
+  const cutoff = new Date()
+  cutoff.setDate(cutoff.getDate() - days)
+  const cutoffIso = cutoff.toISOString()
 
-  const { error, count } = await supabase
-    .from('sync_logs')
-    .delete()
-    .lt('created_at', cutoffDate.toISOString())
-
-  if (error) {
-    return errorResponse(error)
+  const deleted: Record<string, number> = {}
+  for (const table of ['system_logs', 'sync_logs', 'package_sync_logs'] as const) {
+    const { error, count } = await db.from(table).delete({ count: 'exact' }).lt('created_at', cutoffIso)
+    if (error) return errorResponse(error)
+    deleted[table] = count || 0
   }
 
-  return NextResponse.json({ deleted: count })
+  return NextResponse.json({ deleted, total: Object.values(deleted).reduce((a, b) => a + b, 0) })
 }

@@ -4,6 +4,7 @@ import { flightFormSchema } from '@/lib/validations/flight'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
+import { logEvent } from '@/lib/logs'
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -403,6 +404,22 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       .eq('id', id)
       .single()
 
+    await logEvent(db, {
+      source: 'cupos',
+      action: 'flight.updated',
+      message: `Cupo editado: ${completeFlight?.name || completeFlight?.base_id || id}`,
+      entityType: 'flight',
+      entityId: Number(id),
+      entityLabel: completeFlight?.base_id,
+      flightId: Number(id),
+      tcTransportId: completeFlight?.tc_transport_id ?? undefined,
+      details: {
+        start_date: completeFlight?.start_date,
+        active: completeFlight?.active,
+        sync_status: completeFlight?.sync_status,
+      },
+    }, { id: user.id, email: user.email ?? null })
+
     return NextResponse.json(completeFlight)
   } catch (error) {
     console.error('Validation error:', error)
@@ -486,6 +503,25 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
   if (error) {
     return errorResponse(error)
   }
+
+  await logEvent(db, {
+    source: 'cupos',
+    action: 'flight.deleted',
+    level: tcDeleteResult && !tcDeleteResult.success ? 'warning' : 'info',
+    message: deleteFromTC
+      ? `Cupo eliminado: ${flight?.name || id}${tcDeleteResult?.success ? ' (desactivado en TC)' : tcDeleteResult ? ` (TC falló: ${tcDeleteResult.error})` : ''}`
+      : `Cupo eliminado: ${flight?.name || id} (solo en hub, no se tocó TC)`,
+    entityType: 'flight',
+    entityId: Number(id),
+    entityLabel: flight?.base_id,
+    tcTransportId: flight?.tc_transport_id ?? undefined,
+    details: {
+      deleteFromTC,
+      tc_deactivated: tcDeleteResult?.success ?? null,
+      tc_error: tcDeleteResult?.error ?? null,
+      start_date: flight?.start_date,
+    },
+  }, { id: user.id, email: user.email ?? null })
 
   return NextResponse.json({
     success: true,

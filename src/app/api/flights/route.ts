@@ -4,6 +4,7 @@ import { flightFormSchema } from '@/lib/validations/flight'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
+import { logEvent } from '@/lib/logs'
 
 // Cliente sin tipos para operaciones complejas
 
@@ -414,6 +415,22 @@ export async function POST(request: NextRequest) {
       `)
       .eq('id', flight.id)
       .single()
+
+    await logEvent(db, {
+      source: 'cupos',
+      action: 'flight.created',
+      message: `Cupo creado: ${completeFlight?.name || flight.base_id}`,
+      entityType: 'flight',
+      entityId: flight.id,
+      entityLabel: flight.base_id,
+      flightId: flight.id,
+      details: {
+        airline_code: completeFlight?.airline_code,
+        start_date: completeFlight?.start_date,
+        supplier_id: completeFlight?.supplier_id,
+        paired_flight_id: completeFlight?.paired_flight_id,
+      },
+    }, { id: user.id, email: user.email ?? null })
 
     return NextResponse.json(completeFlight, { status: 201 })
   } catch (error) {

@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getCupoPackageIds } from '@/lib/packages/cupo'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
+import { logEvents, type LogSource } from '@/lib/logs'
 
 const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
@@ -21,8 +22,25 @@ interface PackageResult {
  * POST /api/packages/bulk-action
  * Execute bulk actions on multiple packages
  */
+// Cómo se lee cada acción en la pantalla de Logs
+const ACTION_LABELS: Record<string, { message: string; source: LogSource }> = {
+  design: { message: 'Enviado a diseño', source: 'diseño' },
+  marketing: { message: 'Enviado a marketing', source: 'marketing' },
+  expired: { message: 'Marcado como vencido y desactivado en TC', source: 'paquetes' },
+  delete: { message: 'Eliminado del sistema y desactivado en TC', source: 'paquetes' },
+  monitor: { message: 'Monitoreo activado', source: 'paquetes' },
+  unmonitor: { message: 'Monitoreo desactivado', source: 'paquetes' },
+  'complete-requote': { message: 'Cotización manual marcada como completada', source: 'paquetes' },
+  run_requote: { message: 'Marcado para ejecutar monitoreo', source: 'paquetes' },
+  'accept-requote': { message: 'Precio nuevo aceptado como objetivo', source: 'paquetes' },
+  'design-complete': { message: 'Diseño marcado como terminado', source: 'diseño' },
+  'design-uncomplete': { message: 'Diseño devuelto a pendiente', source: 'diseño' },
+  'creative-uploaded': { message: 'Creativos subidos a Meta', source: 'marketing' },
+  'sync-ads-count': { message: 'Recuento de anuncios sincronizado', source: 'marketing' },
+}
+
 export async function POST(request: NextRequest) {
-  const { authorized } = await checkSectionAccess('productos')
+  const { authorized, user } = await checkSectionAccess('productos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
   const db = createAdminClient()
@@ -451,6 +469,27 @@ export async function POST(request: NextRequest) {
     const errorCount = results.filter(r => r.status === 'error').length
 
     console.log(`[Bulk Action] ${action}: ${successCount} success, ${errorCount} errors`)
+
+    // Un evento por paquete: sin esto no queda rastro de quién movió qué ni cuándo.
+    const label = ACTION_LABELS[action] || { message: action, source: 'paquetes' as LogSource }
+    await logEvents(
+      db,
+      results.map(r => ({
+        source: label.source,
+        action: `package.${action}`,
+        level: r.status === 'error' ? ('error' as const) : ('info' as const),
+        message: r.status === 'error' ? `${label.message} — falló: ${r.error}` : label.message,
+        entityType: 'package' as const,
+        entityId: r.id,
+        entityLabel: `${r.tc_package_id} · ${r.title}`,
+        details: {
+          tc_package_id: r.tc_package_id,
+          ...(action === 'design' ? { cupo: cupoPackageIds.has(r.id), monitoreo_activado: !cupoPackageIds.has(r.id) } : {}),
+          ...(r.error ? { error: r.error } : {}),
+        },
+      })),
+      user ? { id: user.id, email: user.email } : null
+    )
 
     return NextResponse.json({
       success: errorCount === 0,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractCosts, importNewPackages } from '@/lib/packages/import'
+import { logEvent } from '@/lib/logs'
 
 // Vercel cron jobs have a 60s timeout on hobby, 300s on pro
 export const maxDuration = 300
@@ -171,6 +172,21 @@ export async function GET(request: NextRequest) {
     newPackages = await importNewPackages(db, { limit: IMPORT_LIMIT, shouldStop: outOfTime })
     console.log(`[Cron] Nuevos en TC: ${newPackages.detected}, importados: ${newPackages.imported}`)
 
+    await logEvent(db, {
+      source: 'cron',
+      action: 'cron.import_new_packages',
+      level: newPackages.errors.length > 0 ? 'error' : 'info',
+      message: newPackages.detected === 0
+        ? 'Cron diario: no había paquetes nuevos en TC'
+        : `Cron diario: ${newPackages.imported} de ${newPackages.detected} paquetes nuevos importados desde TC`,
+      details: {
+        tcTotal: newPackages.tcTotal,
+        detected: newPackages.detected,
+        imported: newPackages.imported,
+        errors: newPackages.errors,
+      },
+    }, null)
+
     if (newPackages.imported > 0 || newPackages.errors.length > 0) {
       await db.from('package_sync_logs').insert({
         package_id: null,
@@ -291,6 +307,23 @@ export async function GET(request: NextRequest) {
         errors: results.errors,
       },
     })
+
+    await logEvent(db, {
+      source: 'cron',
+      action: 'cron.refresh_packages',
+      level: results.failed > 0 ? 'error' : 'info',
+      message: `Cron diario: ${results.successCount}/${results.processed} paquetes refrescados` +
+        (results.priceChanges > 0 ? `, ${results.priceChanges} con cambio de precio` : '') +
+        (results.failed > 0 ? `, ${results.failed} con error` : ''),
+      durationMs: Date.now() - startTime,
+      details: {
+        processed: results.processed,
+        successCount: results.successCount,
+        failed: results.failed,
+        priceChanges: results.priceChanges,
+        errors: results.errors,
+      },
+    }, null)
 
     return NextResponse.json({
       success: results.failed === 0 && newPackages.errors.length === 0,
