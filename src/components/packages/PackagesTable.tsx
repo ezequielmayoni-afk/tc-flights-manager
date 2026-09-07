@@ -170,6 +170,7 @@ const statusColors: Record<string, string> = {
   in_marketing: 'bg-orange-100 text-orange-700',
   published: 'bg-emerald-100 text-emerald-700',
   expired: 'bg-red-100 text-red-700',
+  not_visible: 'bg-slate-200 text-slate-700',
 }
 
 const statusLabels: Record<string, string> = {
@@ -180,6 +181,7 @@ const statusLabels: Record<string, string> = {
   in_marketing: 'En marketing',
   published: 'Publicado',
   expired: 'Vencido',
+  not_visible: 'No visible',
 }
 
 // Column configuration for resizable columns
@@ -278,6 +280,10 @@ function getDisplayStatus(pkg: {
   send_to_design: boolean
   status: string
 }): string {
+  // Los estados decididos a mano ganan sobre los derivados: si alguien marcó el
+  // paquete como no visible o vencido, eso es lo que hay que mostrar, por más
+  // que siga teniendo los flags de diseño o marketing prendidos.
+  if (pkg.status === 'not_visible' || pkg.status === 'expired') return pkg.status
   if (isExpired(pkg.date_range_end)) return 'expired'
   if (pkg.send_to_marketing) return 'in_marketing'
   if (pkg.send_to_design) return 'in_design'
@@ -917,6 +923,7 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
             <SelectItem value="in_marketing">En marketing</SelectItem>
             <SelectItem value="published">Publicado</SelectItem>
             <SelectItem value="expired">Vencido</SelectItem>
+            <SelectItem value="not_visible">No visible</SelectItem>
           </SelectContent>
         </Select>
         <Select value={monitorFilter} onValueChange={handleMonitorFilterChange}>

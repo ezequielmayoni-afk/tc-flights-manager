@@ -27,23 +27,44 @@ export async function expirePackageInTC(
   db: Db,
   pkg: { id: number; tc_package_id: number; title: string },
   actor?: { id: string | null; email: string | null } | null,
-  context?: { reason?: string; flightId?: number; flightLabel?: string }
+  context?: {
+    reason?: string
+    flightId?: number
+    flightLabel?: string
+    /** 'expired' es la baja por vencimiento; 'not_visible' es sacarlo de la venta. */
+    status?: 'expired' | 'not_visible'
+    /** Apaga el monitoreo: si el paquete no se ve, no hay precio que vigilar. */
+    stopMonitoring?: boolean
+  }
 ): Promise<ExpirePackageResult> {
+  const status = context?.status ?? 'expired'
   const tcResult = await deactivatePackage(pkg.tc_package_id)
   const tcError = tcResult.success ? undefined : (tcResult.error || 'Error al desactivar en TC')
 
   const { error: dbError } = await db
     .from('packages')
-    .update({ status: 'expired', tc_active: false })
+    .update({
+      status,
+      tc_active: false,
+      ...(context?.stopMonitoring
+        ? {
+            monitor_enabled: false,
+            requote_status: null,
+            requote_price: null,
+            requote_variance_pct: null,
+            target_price: null,
+          }
+        : {}),
+    })
     .eq('id', pkg.id)
 
   await logEvent(db, {
     source: 'paquetes',
-    action: 'package.expired',
+    action: status === 'not_visible' ? 'package.not_visible' : 'package.expired',
     level: tcError || dbError ? 'error' : 'info',
     message: tcError
-      ? `Paquete dado de baja en hub, pero TC falló: ${tcError}`
-      : `Paquete dado de baja y desactivado en TC${context?.reason ? ` (${context.reason})` : ''}`,
+      ? `${status === 'not_visible' ? 'Marcado como no visible' : 'Paquete dado de baja'} en hub, pero TC falló: ${tcError}`
+      : `${status === 'not_visible' ? 'Marcado como no visible y desactivado' : 'Paquete dado de baja y desactivado'} en TC${context?.reason ? ` (${context.reason})` : ''}`,
     entityType: 'package',
     entityId: pkg.id,
     entityLabel: `${pkg.tc_package_id} · ${pkg.title}`,
@@ -53,6 +74,8 @@ export async function expirePackageInTC(
       tc_error: tcError ?? null,
       db_error: dbError?.message ?? null,
       reason: context?.reason ?? null,
+      status,
+      monitoreo_apagado: context?.stopMonitoring ?? false,
       flight_id: context?.flightId ?? null,
       flight: context?.flightLabel ?? null,
     },

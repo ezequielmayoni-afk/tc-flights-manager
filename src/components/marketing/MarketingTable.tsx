@@ -37,6 +37,7 @@ import {
   PlusCircle,
   MoreVertical,
   Trash2,
+  EyeOff,
   CirclePause,
   ArrowUp,
   ArrowDown,
@@ -298,6 +299,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   const [removingAds, setRemovingAds] = useState<Set<number>>(new Set())
   const [confirmRemovePackageId, setConfirmRemovePackageId] = useState<number | null>(null)
   const [confirmRemoveFromMarketing, setConfirmRemoveFromMarketing] = useState<number | null>(null)
+  const [confirmNotVisible, setConfirmNotVisible] = useState<number | null>(null)
+  const [markingNotVisible, setMarkingNotVisible] = useState<Set<number>>(new Set())
   const [removingFromMarketing, setRemovingFromMarketing] = useState<Set<number>>(new Set())
   const [confirmBulkRemove, setConfirmBulkRemove] = useState(false)
   const [bulkRemoving, setBulkRemoving] = useState(false)
@@ -1481,14 +1484,21 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   // Core: quita un paquete de marketing (borra ads de Meta si hay y deja status 'imported').
   // Lanza error si falla — el caller maneja el toast/estado.
   const removeFromMarketingRequest = async (packageId: number) => {
-    // If package has ads, delete them from Meta first
+    // Los anuncios se PAUSAN, no se borran: borrarlos pierde el historial de
+    // rendimiento en Meta y no se puede deshacer.
     const pkg = packages.find(p => p.id === packageId)
     if (pkg && pkg.ads_created_count > 0) {
-      await fetch('/api/meta/ads', {
-        method: 'DELETE',
+      const pauseRes = await fetch('/api/meta/ads/status', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ package_id: packageId, delete_from_meta: true }),
+        body: JSON.stringify({ package_id: packageId, status: 'PAUSED' }),
       })
+      // Un 404 significa que el contador estaba desactualizado y no hay anuncios
+      // que pausar: no es motivo para frenar la salida de marketing.
+      if (!pauseRes.ok && pauseRes.status !== 404) {
+        const data = await pauseRes.json().catch(() => ({}))
+        throw new Error(data.error || 'No se pudieron pausar los anuncios en Meta')
+      }
     }
 
     // Update package status back to imported
@@ -1500,7 +1510,8 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         send_to_marketing: false,
         marketing_completed: false,
         marketing_status: null,
-        ads_created_count: 0,
+        // ads_created_count NO se pone en 0: los anuncios siguen existiendo en
+        // Meta, pausados. Los activos sí quedan en 0 porque se pausaron todos.
         ads_active_count: 0,
         send_to_design: false,
         design_completed: false,
@@ -1510,6 +1521,48 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       throw new Error(data.error || 'Error quitando de marketing')
+    }
+  }
+
+  /**
+   * Deja el paquete fuera de la venta: lo desactiva en TravelCompositor, lo pasa
+   * al estado "No visible" y le apaga el monitoreo. No toca los anuncios: si hay
+   * que bajarlos, se quita de marketing por separado.
+   */
+  const handleMarkNotVisible = async (packageId: number) => {
+    setConfirmNotVisible(null)
+    setMarkingNotVisible(prev => new Set(prev).add(packageId))
+
+    try {
+      const res = await fetch('/api/packages/bulk-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ packageIds: [packageId], action: 'not-visible' }),
+      })
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Error al marcar como no visible')
+      }
+
+      const fallo = (data.results || []).find((r: { status: string }) => r.status === 'error')
+      if (fallo) {
+        toast.warning(fallo.error || 'Quedó no visible en hub, pero TC falló')
+      } else {
+        toast.success('Paquete marcado como no visible', {
+          description: 'Desactivado en TC y sacado del monitoreo',
+        })
+      }
+
+      router.refresh()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Error al marcar como no visible')
+    } finally {
+      setMarkingNotVisible(prev => {
+        const s = new Set(prev)
+        s.delete(packageId)
+        return s
+      })
     }
   }
 
@@ -1523,7 +1576,9 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
 
       // Remove from local state
       setPackages(prev => prev.filter(p => p.id !== packageId))
-      toast.success('Paquete quitado de marketing')
+      toast.success('Paquete quitado de marketing', {
+        description: 'Los anuncios quedaron pausados en Meta',
+      })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Error quitando de marketing')
     } finally {
@@ -2183,6 +2238,18 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                               <Trash2 className="h-4 w-4 mr-2" />
                               Quitar de marketing
                             </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setConfirmNotVisible(pkg.id)}
+                              disabled={markingNotVisible.has(pkg.id)}
+                              className="text-red-600 focus:text-red-600"
+                            >
+                              {markingNotVisible.has(pkg.id) ? (
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              ) : (
+                                <EyeOff className="h-4 w-4 mr-2" />
+                              )}
+                              No visible en TC
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                         <Button
@@ -2276,6 +2343,29 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Confirmación: dejar no visible en TC */}
+      <AlertDialog open={confirmNotVisible !== null} onOpenChange={(open) => { if (!open) setConfirmNotVisible(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Dejar no visible en TravelCompositor</AlertDialogTitle>
+            <AlertDialogDescription>
+              El paquete se desactiva en TC y deja de venderse. En Paquetes pasa al estado
+              &quot;No visible&quot; y se le apaga el monitoreo de precio.
+              {' '}Los anuncios de Meta no se tocan: si hay que bajarlos, usá &quot;Quitar de marketing&quot;.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmNotVisible && handleMarkNotVisible(confirmNotVisible)}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Dejar no visible
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Confirm Remove from Marketing Dialog */}
       <AlertDialog open={confirmRemoveFromMarketing !== null} onOpenChange={(open) => { if (!open) setConfirmRemoveFromMarketing(null) }}>
         <AlertDialogContent>
@@ -2283,7 +2373,10 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
             <AlertDialogTitle>Quitar de marketing</AlertDialogTitle>
             <AlertDialogDescription>
               Esta acción quitará el paquete del módulo de marketing y lo devolverá al estado &quot;importado&quot;.
-              {packages.find(p => p.id === confirmRemoveFromMarketing)?.ads_created_count ? ' También se eliminarán todos los anuncios de Meta.' : ''}
+              {packages.find(p => p.id === confirmRemoveFromMarketing)?.ads_created_count
+                ? ' Los anuncios de Meta se pausan, no se eliminan: quedan disponibles para reactivarlos.'
+                : ''}
+              {' '}El paquete sigue visible en TravelCompositor.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

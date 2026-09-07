@@ -28,6 +28,7 @@ const ACTION_LABELS: Record<string, { message: string; source: LogSource }> = {
   design: { message: 'Enviado a diseño', source: 'diseño' },
   marketing: { message: 'Enviado a marketing', source: 'marketing' },
   expired: { message: 'Marcado como vencido y desactivado en TC', source: 'paquetes' },
+  'not-visible': { message: 'Marcado como no visible y desactivado en TC', source: 'paquetes' },
   delete: { message: 'Eliminado del sistema y desactivado en TC', source: 'paquetes' },
   monitor: { message: 'Monitoreo activado', source: 'paquetes' },
   unmonitor: { message: 'Monitoreo desactivado', source: 'paquetes' },
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No packages selected' }, { status: 400 })
     }
 
-    if (!['design', 'marketing', 'expired', 'delete', 'monitor', 'unmonitor', 'complete-requote', 'run_requote', 'accept-requote', 'design-complete', 'design-uncomplete', 'creative-uploaded', 'sync-ads-count'].includes(action)) {
+    if (!['design', 'marketing', 'expired', 'not-visible', 'delete', 'monitor', 'unmonitor', 'complete-requote', 'run_requote', 'accept-requote', 'design-complete', 'design-uncomplete', 'creative-uploaded', 'sync-ads-count'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
@@ -274,6 +275,31 @@ export async function POST(request: NextRequest) {
             continue
           }
 
+          case 'not-visible': {
+            // Sacar de la venta sin darlo por vencido: se desactiva en TC, pasa
+            // al estado No visible y se apaga el monitoreo, porque un paquete
+            // que no se ve no tiene precio que vigilar.
+            const hidden = await expirePackageInTC(
+              db,
+              { id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title },
+              user ? { id: user.id, email: user.email } : null,
+              { reason: 'marcado como no visible', status: 'not_visible', stopMonitoring: true }
+            )
+
+            results.push({
+              id: pkg.id,
+              tc_package_id: pkg.tc_package_id,
+              title: pkg.title,
+              status: hidden.tcError || hidden.dbError ? 'error' : 'success',
+              error: hidden.dbError
+                ? `Error al actualizar en hub: ${hidden.dbError}`
+                : hidden.tcError
+                  ? `Marcado no visible en hub, pero TC falló: ${hidden.tcError}`
+                  : undefined,
+            })
+            continue
+          }
+
           case 'delete':
             // First, try to deactivate in TravelCompositor
             const tcDeleteResult = await deactivatePackage(pkg.tc_package_id)
@@ -489,12 +515,12 @@ export async function POST(request: NextRequest) {
     console.log(`[Bulk Action] ${action}: ${successCount} success, ${errorCount} errors`)
 
     // Un evento por paquete: sin esto no queda rastro de quién movió qué ni cuándo.
-    // 'expired' se saltea porque expirePackageInTC ya registra su propio evento
-    // con más detalle (si TC respondió bien, el error, el cupo que lo motivó).
+    // 'expired' y 'not-visible' se saltean porque expirePackageInTC ya registra
+    // su propio evento con más detalle (si TC respondió bien, el error, el motivo).
     const label = ACTION_LABELS[action] || { message: action, source: 'paquetes' as LogSource }
     await logEvents(
       db,
-      (action === 'expired' ? [] : results).map(r => ({
+      (action === 'expired' || action === 'not-visible' ? [] : results).map(r => ({
         source: label.source,
         action: `package.${action}`,
         level: r.status === 'error' ? ('error' as const) : ('info' as const),

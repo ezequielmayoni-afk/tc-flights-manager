@@ -540,7 +540,7 @@ export type ModalityWithRelations = Modality & {
 // Package Types
 // ============================================
 
-export type PackageStatus = 'imported' | 'reviewing' | 'approved' | 'in_design' | 'in_marketing' | 'published' | 'expired'
+export type PackageStatus = 'imported' | 'reviewing' | 'approved' | 'in_design' | 'in_marketing' | 'published' | 'expired' | 'not_visible'
 
 export interface Package {
   id: number

@@ -92,6 +92,7 @@ const statusColors: Record<string, string> = {
   in_marketing: 'bg-orange-100 text-orange-700',
   published: 'bg-emerald-100 text-emerald-700',
   expired: 'bg-red-100 text-red-700',
+  not_visible: 'bg-slate-200 text-slate-700',
 }
 
 const statusLabels: Record<string, string> = {
@@ -102,6 +103,7 @@ const statusLabels: Record<string, string> = {
   in_marketing: 'En marketing',
   published: 'Publicado',
   expired: 'Vencido',
+  not_visible: 'No visible',
 }
 
 function formatCurrency(amount: number | null, currency: string): string {
