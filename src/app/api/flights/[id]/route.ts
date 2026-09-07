@@ -183,6 +183,21 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     // Actualizar modalidad (eliminar existentes y recrear)
     if (modality) {
+      // El código de la modalidad es su identidad en TC: si cambia, el sync no
+      // encuentra la modalidad vieja, crea una nueva y la anterior queda
+      // activa allá con los lugares desactualizados. Por eso se conserva el
+      // código que ya tenía este vuelo, y solo si no hay se arma con el sufijo
+      // del tramo, igual que al crearlo.
+      const { data: modalidadPrevia } = await db
+        .from('modalities')
+        .select('code')
+        .eq('flight_id', id)
+        .limit(1)
+        .maybeSingle()
+
+      const legSuffix = currentLegType === 'return' ? '-VUELTA' : '-IDA'
+      const modalityCode = modalidadPrevia?.code || `${modality.code}${legSuffix}`
+
       // Primero eliminar modalidades existentes (cascada eliminará inventarios)
       await db.from('modalities').delete().eq('flight_id', id)
 
@@ -197,7 +212,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
       const modalityData = {
         flight_id: parseInt(id),
-        code: modality.code,
+        code: modalityCode,
         active: modality.active,
         cabin_class_type: modality.cabin_class_type,
         baggage_allowance: baggageAllowance,
@@ -333,6 +348,17 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
       // Actualizar modalidad del vuelo pareado (si hay modalidad)
       if (modality) {
+        // Mismo criterio que arriba: se conserva el código que ya tenía.
+        const { data: modalidadPreviaPareada } = await db
+          .from('modalities')
+          .select('code')
+          .eq('flight_id', pairedId)
+          .limit(1)
+          .maybeSingle()
+
+        const pairedLegSuffix = pairedLegType === 'return' ? '-VUELTA' : '-IDA'
+        const pairedModalityCode = modalidadPreviaPareada?.code || `${modality.code}${pairedLegSuffix}`
+
         // Eliminar modalidades existentes del vuelo pareado
         await db.from('modalities').delete().eq('flight_id', pairedId)
 
@@ -346,7 +372,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
         const pairedModalityData = {
           flight_id: pairedId,
-          code: modality.code,
+          code: pairedModalityCode,
           active: modality.active,
           cabin_class_type: modality.cabin_class_type,
           baggage_allowance: baggageAllowance,
