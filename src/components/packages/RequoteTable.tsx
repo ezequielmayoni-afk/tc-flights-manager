@@ -29,6 +29,7 @@ import {
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { CreativeRequestModal } from './CreativeRequestModal'
+import { formatDateShort, formatDateLong } from '@/lib/dates'
 import {
   REQUOTE_SLA_HOURS,
   deadlineFrom,
@@ -117,21 +118,11 @@ function formatCurrency(amount: number | null, currency: string): string {
 }
 
 function formatShortDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return formatDateLong(dateStr, { day: '2-digit', month: 'short' })
 }
 
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  const day = date.getDate().toString().padStart(2, '0')
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}-${month}-${year}`
+  return formatDateShort(dateStr)
 }
 
 function createSlug(title: string): string {

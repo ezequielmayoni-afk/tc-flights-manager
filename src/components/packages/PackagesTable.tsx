@@ -71,6 +71,7 @@ import { DesignModal } from './DesignModal'
 import { SendToDesignModal } from './SendToDesignModal'
 import { DescriptionBodyModal } from './DescriptionBodyModal'
 import { useAuth } from '@/hooks/useAuth'
+import { formatDateShort, formatDateLong, isPastDate } from '@/lib/dates'
 
 // Normalize string by removing accents/diacritics
 function normalizeText(text: string): string {
@@ -245,29 +246,15 @@ function formatCurrency(amount: number | null, currency: string): string {
 }
 
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  const day = date.getDate().toString().padStart(2, '0')
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}-${month}-${year}`
+  return formatDateShort(dateStr)
 }
 
 function formatShortDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return formatDateLong(dateStr, { day: '2-digit', month: 'short' })
 }
 
 function isExpired(dateRangeEnd: string | null): boolean {
-  if (!dateRangeEnd) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const endDate = new Date(dateRangeEnd)
-  return endDate < today
+  return isPastDate(dateRangeEnd)
 }
 
 // Estado "real" que se muestra en la tabla: derivado de los booleanos (no del

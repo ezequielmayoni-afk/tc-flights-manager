@@ -49,6 +49,7 @@ import { useRouter } from 'next/navigation'
 import { DesignModal } from './DesignModal'
 import { AIGeneratorModal } from '@/components/design/AIGeneratorModal'
 import type { PackageForDesign } from '@/app/(dashboard)/packages/design/page'
+import { formatDateShort, formatDateLong, isPastDate, daysUntil } from '@/lib/dates'
 
 interface DesignTableProps {
   packages: PackageForDesign[]
@@ -68,29 +69,15 @@ function formatCurrency(amount: number | null, currency: string): string {
 }
 
 function formatDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  const day = date.getDate().toString().padStart(2, '0')
-  const month = (date.getMonth() + 1).toString().padStart(2, '0')
-  const year = date.getFullYear()
-  return `${day}/${month}/${year}`
+  return formatDateShort(dateStr)
 }
 
 function formatShortDate(dateStr: string | null): string {
-  if (!dateStr) return '-'
-  const date = new Date(dateStr)
-  return date.toLocaleDateString('es-AR', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return formatDateLong(dateStr, { day: '2-digit', month: 'short' })
 }
 
 function isExpired(dateRangeEnd: string | null): boolean {
-  if (!dateRangeEnd) return false
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const endDate = new Date(dateRangeEnd)
-  return endDate < today
+  return isPastDate(dateRangeEnd)
 }
 
 function createSlug(title: string): string {
@@ -110,12 +97,7 @@ function buildPackageUrl(packageId: number, title: string): string {
 }
 
 function getDaysUntilExpiration(dateRangeEnd: string | null): number | null {
-  if (!dateRangeEnd) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const endDate = new Date(dateRangeEnd)
-  const diffTime = endDate.getTime() - today.getTime()
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return daysUntil(dateRangeEnd)
 }
 
 const statusLabels: Record<string, string> = {

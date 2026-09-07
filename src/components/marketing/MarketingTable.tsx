@@ -71,6 +71,7 @@ import { CreativeRequestModal } from './CreativeRequestModal'
 import { ImportAdsModal } from './ImportAdsModal'
 import { DuplicateAdsModal } from './DuplicateAdsModal'
 import { BulkDuplicateAdsModal } from './BulkDuplicateAdsModal'
+import { formatDateLong, isPastDate } from '@/lib/dates'
 
 function buildPackageUrl(packageId: number, title: string): string {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
@@ -1331,8 +1332,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
   }
 
   const formatShortDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+    return formatDateLong(dateStr, { day: '2-digit', month: 'short' })
   }
 
   const formatPrice = (price: number, currency: string) => {
@@ -1345,11 +1345,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
 
   // Check if a date is expired (past today)
   const isExpired = (dateStr: string | null) => {
-    if (!dateStr) return false
-    const date = new Date(dateStr)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    return date < today
+    return isPastDate(dateStr)
   }
 
   // Update expiration date

@@ -67,6 +67,7 @@ interface PackageAdCreatorProps {
 }
 
 import { getVariantLabel } from '@/lib/creatives/variants'
+import { formatDateLong } from '@/lib/dates'
 
 const VARIANT_LABELS: Record<number, { name: string; focus: string }> = {
   1: { name: 'Precio/Oferta', focus: 'Urgencia y ahorro' },
@@ -450,8 +451,7 @@ export function PackageAdCreator({ pkg, onUpdate }: PackageAdCreatorProps) {
   }
 
   const formatShortDate = (dateStr: string) => {
-    const date = new Date(dateStr)
-    return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+    return formatDateLong(dateStr, { day: '2-digit', month: 'short' })
   }
 
   // Get creatives organized by variant

@@ -1,7 +1,5 @@
 'use client'
 
-import { format } from 'date-fns'
-import { es } from 'date-fns/locale'
 import {
   Card,
   CardContent,
@@ -27,6 +25,7 @@ import {
 } from 'lucide-react'
 import { CuposBadge } from './CuposBadge'
 import type { PackageForComercial } from '@/types/comercial'
+import { formatDateLong } from '@/lib/dates'
 
 // Build slug from title for URL
 function createSlug(title: string): string {
@@ -60,21 +59,11 @@ export function PackageCard({ package: pkg }: PackageCardProps) {
   }
 
   const formatShortDate = (dateStr: string | null) => {
-    if (!dateStr) return '-'
-    try {
-      return format(new Date(dateStr), 'dd MMM', { locale: es })
-    } catch {
-      return dateStr
-    }
+    return formatDateLong(dateStr, { day: '2-digit', month: 'short' })
   }
 
   const formatFullDate = (dateStr: string | null) => {
-    if (!dateStr) return '-'
-    try {
-      return format(new Date(dateStr), 'dd/MM/yyyy', { locale: es })
-    } catch {
-      return dateStr
-    }
+    return formatDateLong(dateStr, { day: '2-digit', month: 'long', year: 'numeric' })
   }
 
   const firstTransport = pkg.package_transports?.[0]
