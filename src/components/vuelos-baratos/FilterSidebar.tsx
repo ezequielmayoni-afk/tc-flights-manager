@@ -179,15 +179,20 @@ function CampoNumero({
   placeholder?: string
   onApply: (value: number | undefined) => void
 }) {
-  const aplicar = (raw: string): void => {
-    const texto = raw.trim()
+  const aplicar = (input: HTMLInputElement): void => {
+    const texto = input.value.trim()
     if (texto === '') {
       onApply(undefined)
       return
     }
     const n = Number(texto)
-    // Un valor imposible se ignora: el campo se remonta con lo que dice la URL.
-    if (!Number.isFinite(n) || n < 0) return
+    if (!Number.isFinite(n) || n < 0) {
+      // Un valor imposible se descarta, pero hay que devolver el campo a lo
+      // que dice la URL: si no, queda mostrando un número que no se aplicó
+      // (la URL no cambia, así que el remonte por `key` tampoco pasa).
+      input.value = String(value ?? '')
+      return
+    }
     onApply(Math.round(n))
   }
 
@@ -201,7 +206,7 @@ function CampoNumero({
         min={0}
         defaultValue={value ?? ''}
         placeholder={placeholder}
-        onBlur={e => aplicar(e.currentTarget.value)}
+        onBlur={e => aplicar(e.currentTarget)}
         onKeyDown={e => {
           if (e.key === 'Enter') {
             e.preventDefault()
@@ -342,19 +347,25 @@ interface PanelProps extends Omit<FilterSidebarProps, 'basePath'> {
   abiertas: boolean
   aplicar: (patch: Partial<ExplorerFilters>) => void
   quitar: (...keys: FilterKey[]) => void
+  /** Saca los 13 filtros de una (conserva el mes y el orden). */
+  limpiar: () => void
 }
 
-function FilterPanel({ filters, priceLimits, airlines, abiertas, aplicar, quitar }: PanelProps) {
+function FilterPanel({ filters, priceLimits, airlines, abiertas, aplicar, quitar, limpiar }: PanelProps) {
   const [verTodas, setVerTodas] = React.useState(false)
   const elegidas = filters.airlines ?? []
   const visibles = verTodas ? airlines : airlines.slice(0, AEROLINEAS_VISIBLES)
-  const escalas: 'todas' | 'directo' | '1' | '2' = filters.direct
-    ? 'directo'
-    : filters.stops === 1
-      ? '1'
-      : filters.stops === 2
-        ? '2'
-        : 'todas'
+  // `stops=0` puede venir de una URL escrita a mano: para el visitante también
+  // es "solo directos" (el radio lo aplica como `direct=1`, que además exige
+  // que la vuelta sea directa).
+  const escalas: 'todas' | 'directo' | '1' | '2' =
+    filters.direct || filters.stops === 0
+      ? 'directo'
+      : filters.stops === 1
+        ? '1'
+        : filters.stops === 2
+          ? '2'
+          : 'todas'
 
   return (
     <div className="px-4">
@@ -468,6 +479,18 @@ function FilterPanel({ filters, priceLimits, airlines, abiertas, aplicar, quitar
           ) : null}
         </Seccion>
       ) : null}
+
+      {hasActiveFilters(filters) ? (
+        <div className="py-4">
+          <button
+            type="button"
+            onClick={limpiar}
+            className="w-full rounded-[8px] border border-[#1A237E] px-4 py-2 text-sm font-semibold text-[#1A237E] transition hover:bg-[#F8F9FA]"
+          >
+            Quitar filtros
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -534,6 +557,7 @@ export function FilterSidebar({ filters, priceLimits, airlines, basePath }: Filt
       abiertas={abiertas}
       aplicar={aplicar}
       quitar={quitar}
+      limpiar={limpiarTodo}
     />
   )
 
@@ -550,6 +574,9 @@ export function FilterSidebar({ filters, priceLimits, airlines, basePath }: Filt
           </SheetTrigger>
           <SheetContent
             side="left"
+            // El cajón ya se explica con su título; sin esto Radix avisa por
+            // consola que falta `aria-describedby`.
+            aria-describedby={undefined}
             aria-busy={aplicando}
             className="w-[88%] max-w-[340px] gap-0 overflow-y-auto border-[#E3E3E3] bg-white p-0 text-[#393939] shadow-none"
           >

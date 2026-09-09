@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { ttlMemo } from '@/lib/vuelos-baratos/cache'
-import { searchCities, type CityHit } from '@/lib/vuelos-baratos/cities'
+import { MAX_QUERY_LENGTH, searchCities, type CityHit } from '@/lib/vuelos-baratos/cities'
 import { PUBLIC_CACHE_TTL_MS } from '@/lib/vuelos-baratos/config'
 import { listLandingDestinations } from '@/lib/vuelos-baratos/queries'
 
@@ -34,8 +34,11 @@ async function slugsPorCodigo(): Promise<Map<string, string>> {
 
 export async function GET(request: NextRequest) {
   // En Next 16 `searchParams` de la página es una promesa; en un route handler
-  // se lee del request, que es sincrónico.
-  const hits = searchCities(request.nextUrl.searchParams.get('q') ?? '')
+  // se lee del request, que es sincrónico. `q` viene de afuera: se recorta
+  // antes de normalizar para no pasear un texto de cualquier tamaño por el
+  // NFD y el índice.
+  const q = (request.nextUrl.searchParams.get('q') ?? '').slice(0, MAX_QUERY_LENGTH)
+  const hits = searchCities(q)
   if (hits.length === 0) return respuesta([])
 
   // Si Supabase se cae, el autocomplete sigue funcionando sin `landingSlug`:

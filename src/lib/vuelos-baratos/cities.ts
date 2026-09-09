@@ -11,6 +11,8 @@ import { normalize } from './text'
 
 /** Cuántos caracteres hacen falta para que la búsqueda tenga sentido. */
 export const MIN_QUERY_LENGTH = 2
+/** Tope de lo que se acepta: ningún nombre de ciudad pasa de ahí. */
+export const MAX_QUERY_LENGTH = 64
 
 export interface CityHit {
   /** Código de DESTINO de Travel Compositor (no es el IATA del aeropuerto). */

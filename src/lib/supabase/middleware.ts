@@ -7,6 +7,17 @@ type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
 // responden sin pasar por Supabase (no hay sesión que refrescar).
 const PUBLIC_PREFIXES = ['/vuelos-baratos', '/robots.txt', '/sitemap.xml']
 
+/**
+ * APIs públicas, por path EXACTO (no por prefijo).
+ *
+ * El autocomplete del buscador consulta una vez por tecla (con debounce), y
+ * pasar por `supabase.auth.getUser()` le sumaba un round-trip a cada consulta.
+ * La igualdad es a propósito: el resto de `/api/vuelos-baratos` (`resolve`,
+ * `routes`, `sweep`) autoriza adentro del handler y tiene que seguir entrando
+ * por el camino normal.
+ */
+const PUBLIC_API_PATHS = ['/api/vuelos-baratos/cities']
+
 // Routes that require admin role (admin or marketing)
 const ADMIN_ROUTES = ['/users']
 
@@ -70,7 +81,8 @@ export async function updateSession(request: NextRequest) {
   // dashboard no queda expuesto en un dominio sin login. En el host del HUB
   // las mismas rutas siguen siendo públicas, pero el resto pide sesión.
   const pathname = request.nextUrl.pathname
-  const isPublicPath = PUBLIC_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
+  const isPublicPath =
+    PUBLIC_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/')) || PUBLIC_API_PATHS.includes(pathname)
   const publicHost = normalizeHost(process.env.VUELOS_PUBLIC_HOST)
   const host = normalizeHost(request.headers.get('host'))
   if (publicHost && host === publicHost) {

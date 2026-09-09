@@ -4,6 +4,7 @@ import * as React from 'react'
 import { ChevronDownIcon } from 'lucide-react'
 import { Command, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { normalize } from '@/lib/vuelos-baratos/text'
 import { INPUT } from './ui'
 
 /**
@@ -90,8 +91,9 @@ export function CityCombobox({ id, label, placeholder, value, onChange, pinned =
     setQuery('')
   }
 
-  const q = query.trim().toLowerCase()
-  const fijadas = pinned.filter(c => q === '' || c.label.toLowerCase().includes(q) || c.code.toLowerCase() === q)
+  // Mismo criterio que el server: 'cordoba' tiene que encontrar Córdoba.
+  const q = normalize(query)
+  const fijadas = pinned.filter(c => q === '' || normalize(c.label).includes(q) || normalize(c.code) === q)
   const codigosFijados = new Set(fijadas.map(c => c.code))
   const encontradas = resultados.filter(c => !codigosFijados.has(c.code))
 
