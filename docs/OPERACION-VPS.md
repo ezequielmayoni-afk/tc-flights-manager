@@ -118,6 +118,16 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
   `COTIZADOR_NACIONAL_API_KEY`; `VUELOS_URL` cuando vuelos-siviajo esté en el VPS.
 - Depurar: `SELECT id, status, destination_name, month, quoted_price_pp, chosen_departure_date, error FROM package_ideas ORDER BY id DESC LIMIT 20;`
 
+## vuelos.siviajo.com
+
+Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`
+a las 01:00 UTC vía `enqueue?schedule=hourly` → `flights.sweep`, lane `cotizador`, prioridad 4), kill
+switch `automation.flights_sweep`, presupuesto `cotizador_probe` (2500/día). Env nuevas en
+`/opt/hub/.env.local`: `NEXT_PUBLIC_VUELOS_BASE_URL`, `VUELOS_PUBLIC_HOST`, `SIVIAJO_BASE_URL`,
+`NEXT_PUBLIC_GTM_ID`. nginx de referencia: `ops/nginx/vuelos.siviajo.com.conf` (ya instalado en
+`/etc/nginx/sites-enabled/`; falta certbot, requiere que el DNS del dominio apunte acá). Doc completa,
+con el procedimiento de cutover del DNS: `docs/VUELOS-BARATOS.md`.
+
 ## Rotación de secretos
 
 - `CRON_SECRET`: cambiarlo en `/opt/hub/.env.local` **y** en `/opt/hub-cron/.env.cron`, después `pm2 restart hub`.

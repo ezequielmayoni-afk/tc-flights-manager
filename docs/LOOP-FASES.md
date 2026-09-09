@@ -226,3 +226,11 @@ panel del loop en `/dashboard`; checklist mensual (token de Meta, presupuesto Se
 - Código del loop: `src/lib/jobs/` (kernel), `src/lib/tendencias/` (Fase 1), `src/lib/serpapi/`.
 - Migraciones aplicadas: `20260910_automation_kernel`, `20260910_rls_media_os_tables`,
   `20260911_kernel_rpc_grants`, `20260912_trends`, `20260913_trends_sources`.
+
+## Proyecto paralelo — vuelos.siviajo.com
+
+No es una fase del loop: landing de "vuelos baratos" que corre dentro de HUB, reusando el cotizador de
+la Fase 3 (`POST /flights/probe`) con su propio barrido nocturno, prioridad más baja que las ideas de
+producto. Fase 1 (commit `905fd17`) en `main` y en producción (`hub.siviajo.com`). Pendiente: cutover
+del DNS de `vuelos.siviajo.com` (hoy apunta a otro VPS) y el spike de Sabre como estimador. Doc completa:
+`docs/VUELOS-BARATOS.md`.
