@@ -16,8 +16,11 @@ export const PROBE_RETRY_DELAY_MS = 5_000
 /** No se sondea nada con menos de 3 días de anticipación (no es tarifa de landing). */
 export const MIN_LEAD_DAYS = 3
 export const SWEEP_ENQUEUE_HOUR_UTC = 1
-/** Menor que las ideas (5): las cotizaciones reales ganan la noche. */
-export const SWEEP_PRIORITY = 4
+/**
+ * Menor que las ideas (5) incluso con el +1 de los primeros meses (3 + 1 = 4):
+ * las cotizaciones reales ganan la noche.
+ */
+export const SWEEP_PRIORITY = 3
 /** El tick del cron corta a los ~8 min, así que un job hace hasta 10 sondas. */
 export const MAX_PROBES_PER_JOB = 10
 export const PUBLIC_CACHE_TTL_MS = 10 * 60_000
@@ -46,6 +49,8 @@ export function originByCode(code: string | null | undefined): Origin | null {
   return ORIGINS.find((o) => o.code === buscado) ?? null
 }
 
+const BASE_PUBLICA_DEFAULT = 'https://vuelos.siviajo.com'
+
 function sinBarraFinal(value: string | undefined, fallback: string): string {
   const raw = (value ?? '').trim() || fallback
   return raw.replace(/\/+$/, '')
@@ -53,7 +58,22 @@ function sinBarraFinal(value: string | undefined, fallback: string): string {
 
 /** Base pública de la landing (para canonicals, sitemap y JSON-LD). */
 export function publicBaseUrl(): string {
-  return sinBarraFinal(process.env.NEXT_PUBLIC_VUELOS_BASE_URL, 'https://vuelos.siviajo.com')
+  return sinBarraFinal(process.env.NEXT_PUBLIC_VUELOS_BASE_URL, BASE_PUBLICA_DEFAULT)
+}
+
+/**
+ * La misma base como `URL`, para el `metadataBase` del layout.
+ *
+ * `new URL` tira si la variable quedó mal escrita ('vuelos.siviajo.com' sin
+ * esquema, por ejemplo) y ahí se cae el módulo entero al importarlo: mejor
+ * volver al default que dejar la landing sin responder.
+ */
+export function publicBaseUrlObject(): URL {
+  try {
+    return new URL(publicBaseUrl())
+  } catch {
+    return new URL(BASE_PUBLICA_DEFAULT)
+  }
 }
 
 /** Base del motor de reservas al que apuntan los deep links. */

@@ -177,6 +177,42 @@ export async function getRecentProbesForRoutes(db: Db, routeIds: number[], opts:
   return porRuta
 }
 
+/**
+ * La última observación vigente de cada ruta, sólo `route_id, probed_at`.
+ *
+ * Es lo único que necesita el `lastModified` del sitemap: traer las filas
+ * enteras (precios, aerolíneas, escalas) para quedarse con una fecha por ruta
+ * era pagar miles de columnas al pedo.
+ */
+export async function getLastProbedAtByRoute(db: Db, routeIds: number[], opts: RecentProbesOptions): Promise<Map<number, string>> {
+  const porRuta = new Map<number, string>()
+  if (routeIds.length === 0) return porRuta
+
+  const { data, error } = await db
+    .from('flight_price_probes')
+    .select('route_id, probed_at')
+    .in('route_id', routeIds)
+    .eq('status', 'ok')
+    .gte('probed_at', sinceIso(opts.sinceHours))
+    .gte('departure_date', opts.fromDate)
+    // Por ruta primero, igual que `getRecentProbesForRoutes`: con el tope
+    // global, ordenar sólo por fecha dejaría rutas sin ninguna fila.
+    .order('route_id', { ascending: true })
+    .order('probed_at', { ascending: false })
+    .limit(MAX_PROBE_ROWS_MULTI)
+  if (error) throw new Error(`No se pudieron leer las fechas del barrido: ${error.message}`)
+
+  for (const raw of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+    const routeId = Number(raw.route_id)
+    if (!Number.isFinite(routeId)) continue
+    const probedAt = String(raw.probed_at ?? '')
+    if (!probedAt) continue
+    const actual = porRuta.get(routeId)
+    if (actual === undefined || probedAt > actual) porRuta.set(routeId, probedAt)
+  }
+  return porRuta
+}
+
 export async function insertProbe(db: Db, row: ProbeInsert): Promise<void> {
   const { error } = await db.from('flight_price_probes').insert(row)
   if (error) throw new Error(`No se pudo guardar la sonda: ${error.message}`)

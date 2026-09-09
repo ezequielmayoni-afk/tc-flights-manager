@@ -13,6 +13,8 @@ import type { DatePair, LandingDestinationRow, LandingRouteRow } from '../types'
 
 const HOY = new Date(Date.UTC(2026, 8, 9)) // miércoles 9 de septiembre de 2026
 const DIA = '2026-09-09'
+/** El default de `enqueueJob`: con eso se encolan `idea.probe` e `idea.quote`. */
+const PRIORIDAD_IDEAS = 5
 
 function destino(over: Partial<LandingDestinationRow> = {}): LandingDestinationRow {
   return {
@@ -75,14 +77,18 @@ describe('buildSweepJobs', () => {
     expect((jobs[0].payload!.pairs as DatePair[]).length).toBeGreaterThan(0)
   })
 
-  it('los primeros 4 meses van con un punto más de prioridad', () => {
+  it('los primeros 4 meses van con un punto más de prioridad, sin llegar a la de las ideas', () => {
     const jobs = buildSweepJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 6, trigger: 'cron' })
     const porMes = new Map(jobs.map((j) => [String(j.payload!.month), j.priority]))
 
-    expect(porMes.get('2026-09')).toBe(SWEEP_PRIORITY + 1)
-    expect(porMes.get('2026-12')).toBe(SWEEP_PRIORITY + 1)
-    expect(porMes.get('2027-01')).toBe(SWEEP_PRIORITY)
-    expect(porMes.get('2027-02')).toBe(SWEEP_PRIORITY)
+    expect(SWEEP_PRIORITY).toBe(3)
+    expect(porMes.get('2026-09')).toBe(4)
+    expect(porMes.get('2026-12')).toBe(4)
+    expect(porMes.get('2027-01')).toBe(3)
+    expect(porMes.get('2027-02')).toBe(3)
+    // El barrido va SIEMPRE por debajo de las ideas (prioridad 5 por defecto
+    // en `enqueueJob`): las cotizaciones reales ganan la noche.
+    expect(jobs.every((j) => (j.priority ?? 0) < PRIORIDAD_IDEAS)).toBe(true)
   })
 
   it('respeta monthsOverride, la prioridad manual y el createdBy de la UI', () => {

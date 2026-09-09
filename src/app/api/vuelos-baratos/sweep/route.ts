@@ -6,7 +6,7 @@ import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import type { EnqueueResult } from '@/lib/jobs/queue'
 import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { DEFAULT_ORIGIN, SLUG_RE } from '@/lib/vuelos-baratos/config'
+import { DEFAULT_ORIGIN, ORIGINS, SLUG_RE, originByCode } from '@/lib/vuelos-baratos/config'
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
 import { getLandingDestinationBySlug, getRouteByCodes } from '@/lib/vuelos-baratos/queries'
 import { buildSweepJobs } from '@/lib/vuelos-baratos/sweep'
@@ -35,7 +35,14 @@ export async function POST(request: NextRequest) {
     const slug = typeof body?.slug === 'string' ? body.slug.trim().toLowerCase() : ''
     if (!SLUG_RE.test(slug)) throw API_ERRORS.BAD_REQUEST('slug obligatorio (a-z, 0-9 y guiones)')
 
-    const origin = typeof body?.origin === 'string' && body.origin.trim() ? body.origin.trim().toUpperCase() : DEFAULT_ORIGIN
+    // Un origen inventado buscaría una ruta que no existe y devolvería 404
+    // ("La ruta XXX→MIA no existe"), que confunde: acá se corta con un 400.
+    const origenPedido = typeof body?.origin === 'string' && body.origin.trim() ? body.origin.trim() : DEFAULT_ORIGIN
+    const origen = originByCode(origenPedido)
+    if (!origen) {
+      throw API_ERRORS.BAD_REQUEST(`origen inválido: ${origenPedido} (válidos: ${ORIGINS.map(o => o.code).join(', ')})`)
+    }
+    const origin = origen.code
 
     const mesesPedidos = body?.months === undefined || body?.months === null ? MESES_DEFAULT : Number(body.months)
     if (!Number.isFinite(mesesPedidos) || mesesPedidos < 1) throw API_ERRORS.BAD_REQUEST('months debe ser un número entre 1 y 12')

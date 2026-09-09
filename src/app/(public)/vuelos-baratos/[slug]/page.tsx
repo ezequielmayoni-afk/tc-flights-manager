@@ -42,7 +42,7 @@ import {
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
 import { monthsAhead, todayIso } from '@/lib/vuelos-baratos/date-pairs'
 import { hasActiveFilters, parseExplorerFilters } from '@/lib/vuelos-baratos/filters'
-import { getLandingDestinationBySlug, getRecentProbes, getRecentProbesForRoutes, getRouteByCodes, listRoutes } from '@/lib/vuelos-baratos/queries'
+import { getRecentProbes, getRecentProbesForRoutes, getRouteByCodes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
 import type { BestPair, DestinationSummary, LandingDestinationRow, LandingRouteRow, MonthSummary } from '@/lib/vuelos-baratos/types'
 
 /**
@@ -80,13 +80,28 @@ function origenDe(sp: SearchParams): Origin {
   return originByCode(first(sp.from)) ?? ORIGEN_POR_DEFECTO
 }
 
+/**
+ * Los destinos publicados, indexados por slug, bajo UNA sola clave de memo.
+ *
+ * Resolver el slug acá (y no con una consulta por slug) evita cachear un
+ * `null` por cada URL inventada: un crawler hostil pega siempre a esta entrada.
+ * Despublicar un destino tiene que sacarlo de Google, así que sólo entran los
+ * activos.
+ */
+async function destinosPublicados(): Promise<Map<string, LandingDestinationRow>> {
+  return ttlMemo('landing:destinations', PUBLIC_CACHE_TTL_MS, async () => {
+    const destinos = await listLandingDestinations(createAdminClient(), { activeOnly: true })
+    return new Map(destinos.map(destino => [destino.slug, destino]))
+  })
+}
+
 async function loadDestino(slug: string, originCode: string): Promise<DestinoData | null> {
+  const destination = (await destinosPublicados()).get(slug)
+  // Un slug que no existe no se memoiza: sólo lo publicado ocupa lugar.
+  if (!destination) return null
+
   return ttlMemo(`dest:${slug}:${originCode}`, PUBLIC_CACHE_TTL_MS, async () => {
     const db = createAdminClient()
-    const destination = await getLandingDestinationBySlug(db, slug)
-    // Despublicar un destino tiene que sacarlo de Google, no dejarlo a medias.
-    if (!destination || !destination.active) return null
-
     const route = await getRouteByCodes(db, destination.code, originCode)
     if (!route) return { destination, route: null, pairs: [] }
 
@@ -112,6 +127,12 @@ async function loadPorCiudad(destination: LandingDestinationRow): Promise<Destin
 }
 
 type MesConPrecio = MonthSummary & { minPrice: number }
+
+/** '2026-12-02' → '02/12/2026'. Sin `Date`: acá no hay que meter zonas horarias. */
+function fechaJsonLd(iso: string): string {
+  const [año, mes, dia] = iso.split('-')
+  return dia && mes && año ? `${dia}/${mes}/${año}` : iso
+}
 
 function mesMasBarato(months: MonthSummary[]): MesConPrecio | null {
   return months
@@ -218,6 +239,9 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
               position: i + 1,
               item: {
                 '@type': 'Offer',
+                // Sin `name` cada oferta queda como un precio suelto en el
+                // rich result: acá dice de dónde a dónde y en qué fechas.
+                name: `Vuelo ${origen.name} → ${destination.name}, ${fechaJsonLd(pair.depart)}–${fechaJsonLd(pair.return)}`,
                 price: pair.pricePp,
                 priceCurrency: 'USD',
                 url,

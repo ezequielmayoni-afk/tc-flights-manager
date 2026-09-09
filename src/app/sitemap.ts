@@ -1,11 +1,51 @@
 import type { MetadataRoute } from 'next'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { DEFAULT_ORIGIN, publicBaseUrl } from '@/lib/vuelos-baratos/config'
+import { ttlMemo } from '@/lib/vuelos-baratos/cache'
+import { DEFAULT_ORIGIN, PUBLIC_CACHE_TTL_MS, publicBaseUrl } from '@/lib/vuelos-baratos/config'
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
-import { getRecentProbesForRoutes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
+import { getLastProbedAtByRoute, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
 
 /** Lee Supabase en cada request: no se puede prerenderizar en el build. */
 export const dynamic = 'force-dynamic'
+
+interface DestinoSitemap {
+  slug: string
+  /** Última observación de la ruta principal del destino, o null si no hay. */
+  ultimaObservacion: string | null
+}
+
+/**
+ * Lo que el sitemap necesita de la base, cacheado 10 minutos como el resto de
+ * la landing: un crawler pidiendo /sitemap.xml en loop no le pega a Supabase
+ * en cada request.
+ */
+async function loadSitemap(): Promise<DestinoSitemap[]> {
+  return ttlMemo('sitemap', PUBLIC_CACHE_TTL_MS, async () => {
+    const db = createAdminClient()
+    const [destinations, routes] = await Promise.all([
+      listLandingDestinations(db, { activeOnly: true }),
+      listRoutes(db, { activeOnly: true }),
+    ])
+
+    const principales = routes.filter(route => route.origin_tc_code === DEFAULT_ORIGIN)
+    const ultimaPorRuta = await getLastProbedAtByRoute(
+      db,
+      principales.map(route => route.id),
+      { fromDate: todayIso(new Date()) }
+    )
+
+    const ultimaPorDestino = new Map<string, string>()
+    for (const route of principales) {
+      const ultima = ultimaPorRuta.get(route.id)
+      if (ultima) ultimaPorDestino.set(route.destination_code, ultima)
+    }
+
+    return destinations.map(destino => ({
+      slug: destino.slug,
+      ultimaObservacion: ultimaPorDestino.get(destino.code) ?? null,
+    }))
+  })
+}
 
 /**
  * Sitemap de vuelos.siviajo.com.
@@ -17,34 +57,13 @@ export const dynamic = 'force-dynamic'
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = publicBaseUrl()
   const ahora = new Date()
-
-  const db = createAdminClient()
-  const [destinations, routes] = await Promise.all([
-    listLandingDestinations(db, { activeOnly: true }),
-    listRoutes(db, { activeOnly: true }),
-  ])
-
-  const principales = routes.filter(route => route.origin_tc_code === DEFAULT_ORIGIN)
-  const rowsByRoute = await getRecentProbesForRoutes(
-    db,
-    principales.map(route => route.id),
-    { fromDate: todayIso(ahora) }
-  )
-
-  const ultimaPorDestino = new Map<string, Date>()
-  for (const route of principales) {
-    const ultima = (rowsByRoute.get(route.id) ?? []).reduce<string | null>(
-      (max, row) => (max === null || row.probed_at > max ? row.probed_at : max),
-      null
-    )
-    if (ultima) ultimaPorDestino.set(route.destination_code, new Date(ultima))
-  }
+  const destinos = await loadSitemap()
 
   return [
     { url: `${base}/vuelos-baratos`, lastModified: ahora, changeFrequency: 'daily', priority: 1 },
-    ...destinations.map(destino => ({
+    ...destinos.map(destino => ({
       url: `${base}/vuelos-baratos/${destino.slug}`,
-      lastModified: ultimaPorDestino.get(destino.code) ?? ahora,
+      lastModified: destino.ultimaObservacion ? new Date(destino.ultimaObservacion) : ahora,
       changeFrequency: 'daily' as const,
       priority: 0.8,
     })),

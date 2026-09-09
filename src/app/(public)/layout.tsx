@@ -3,7 +3,7 @@ import { GtmScript } from '@/components/vuelos-baratos/GtmScript'
 import { PublicFooter } from '@/components/vuelos-baratos/PublicFooter'
 import { PublicHeader } from '@/components/vuelos-baratos/PublicHeader'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
-import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
+import { publicBaseUrlObject } from '@/lib/vuelos-baratos/config'
 
 /**
  * Layout de vuelos.siviajo.com: las únicas páginas del HUB sin login.
@@ -16,7 +16,7 @@ import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
-  metadataBase: new URL(publicBaseUrl()),
+  metadataBase: publicBaseUrlObject(),
   title: { default: 'Vuelos baratos | Sí, Viajo', template: '%s | Sí, Viajo' },
   openGraph: { ...OG_BASE },
 }
