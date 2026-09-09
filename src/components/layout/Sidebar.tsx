@@ -25,6 +25,8 @@ import {
   Video,
   Cog,
   TrendingUp,
+  Lightbulb,
+  Compass,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -49,6 +51,8 @@ const cuposItems: NavItem[] = [
 const productosItems: NavItem[] = [
   { name: 'Paquetes', href: '/packages', icon: Briefcase, section: 'productos' },
   { name: 'Tendencias', href: '/producto/tendencias', icon: TrendingUp, section: 'producto' },
+  { name: 'Ideas', href: '/producto/ideas', icon: Lightbulb, section: 'producto' },
+  { name: 'Perfiles', href: '/producto/perfiles', icon: Compass, section: 'producto' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
   { name: 'Diseño', href: '/packages/design', icon: Palette, section: 'diseño' },
   { name: 'Video', href: 'https://hub.siviajo.com:8095', icon: Video, section: 'diseño', external: true },

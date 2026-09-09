@@ -20,6 +20,7 @@ const LABELS: Record<string, string> = {
   'automation.serpapi_calls': 'Búsquedas en SerpAPI',
   'automation.crm_reads': 'Lectura nocturna del CRM',
   'automation.gsc_writes': 'Envío de sitemaps a Search Console',
+  'automation.vuelos_calls': 'Consultas a vuelos-siviajo (Sabre / matrix de precios)',
 }
 
 /**

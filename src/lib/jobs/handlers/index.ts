@@ -11,6 +11,9 @@ import { tcWriteHandler } from './tc-write'
 import { tcReconcileHandler } from './tc-reconcile'
 import { healthCheckHandler } from './health-check'
 import { healthDigestHandler } from './health-digest'
+import { ideaProbeHandler } from './idea-probe'
+import { ideaQuoteHandler } from './idea-quote'
+import { profileAuditHandler } from './profile-audit'
 
 /**
  * Registro de handlers: un archivo por `kind`. Las fases del loop van sumando
@@ -31,6 +34,10 @@ const HANDLERS: HandlerDefinition[] = [
   tcReconcileHandler,
   healthCheckHandler,
   healthDigestHandler,
+  // Fase 3 — Producto
+  ideaProbeHandler,
+  ideaQuoteHandler,
+  profileAuditHandler,
 ]
 
 const byKind = new Map(HANDLERS.map(h => [h.kind, h]))

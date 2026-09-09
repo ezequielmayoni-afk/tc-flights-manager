@@ -30,6 +30,9 @@ export const LANES: Record<Lane, LaneConfig> = {
   cotizador: { concurrency: 1, window: { fromHourUtc: 1, toHourUtc: 10 }, leaseSeconds: 1800 },
   // El CRM pide horario de baja carga: 02:00–06:00 ART = 05:00–09:00 UTC.
   crm: { concurrency: 1, window: { fromHourUtc: 5, toHourUtc: 9 }, leaseSeconds: 1800 },
+  // vuelos-siviajo: el matrix tarda ~90 s en frío y el scraper se loguea en
+  // siviajo.com como el cotizador: los lotes van de noche, igual que él.
+  vuelos: { concurrency: 1, window: { fromHourUtc: 1, toHourUtc: 10 }, leaseSeconds: 900 },
 }
 
 export const ALL_LANES = Object.keys(LANES) as Lane[]
