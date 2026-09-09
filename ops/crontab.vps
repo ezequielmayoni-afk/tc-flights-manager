@@ -1,19 +1,19 @@
 # Crontab de root en el VPS (148.230.72.17). Fuente de verdad: este archivo.
 # Se instala con ops/install-crontab.sh. Horas en UTC (ART = UTC-3).
 #
-# Los secretos NO van acá: hub-cron.sh los lee de /opt/hub/.env.cron (600).
+# Los secretos NO van acá: hub-cron.sh los lee de /opt/hub-cron/.env.cron (600).
 
 SHELL=/bin/bash
 PATH=/usr/local/bin:/usr/bin:/bin
 
 # ── HUB: runner de jobs y disparos agendados ──────────────────────────────
-* * * * *    /opt/hub/bin/hub-cron.sh jobs-tick
-0 6 * * *    /opt/hub/bin/hub-cron.sh refresh-packages            # import + refresh de paquetes (03:00 ART)
-15 6 * * *   /opt/hub/bin/hub-cron.sh "enqueue?schedule=daily"    # vínculos cupo↔paquete, riesgo, criterio marketing…
-30 6 * * *   /opt/hub/bin/hub-cron.sh "enqueue?schedule=nightly"  # rollup del CRM (03:30 ART, baja carga)
-0 * * * *    /opt/hub/bin/hub-cron.sh "enqueue?schedule=hourly"   # insights de Meta → guard → autopilot
-0 12 * * *   /opt/hub/bin/hub-cron.sh check-deadlines             # vencimientos de 48 h (09:00 ART)
-0 8 * * 1    /opt/hub/bin/hub-cron.sh "enqueue?schedule=weekly"   # tendencias, competencia, auditoría de perfiles (lunes 05:00 ART)
+* * * * *    /opt/hub-cron/hub-cron.sh jobs-tick
+0 6 * * *    /opt/hub-cron/hub-cron.sh refresh-packages            # import + refresh de paquetes (03:00 ART)
+15 6 * * *   /opt/hub-cron/hub-cron.sh "enqueue?schedule=daily"    # vínculos cupo↔paquete, riesgo, criterio marketing…
+30 6 * * *   /opt/hub-cron/hub-cron.sh "enqueue?schedule=nightly"  # rollup del CRM (03:30 ART, baja carga)
+0 * * * *    /opt/hub-cron/hub-cron.sh "enqueue?schedule=hourly"   # insights de Meta → guard → autopilot
+0 12 * * *   /opt/hub-cron/hub-cron.sh check-deadlines             # vencimientos de 48 h (09:00 ART)
+0 8 * * 1    /opt/hub-cron/hub-cron.sh "enqueue?schedule=weekly"   # tendencias, competencia, auditoría de perfiles (lunes 05:00 ART)
 
 # ── Bots existentes, sin cambios ──────────────────────────────────────────
 0 3 * * *    cd /root/tc-requote-bot && /usr/bin/node dist/index.js --mode=cron >> /var/log/tc-requote-bot.log 2>&1

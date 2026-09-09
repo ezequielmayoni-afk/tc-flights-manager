@@ -22,6 +22,8 @@ Es el runtime real de todo: HUB **no** corre en Vercel (`vercel.json` era decora
 standalone a `/opt/hub` → `pm2 delete hub && PORT=3001 pm2 start server.js --name hub`.
 
 - `.env.local` de producción vive en `/opt/hub/.env.local` y **no** se sube en el rsync.
+- El rsync lleva `--delete`: **todo lo que no viene en el build desaparece de `/opt/hub`**. Por eso el script del
+  cron y su secreto viven en `/opt/hub-cron/` (el primer deploy después de la Fase 0 los borró de `/opt/hub/bin`).
 - Un deploy reinicia PM2: los jobs en curso pierden el proceso, pero el lease vence y el próximo tick los
   reencola (`requeue_stale_jobs`). Por eso todo job tiene que ser idempotente.
 
@@ -31,7 +33,7 @@ Fuente de verdad: `ops/crontab.vps`. Se instala con `ops/install-crontab.sh` (ha
 `/root/crontab.backup.*`). Horas en UTC (ART = UTC−3).
 
 `ops/hub-cron.sh <ruta>` hace el `curl` a `http://127.0.0.1:3001/api/cron/<ruta>` con
-`Authorization: Bearer $CRON_SECRET`, leído de **`/opt/hub/.env.cron`** (root, modo 600). El crontab no contiene
+`Authorization: Bearer $CRON_SECRET`, leído de **`/opt/hub-cron/.env.cron`** (root, modo 600). El crontab no contiene
 secretos. Log: `/var/log/hub-cron.log` (los ticks vacíos no se loguean).
 
 | Cuándo (UTC) | Ruta | Qué hace |
@@ -57,7 +59,7 @@ Cola en Postgres (`hub_jobs`), drenada por el tick. Un job por `kind`, handler e
 - **Dedupe**: `dedupe_key` único mientras el job esté `queued`/`running`.
 
 Depurar: `SELECT id, kind, status, attempts, last_error, created_at FROM hub_jobs ORDER BY id DESC LIMIT 50;`
-Disparar un tick a mano: `ssh ... '/opt/hub/bin/hub-cron.sh jobs-tick'`.
+Disparar un tick a mano: `ssh ... '/opt/hub-cron/hub-cron.sh jobs-tick'`.
 
 ## Tendencias (Fase 1 del loop)
 
@@ -79,7 +81,7 @@ Corre sola los lunes a las 08:00 UTC (`enqueue?schedule=weekly` → jobs `trend.
 
 ## Rotación de secretos
 
-- `CRON_SECRET`: cambiarlo en `/opt/hub/.env.local` **y** en `/opt/hub/.env.cron`, después `pm2 restart hub`.
+- `CRON_SECRET`: cambiarlo en `/opt/hub/.env.local` **y** en `/opt/hub-cron/.env.cron`, después `pm2 restart hub`.
 - `HUB_API_KEY`: también la usa el bot del CRM (`/api/bot/packages`): coordinar con el equipo del CRM.
 - Token de Meta, `SERPAPI_API_KEY`, credenciales del RDS del CRM: sólo en `/opt/hub/.env.local`.
 
