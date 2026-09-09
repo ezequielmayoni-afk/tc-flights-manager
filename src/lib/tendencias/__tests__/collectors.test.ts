@@ -3,6 +3,7 @@ import { longWeekends } from '../collectors/feriados'
 import { summarizeSeries } from '../collectors/bcra'
 import { extractDestination } from '../collectors/autocomplete'
 import { aggregateByDestination } from '../collectors/search-console'
+import { crossNormalize } from '../collectors/serpapi-trends'
 
 describe('longWeekends', () => {
   const feriados = [
@@ -107,5 +108,28 @@ describe('registerSuggestion + finalizeDiscoveries', () => {
     expect(signals.has('familia')).toBe(false)
     // Maldivas es semilla: entra aunque sólo apareció tras "luna de miel"
     expect(signals.get('maldivas')).toMatchObject({ rawScore: 1, metadata: { placeMentions: 0 } })
+  })
+})
+
+describe('crossNormalize', () => {
+  it('reescala cada grupo para que el ancla valga lo mismo que en el primero', () => {
+    const batches = [
+      [{ slug: 'brasil', name: 'Brasil', score: 100 }, { slug: 'bariloche', name: 'Bariloche', score: 40 }],
+      // En este grupo el ancla vale 50: todo el grupo se duplica.
+      [{ slug: 'brasil', name: 'Brasil', score: 50 }, { slug: 'aruba', name: 'Aruba', score: 20 }, { slug: 'salta', name: 'Salta', score: 60 }],
+    ]
+    const n = crossNormalize(batches, 'brasil')
+    expect(n.get('brasil')).toMatchObject({ score: 100, batch: 1, factor: 1 })
+    expect(n.get('bariloche')).toMatchObject({ score: 40, batch: 1 })
+    expect(n.get('aruba')).toMatchObject({ score: 40, batch: 2, factor: 2, comparable: true })
+    expect(n.get('salta')?.score).toBe(100) // 120 se recorta a 100
+  })
+
+  it('si el ancla no tiene datos en un grupo, ese grupo queda sin reescalar y marcado', () => {
+    const n = crossNormalize([
+      [{ slug: 'brasil', name: 'Brasil', score: 80 }],
+      [{ slug: 'brasil', name: 'Brasil', score: 0 }, { slug: 'aruba', name: 'Aruba', score: 30 }],
+    ], 'brasil')
+    expect(n.get('aruba')).toMatchObject({ score: 30, comparable: false, factor: 1 })
   })
 })
