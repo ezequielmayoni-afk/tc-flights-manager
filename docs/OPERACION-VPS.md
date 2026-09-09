@@ -66,14 +66,18 @@ Disparar un tick a mano: `ssh ... '/opt/hub-cron/hub-cron.sh jobs-tick'`.
 Corre sola los lunes a las 08:00 UTC (`enqueue?schedule=weekly` → jobs `trend.run` y `demand.signals`) o con
 "Correr ahora" en `/producto/tendencias` (sección `producto`: admin, marketing y producto).
 
-- `trend.run` (lane `serpapi`, flag `automation.serpapi_calls`, presupuesto `serpapi`): Autocomplete descubre
-  destinos (gratis) → Google Trends vía SerpAPI valida los 20 más mencionados (**8 llamadas por corrida**) →
-  cruce con `packages` + `package_destinations` (alias ES↔EN en `src/lib/tendencias/config.ts`) → clasificación
-  opportunity | gap | saturated | declining → alertas. Escribe `trend_runs`, `trend_destinations`, `trend_alerts`.
-  Tarda ~1 min. El momentum sólo se calcula contra una corrida de menos de 21 días.
+- `trend.run` (lane `serpapi`, flag `automation.serpapi_calls`, presupuesto `serpapi`): sólo demanda de mercado,
+  nada de siviajo.com. (1) Autocomplete de Google con expansión por letra descubre destinos (gratis, ~110
+  consultas); (2) consultas relacionadas de "paquetes", "viajes", "vuelos", "vacaciones", "all inclusive",
+  "escapadas", "crucero" en Trends AR (7 llamadas) dan volumen relativo e "en alza"; (3) Google Trends compara los
+  17 candidatos más fuertes con "paquetes X", "viaje X" y "vuelos X" en grupos anclados (12 llamadas) + relacionadas
+  de los 4 primeros (4); YouTube corrobora (gratis, ~60 consultas); (4) "tendencias ahora" de Argentina (1 llamada).
+  **24 llamadas a SerpAPI por corrida.** Cruce con `packages` + `package_destinations` (alias ES↔EN en
+  `src/lib/tendencias/config.ts`) → opportunity | gap | saturated | declining → alertas. Escribe `trend_runs`
+  (con `buzz`: lo que se busca y de lo que se habla), `trend_destinations` (con `signals` por fuente), `trend_alerts`.
+  Tarda ~3 min. El momentum sólo se calcula contra una corrida de menos de 21 días.
 - `demand.signals` (lane `default`, sin proveedor): dólar minorista/mayorista del BCRA (API v4) y blue con brecha,
-  fines de semana largos (argentinadatos) y Search Console por destino (Service Account de Drive, propiedad
-  `GOOGLE_SEARCH_CONSOLE_SITE_URL`, default `https://www.siviajo.com/`). Upsert en `demand_signals_weekly`.
+  fines de semana largos (argentinadatos). Upsert en `demand_signals_weekly`.
 - Código: `src/lib/tendencias/**`; cliente `src/lib/serpapi/client.ts` (registra cada llamada en `external_calls`).
 - Requiere `SERPAPI_API_KEY` en `/opt/hub/.env.local` (misma cuenta que usaba media-os).
 - Depurar: `SELECT week_label, status, trigger, duration_ms, error FROM trend_runs ORDER BY created_at DESC LIMIT 5;`

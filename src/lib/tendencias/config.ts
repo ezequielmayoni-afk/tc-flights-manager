@@ -161,7 +161,11 @@ export const CANONICAL_SLUGS: Record<string, string> = {
   'islas-canarias': 'canarias',
   'dubai-emiratos': 'dubai',
   'emiratos': 'dubai',
-  'nueva-zelanda': 'nueva-zelanda',
+  'san-andres-colombia': 'san-andres',
+  'san-andres-islas': 'san-andres',
+  'san-pablo': 'sao-paulo',
+  'punta-cana-2026': 'punta-cana',
+  'punta-cana-2027': 'punta-cana',
 }
 
 export interface SeedDestination {
@@ -189,26 +193,42 @@ export function slugify(name: string): string {
     .replace(/^-|-$/g, '')
 }
 
-/** Plantillas de búsqueda (Google Trends compara "paquete {destino}"). */
-export const QUERY_TEMPLATES = [
-  'viaje a {destination}',
-  'paquete {destination}',
-  '{destination} todo incluido',
-  'vuelos a {destination}',
-]
+/**
+ * Plantillas que se comparan en Google Trends para cada destino. Trends
+ * matchea todas las búsquedas que contienen esas palabras en cualquier orden:
+ * "paquetes brasil" incluye "paquetes a brasil desde córdoba".
+ */
+export const TRENDS_TEMPLATES = ['paquetes {d}', 'viaje {d}', 'vuelos {d}'] as const
+
+/** Plantilla para pedir las consultas relacionadas de un destino (intención de compra). */
+export const TRENDS_RELATED_TEMPLATE = 'paquetes {d}'
 
 /**
- * Pesos del score compuesto. Sólo fuentes de demanda de mercado; Search
- * Console mide SEO propio y por eso queda en 0 (se guarda igual como señal).
+ * Términos genéricos cuyas consultas relacionadas (top y en alza) revelan
+ * qué destinos se buscan y con qué volumen relativo, sin lista previa.
+ */
+export const GENERIC_TREND_SEEDS = ['paquetes', 'viajes', 'vuelos', 'vacaciones', 'all inclusive', 'escapadas', 'crucero']
+
+/**
+ * Pesos del score compuesto. Se reparten sólo entre las fuentes que
+ * respondieron en la corrida, así una fuente caída no hunde a todos.
+ * Sólo demanda de mercado: nada de siviajo.com.
  */
 export const SOURCE_WEIGHTS: Record<string, number> = {
-  google_trends: 0.7,
-  autocomplete: 0.3,
-  search_console: 0,
-  amadeus_price: 0,
-  news_events: 0,
-  reddit: 0,
+  google_trends: 0.45,   // comparación directa entre destinos (3 plantillas, con ancla)
+  google_related: 0.2,   // volumen relativo en las relacionadas de "paquetes", "viajes", "vuelos"…
+  autocomplete: 0.2,     // qué completa Google Argentina (con expansión por letra)
+  youtube: 0.1,          // qué completa YouTube: inspiración y vlogs
+  trending_now: 0.05,    // el destino aparece en "tendencias ahora" de Argentina
 }
+
+/** Grupos de comparación por plantilla: 5 + 4 + 4 + 4 = 17 destinos validados. */
+export const TRENDS_COMPARISON_GROUPS = 4
+export const TOP_DISCOVERED_FOR_VALIDATION = 17
+/** Destinos para los que se piden consultas relacionadas propias. */
+export const TRENDS_RELATED_TOP = 4
+/** Llamadas a SerpAPI por corrida: 3 × 4 comparaciones + 4 relacionadas + 7 genéricas + 1 tendencias ahora = 24. */
+export const SERPAPI_CALLS_PER_RUN = TRENDS_TEMPLATES.length * TRENDS_COMPARISON_GROUPS + TRENDS_RELATED_TOP + GENERIC_TREND_SEEDS.length + 1
 
 /** Umbrales de momentum (% de cambio contra la corrida anterior). */
 export const MOMENTUM_THRESHOLDS = {
@@ -219,12 +239,6 @@ export const MOMENTUM_THRESHOLDS = {
 
 /** Score mínimo para que un destino cuente como relevante. */
 export const MIN_TREND_SCORE = 10
-
-/** Llamadas a SerpAPI por corrida: 4 comparaciones de 5 destinos + 4 de consultas relacionadas. */
-export const MAX_SERPAPI_CALLS_PER_RUN = 8
-
-/** Cuántos destinos descubiertos por Autocomplete se validan en Google Trends. */
-export const TOP_DISCOVERED_FOR_VALIDATION = 20
 
 /**
  * Para calcular momentum sólo sirve una corrida reciente: contra una de hace

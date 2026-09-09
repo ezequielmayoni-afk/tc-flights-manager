@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { longWeekends } from '../collectors/feriados'
 import { summarizeSeries } from '../collectors/bcra'
-import { extractDestination } from '../collectors/autocomplete'
-import { aggregateByDestination } from '../collectors/search-console'
+import { extractDestination, finalizeDiscoveries, positionWeight, registerSuggestion, type Discovered } from '../collectors/autocomplete'
 import { crossNormalize } from '../collectors/serpapi-trends'
+import { buildKnown, matchKnownDestination, stripOrigin } from '../collectors/known'
+import { countsAsTravelDemand, isTravelQuery } from '../travel-terms'
+import { parseRisingValue, scoreRelatedLists } from '../collectors/google-related'
+import { processTrending } from '../collectors/trending-now'
 
 describe('longWeekends', () => {
   const feriados = [
@@ -41,8 +44,8 @@ describe('summarizeSeries', () => {
     expect(s.last).toBe(1540)
     expect(s.lastDate).toBe('2026-09-08')
     expect(s.weekAvg).toBe(1530)
-    expect(s.change7dPct).toBe(2.7)   // vs 1500 (2026-09-01, el último ≤ 7 días atrás)
-    expect(s.change30dPct).toBe(10)   // vs 1400
+    expect(s.change7dPct).toBe(2.7)
+    expect(s.change30dPct).toBe(10)
   })
 
   it('serie vacía', () => {
@@ -57,6 +60,7 @@ describe('extractDestination', () => {
     expect(extractDestination('vacaciones en bariloche invierno', 'vacaciones en ')).toBe('Bariloche')
     expect(extractDestination('todo incluido cancún', 'todo incluido ')).toBe('Cancún')
     expect(extractDestination('cancun desde buenos aires', 'viaje a ')).toBe('Cancun')
+    expect(extractDestination('mendoza paquetes', '')).toBe('Mendoza')
   })
 
   it('respeta nombres compuestos y artículos iniciales', () => {
@@ -72,42 +76,100 @@ describe('extractDestination', () => {
   it('sin destino devuelve null', () => {
     expect(extractDestination('viaje a ', 'viaje a ')).toBeNull()
     expect(extractDestination('vacaciones julio 2027', 'vacaciones julio ')).toBeNull()
-  })
-})
-
-describe('aggregateByDestination', () => {
-  it('suma impresiones y clics por destino semilla', () => {
-    const rows = [
-      { query: 'paquetes a punta cana', clicks: 10, impressions: 500, ctr: 0.02, position: 3 },
-      { query: 'punta cana todo incluido', clicks: 5, impressions: 300, ctr: 0.02, position: 5 },
-      { query: 'viajes a roma', clicks: 1, impressions: 50, ctr: 0.02, position: 8 },
-    ]
-    const byDest = aggregateByDestination(rows)
-    expect(byDest.get('punta-cana')).toMatchObject({ impressions: 800, clicks: 15 })
-    expect(byDest.get('roma')).toMatchObject({ impressions: 50 })
-    expect(byDest.get('cancun')).toBeUndefined()
+    expect(extractDestination('paquetes despegar', '')).toBeNull()
+    expect(extractDestination('viaje a las estrellas', 'viaje a ')).toBeNull()
   })
 })
 
 describe('registerSuggestion + finalizeDiscoveries', () => {
-  it('descarta lo que nunca apareció detrás de una semilla de lugar y unifica variantes', async () => {
-    const { registerSuggestion, finalizeDiscoveries } = await import('../collectors/autocomplete')
-    const discovered = new Map()
-    registerSuggestion(discovered, 'viaje a cancun todo incluido', 'viaje a ')
-    registerSuggestion(discovered, 'paquete a cancun', 'paquete a ')
-    registerSuggestion(discovered, 'viaje en grupo de personas', 'viaje en grupo ')
-    registerSuggestion(discovered, 'viaje en grupo familia', 'viaje en grupo ')
-    registerSuggestion(discovered, 'vuelos a curazao', 'vuelos a ')
-    registerSuggestion(discovered, 'todo incluido curaçao', 'todo incluido ')
-    registerSuggestion(discovered, 'luna de miel maldivas', 'luna de miel ')
+  it('descarta lo que nunca apareció detrás de una semilla de lugar, pesa por posición y unifica variantes', () => {
+    const discovered = new Map<string, Discovered>()
+    registerSuggestion(discovered, 'viaje a cancun todo incluido', 'viaje a ', 'viaje a', 1)
+    registerSuggestion(discovered, 'paquetes a cancun', 'paquetes a c', 'paquetes a', 3)
+    registerSuggestion(discovered, 'viaje en grupo de personas', 'viaje en grupo ', 'viaje en grupo', 1)
+    registerSuggestion(discovered, 'vuelos a curazao', 'vuelos a ', 'vuelos a', 2)
+    registerSuggestion(discovered, 'todo incluido curaçao', 'todo incluido ', 'todo incluido', 1)
+    registerSuggestion(discovered, 'luna de miel maldivas', 'luna de miel ', 'luna de miel', 5)
 
     const signals = finalizeDiscoveries(discovered)
-    expect(signals.get('cancun')).toMatchObject({ rawScore: 2, normalizedScore: 100, metadata: { name: 'Cancún', placeMentions: 2 } })
-    expect(signals.get('curacao')).toMatchObject({ rawScore: 2, metadata: { name: 'Curaçao', placeMentions: 1 } })
+    expect(signals.get('cancun')).toMatchObject({ rawScore: 1.8, normalizedScore: 95, metadata: { name: 'Cancún', mentions: 2, placeMentions: 2 } })
+    expect(signals.get('curacao')).toMatchObject({ rawScore: 1.9, normalizedScore: 100, metadata: { name: 'Curaçao', placeMentions: 1 } })
     expect(signals.has('personas')).toBe(false)
-    expect(signals.has('familia')).toBe(false)
-    // Maldivas es semilla: entra aunque sólo apareció tras "luna de miel"
-    expect(signals.get('maldivas')).toMatchObject({ rawScore: 1, metadata: { placeMentions: 0 } })
+    expect(signals.get('maldivas')).toMatchObject({ metadata: { placeMentions: 0 } }) // semilla: entra igual
+    expect(positionWeight(1)).toBe(1)
+    expect(positionWeight(10)).toBe(0.1)
+  })
+
+  it('en modo conocido (YouTube) sólo pasan destinos ya conocidos', () => {
+    const discovered = new Map<string, Discovered>()
+    registerSuggestion(discovered, 'viaje a la luna', 'viaje a ', 'viaje a', 1)
+    registerSuggestion(discovered, 'viaje a japon', 'viaje a ', 'viaje a', 2)
+    registerSuggestion(discovered, 'viaje a villa traful', 'viaje a ', 'viaje a', 3)
+    const signals = finalizeDiscoveries(discovered, buildKnown())
+    expect([...signals.keys()]).toEqual(['japon'])
+  })
+})
+
+describe('matchKnownDestination', () => {
+  const known = buildKnown(new Map([['villa-traful', 'Villa Traful']]))
+  it('reconoce destinos y variantes dentro de un texto', () => {
+    expect(matchKnownDestination('paquetes a florianopolis 2026', known)).toBe('florianopolis')
+    expect(matchKnownDestination('vuelos a curazao baratos', known)).toBe('curacao')
+    expect(matchKnownDestination('paquetes a brasil desde córdoba', known)).toBe('brasil')
+    expect(matchKnownDestination('villa traful', known)).toBe('villa-traful')
+    expect(matchKnownDestination('oca seguimiento de paquetes', known)).toBeNull()
+    expect(matchKnownDestination('rio cuarto', known)).toBeNull()
+  })
+
+  it('lo que sigue a "desde" o "cerca de" es origen, no destino', () => {
+    expect(stripOrigin('vuelos a buenos aires desde tucuman')).toBe('vuelos a buenos aires')
+    expect(matchKnownDestination('vuelos a buenos aires desde tucuman', known)).toBeNull()
+    expect(matchKnownDestination('paquetes turisticos desde rosario', known)).toBeNull()
+    expect(matchKnownDestination('escapadas cerca de rosario', known)).toBeNull()
+    expect(matchKnownDestination('paquetes a brasil desde córdoba', known)).toBe('brasil')
+  })
+})
+
+describe('travel-terms', () => {
+  it('distingue viajes de liquidaciones de vacaciones y agencias', () => {
+    expect(isTravelQuery('calculo vacaciones no gozadas por renuncia')).toBe(false)
+    expect(isTravelQuery('travel sale 2026')).toBe(true)
+    expect(isTravelQuery('arajet')).toBe(true)
+    expect(countsAsTravelDemand('vacaciones', 'nuestra señora de la asuncion')).toBe(false)
+    expect(countsAsTravelDemand('paquetes', 'villa traful')).toBe(true)
+  })
+})
+
+describe('scoreRelatedLists', () => {
+  it('toma el top más alto y suma el empuje de las que están en alza', () => {
+    const signals = scoreRelatedLists([
+      { seed: 'paquetes', rising: [{ query: 'paquetes a florianopolis 2026', value: 'Aumento puntual', slug: 'florianopolis' }, { query: 'msc cruceros', value: '+3.800 %', slug: null }], top: [{ query: 'paquetes brasil', value: 83, slug: 'brasil' }, { query: 'punta cana', value: 23, slug: 'punta-cana' }] },
+      { seed: 'vuelos', rising: [{ query: 'vuelos a brasil', value: '+150 %', slug: 'brasil' }], top: [{ query: 'vuelos a brasil', value: 40, slug: 'brasil' }] },
+    ])
+    expect(signals.get('brasil')).toMatchObject({ normalizedScore: 98, metadata: { topValue: 83, risingBoost: 15 } })
+    expect(signals.get('florianopolis')).toMatchObject({ normalizedScore: 40 })
+    expect(signals.get('punta-cana')?.normalizedScore).toBe(23)
+    expect(parseRisingValue('+3.800 %')).toBe(3800)
+    expect(parseRisingValue('Aumento puntual')).toBeNull()
+  })
+})
+
+describe('processTrending', () => {
+  it('se queda con viajes y con temas que nombran un destino, en escala logarítmica', () => {
+    const known = buildKnown()
+    const { items, destinations } = processTrending([
+      { query: 'boca juniors - são paulo', search_volume: 200000, categories: [{ id: 17, name: 'Sports' }] },
+      { query: 'aerolineas argentinas paro', search_volume: 20000, categories: [{ id: 19, name: 'Travel and Transportation' }] },
+      { query: 'temporal en bariloche', search_volume: 5000, categories: [{ id: 20, name: 'Climate' }] },
+      { query: 'vuelos a salta', search_volume: 2000, categories: [{ id: 19, name: 'Travel and Transportation' }] },
+      { query: 'gimnasia y esgrima - boca juniors', search_volume: 500000, categories: [{ id: 17, name: 'Sports' }], trend_breakdown: ['gimnasia de mendoza'] },
+      { query: 'mirtha legrand', search_volume: 100000, categories: [{ id: 4, name: 'Entertainment' }] },
+    ], known)
+    expect(items.map(i => i.query)).toEqual(['aerolineas argentinas paro', 'temporal en bariloche', 'vuelos a salta'])
+    // Un temporal se muestra pero no suma al score; un partido ni se muestra.
+    expect(destinations.has('bariloche')).toBe(false)
+    expect(destinations.has('mendoza')).toBe(false)
+    expect(destinations.get('salta')).toMatchObject({ rawScore: 2000, normalizedScore: 100 })
   })
 })
 
@@ -115,14 +177,13 @@ describe('crossNormalize', () => {
   it('reescala cada grupo para que el ancla valga lo mismo que en el primero', () => {
     const batches = [
       [{ slug: 'brasil', name: 'Brasil', score: 100 }, { slug: 'bariloche', name: 'Bariloche', score: 40 }],
-      // En este grupo el ancla vale 50: todo el grupo se duplica.
       [{ slug: 'brasil', name: 'Brasil', score: 50 }, { slug: 'aruba', name: 'Aruba', score: 20 }, { slug: 'salta', name: 'Salta', score: 60 }],
     ]
     const n = crossNormalize(batches, 'brasil')
     expect(n.get('brasil')).toMatchObject({ score: 100, batch: 1, factor: 1 })
     expect(n.get('bariloche')).toMatchObject({ score: 40, batch: 1 })
     expect(n.get('aruba')).toMatchObject({ score: 40, batch: 2, factor: 2, comparable: true })
-    expect(n.get('salta')?.score).toBe(100) // 120 se recorta a 100
+    expect(n.get('salta')?.score).toBe(100)
   })
 
   it('si el ancla no tiene datos en un grupo, ese grupo queda sin reescalar y marcado', () => {

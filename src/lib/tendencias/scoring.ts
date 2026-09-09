@@ -41,6 +41,7 @@ export function momentumFor(trendScore: number, prevScore: number | null): { cha
  * Recorre TODOS los destinos descubiertos (no sólo la lista semilla): si
  * Autocomplete encuentra "Albania" trending, se puntúa igual con región
  * "descubierto". Los semilla entran siempre, aunque con 0, para continuidad.
+ * Los pesos se reparten entre las fuentes que respondieron en la corrida.
  */
 export function computeScores(
   collectorResults: CollectorResult[],
@@ -61,32 +62,22 @@ export function computeScores(
   }
   for (const d of seeds) {
     allSlugs.add(d.slug)
-    if (!nameMap.has(d.slug)) nameMap.set(d.slug, d.name)
+    nameMap.set(d.slug, d.name) // el nombre semilla (con acento, en castellano) gana
   }
-  // El nombre semilla (con acento, en castellano) gana sobre el que extrajo Autocomplete.
-  for (const d of seeds) nameMap.set(d.slug, d.name)
 
   const signalsBySource = new Map<string, Map<string, number>>()
   for (const result of collectorResults) {
+    if (result.destinations.size === 0) continue
     signalsBySource.set(result.source, new Map([...result.destinations].map(([slug, s]) => [slug, s.normalizedScore])))
   }
-  const signal = (source: string, slug: string) => signalsBySource.get(source)?.get(slug) ?? 0
+  const activeWeights = Object.entries(SOURCE_WEIGHTS).filter(([source, w]) => w > 0 && signalsBySource.has(source))
+  const totalWeight = activeWeights.reduce((s, [, w]) => s + w, 0) || 1
 
   const destinations: TrendDestination[] = [...allSlugs].map(slug => {
-    const signals = {
-      googleTrends: signal('google_trends', slug),
-      autocomplete: signal('autocomplete', slug),
-      searchConsole: signal('search_console', slug),
-      amadeusPrice: 0,
-      newsEvents: 0,
-      reddit: 0,
-    }
+    const signals: Record<string, number> = {}
+    for (const source of Object.keys(SOURCE_WEIGHTS)) signals[source] = signalsBySource.get(source)?.get(slug) ?? 0
 
-    const trendScore = Math.round(
-      signals.googleTrends * SOURCE_WEIGHTS.google_trends +
-      signals.autocomplete * SOURCE_WEIGHTS.autocomplete +
-      signals.searchConsole * SOURCE_WEIGHTS.search_console
-    )
+    const trendScore = Math.round(activeWeights.reduce((sum, [source, w]) => sum + signals[source] * w, 0) / totalWeight)
 
     const prevScore = prevWeekScores.get(slug) ?? null
     const { changePct, momentum } = momentumFor(trendScore, prevScore)

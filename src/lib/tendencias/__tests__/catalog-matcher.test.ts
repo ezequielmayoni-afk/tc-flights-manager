@@ -34,7 +34,7 @@ describe('catalogSlugMatches', () => {
 function dest(slug: string, name = slug): TrendDestination {
   return {
     destination: name, destinationSlug: slug, region: 'caribe', trendScore: 50, rank: 1,
-    signals: { googleTrends: 0, autocomplete: 0, searchConsole: 0, amadeusPrice: 0, newsEvents: 0, reddit: 0 },
+    signals: {},
     prevWeekScore: null, changePct: null, momentum: 'new', hasPackages: false, matchingPackageCount: 0,
     matchingPackageIds: [], cheapestPackagePrice: null, classification: 'declining', relatedQueries: [], rawSignals: {},
   }

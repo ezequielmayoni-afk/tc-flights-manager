@@ -1,6 +1,5 @@
 import { collectFx } from './collectors/bcra'
 import { collectFeriados } from './collectors/feriados'
-import { collectSearchConsole } from './collectors/search-console'
 import { isoWeekLabel } from './config'
 import type { Db } from '@/lib/jobs/types'
 
@@ -26,8 +25,8 @@ interface SignalRow {
  *
  * - bcra_fx: dólar minorista/mayorista (BCRA) y blue con brecha.
  * - feriados: fines de semana largos en los próximos 120 días.
- * - search_console: impresiones y clics de 28 días por destino semilla.
  * La señal crm_wa se suma en la Fase 8 cuando exista el rollup del CRM.
+ * Search Console no entra: Tendencias mide el mercado, no a siviajo.com.
  */
 export async function collectDemandSignals(ctx: {
   db: Db
@@ -60,21 +59,6 @@ export async function collectDemandSignals(ctx: {
       metadata: { longWeekends: feriados.longWeekends, feriadosCount: feriados.feriados.length, next: feriados.longWeekends[0] ?? null },
       job_id: jobId,
     })
-  }
-
-  const sc = await collectSearchConsole()
-  sources.search_console = !sc.error && sc.destinations.size > 0
-  if (sc.error) errors.push(`search_console ${sc.error}`)
-  if (sources.search_console) {
-    let totalImpressions = 0
-    let totalClicks = 0
-    for (const [slug, signal] of sc.destinations) {
-      const meta = signal.metadata as { impressions: number; clicks: number }
-      totalImpressions += meta.impressions
-      totalClicks += meta.clicks
-      rows.push({ week_label: weekLabel, destination_code: slug, source: 'search_console', value: meta.impressions, metadata: signal.metadata, job_id: jobId })
-    }
-    rows.push({ week_label: weekLabel, destination_code: '*', source: 'search_console', value: totalImpressions, metadata: { impressions: totalImpressions, clicks: totalClicks, destinations: sc.destinations.size }, job_id: jobId })
   }
 
   if (rows.length > 0) {

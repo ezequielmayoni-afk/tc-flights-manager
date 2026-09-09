@@ -90,9 +90,11 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
                 <th className="px-3 py-2">Región</th>
                 <th className="px-3 py-2 text-right">Score</th>
                 <th className="px-3 py-2">Momentum</th>
-                <th className="px-3 py-2 text-right" title="Google Trends (SerpAPI)">Trends</th>
-                <th className="px-3 py-2 text-right" title="Google Autocomplete">Autoc.</th>
-                <th className="px-3 py-2 text-right" title="Impresiones en Search Console (no suma al score)">SC</th>
+                <th className="px-3 py-2 text-right" title="Google Trends: comparación directa con 'paquetes X', 'viaje X' y 'vuelos X' (45 %)">Trends</th>
+                <th className="px-3 py-2 text-right" title="Volumen relativo en las búsquedas relacionadas de 'paquetes', 'viajes', 'vuelos'… (20 %)">Relac.</th>
+                <th className="px-3 py-2 text-right" title="Qué completa Google Argentina (20 %)">Autoc.</th>
+                <th className="px-3 py-2 text-right" title="Qué completa YouTube (10 %)">YouTube</th>
+                <th className="px-3 py-2 text-right" title="Aparece en 'tendencias ahora' de Argentina (5 %)">Ahora</th>
                 <th className="px-3 py-2">Clasificación</th>
                 <th className="px-3 py-2 text-right">Paquetes</th>
                 <th className="px-3 py-2 text-right">Desde</th>
@@ -113,9 +115,9 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
                     <td className={`px-3 py-2 ${mom.className}`}>
                       {mom.label}{d.change_pct !== null && <span className="ml-1 text-xs tabular-nums">({d.change_pct > 0 ? '+' : ''}{d.change_pct}%)</span>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.signal_google_trends}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.signal_autocomplete}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-gray-500">{d.signal_search_console}</td>
+                    {(['google_trends', 'google_related', 'autocomplete', 'youtube', 'trending_now'] as const).map(source => (
+                      <td key={source} className={`px-3 py-2 text-right tabular-nums ${d.signals[source] ? 'text-gray-700' : 'text-gray-300'}`}>{d.signals[source] ?? 0}</td>
+                    ))}
                     <td className="px-3 py-2"><span className={`rounded px-1.5 py-0.5 text-xs font-medium ${cls.className}`}>{cls.label}</span></td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.matching_package_count || '—'}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.cheapest_package_price ? `USD ${Math.round(d.cheapest_package_price).toLocaleString('es-AR')}` : '—'}</td>

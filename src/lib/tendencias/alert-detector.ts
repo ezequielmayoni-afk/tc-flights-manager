@@ -1,4 +1,5 @@
-import type { TrendDestination, TrendAlert } from './types'
+import { isBreakout, parseRisingValue } from './collectors/google-related'
+import type { GenericRelatedList, TrendDestination, TrendAlert } from './types'
 
 const SEVERITY_ORDER = { critical: 0, warning: 1, info: 2 } as const
 
@@ -70,4 +71,40 @@ export function detectAlerts(destinations: TrendDestination[]): TrendAlert[] {
 
   alerts.sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity])
   return alerts
+}
+
+/**
+ * Consultas genéricas en alza fuerte que nombran un destino ("paquetes a
+ * florianopolis 2026", "msc cruceros +3.800 %"): una alerta informativa por
+ * destino, salvo que ya tenga una de demanda en esta corrida.
+ */
+const MAX_RISING_ALERTS = 8
+
+export function detectRisingQueryAlerts(lists: GenericRelatedList[], destinations: TrendDestination[], existing: TrendAlert[]): TrendAlert[] {
+  const bySlug = new Map(destinations.map(d => [d.destinationSlug, d]))
+  const covered = new Set(existing.filter(a => a.alertType === 'demand_spike').map(a => a.destination))
+  const alerts: TrendAlert[] = []
+  for (const list of lists) {
+    for (const r of list.rising) {
+      if (!r.slug) continue
+      const dest = bySlug.get(r.slug)
+      if (!dest || covered.has(dest.destination)) continue
+      const pct = parseRisingValue(r.value)
+      if (!isBreakout(r.value) && (pct === null || pct < 100)) continue
+      covered.add(dest.destination)
+      alerts.push({
+        destination: dest.destination,
+        alertType: 'demand_spike',
+        severity: dest.hasPackages ? 'info' : 'warning',
+        title: `En alza en Google: "${r.query}" (${r.value})`,
+        description: dest.hasPackages
+          ? `La búsqueda "${r.query}" está creciendo en Argentina. Tenés ${dest.matchingPackageCount} paquete(s) de ${dest.destination}.`
+          : `La búsqueda "${r.query}" está creciendo en Argentina y no tenés paquetes de ${dest.destination}.`,
+        source: 'google_related',
+        data: { query: r.query, value: r.value, seed: list.seed, destinationSlug: dest.destinationSlug, trendScore: dest.trendScore, hasPackages: dest.hasPackages },
+      })
+    }
+  }
+  const order = { critical: 0, warning: 1, info: 2 }
+  return alerts.sort((a, b) => order[a.severity] - order[b.severity]).slice(0, MAX_RISING_ALERTS)
 }

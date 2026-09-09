@@ -1,5 +1,5 @@
 import type { Db, JobRow } from '@/lib/jobs/types'
-import type { AlertSeverity, AlertType, Classification, Momentum, RelatedQuery } from './types'
+import type { AlertSeverity, AlertType, Classification, Momentum, RelatedQuery, TrendBuzz } from './types'
 
 /** Lecturas para la pantalla y la API de Tendencias. */
 
@@ -9,6 +9,7 @@ export interface TrendRunRow {
   trigger: 'cron' | 'manual'
   status: 'running' | 'completed' | 'failed'
   sources_collected: Record<string, boolean>
+  buzz: Partial<TrendBuzz> | null
   catalog_snapshot_count: number
   duration_ms: number | null
   error: string | null
@@ -27,7 +28,7 @@ export interface TrendDestinationRow {
   rank: number
   signal_google_trends: number
   signal_autocomplete: number
-  signal_search_console: number
+  signals: Record<string, number>
   prev_week_score: number | null
   change_pct: number | null
   momentum: Momentum
@@ -66,7 +67,7 @@ export interface DemandSignalRow {
   collected_at: string
 }
 
-const DESTINATION_COLUMNS = 'id, destination, destination_slug, region, trend_score, rank, signal_google_trends, signal_autocomplete, signal_search_console, prev_week_score, change_pct, momentum, has_packages, matching_package_count, matching_package_ids, cheapest_package_price, classification, related_queries'
+const DESTINATION_COLUMNS = 'id, destination, destination_slug, region, trend_score, rank, signal_google_trends, signal_autocomplete, signals, prev_week_score, change_pct, momentum, has_packages, matching_package_count, matching_package_ids, cheapest_package_price, classification, related_queries'
 
 export async function listRuns(db: Db, limit = 12): Promise<TrendRunRow[]> {
   const { data } = await db.from('trend_runs').select('*').order('created_at', { ascending: false }).limit(limit)
@@ -89,7 +90,7 @@ export async function getRunDestinations(db: Db, runId: string): Promise<TrendDe
     trend_score: Number(d.trend_score),
     signal_google_trends: Number(d.signal_google_trends),
     signal_autocomplete: Number(d.signal_autocomplete),
-    signal_search_console: Number(d.signal_search_console),
+    signals: d.signals && typeof d.signals === 'object' ? d.signals : { google_trends: Number(d.signal_google_trends), autocomplete: Number(d.signal_autocomplete) },
     prev_week_score: d.prev_week_score === null ? null : Number(d.prev_week_score),
     change_pct: d.change_pct === null ? null : Number(d.change_pct),
     cheapest_package_price: d.cheapest_package_price === null ? null : Number(d.cheapest_package_price),
@@ -112,22 +113,16 @@ export async function getOpenAlerts(db: Db, limit = 50): Promise<TrendAlertRow[]
 export interface LatestSignals {
   fx: DemandSignalRow | null
   feriados: DemandSignalRow | null
-  searchConsole: DemandSignalRow[]
 }
 
-/** Última semana con datos de cada fuente. */
+/** Última semana con datos de cada señal macro. */
 export async function getLatestSignals(db: Db): Promise<LatestSignals> {
-  const latest = async (source: string, code: string): Promise<DemandSignalRow | null> => {
-    const { data } = await db.from('demand_signals_weekly').select('*').eq('source', source).eq('destination_code', code).order('week_label', { ascending: false }).limit(1).maybeSingle()
+  const latest = async (source: string): Promise<DemandSignalRow | null> => {
+    const { data } = await db.from('demand_signals_weekly').select('*').eq('source', source).eq('destination_code', '*').order('week_label', { ascending: false }).limit(1).maybeSingle()
     return (data as DemandSignalRow | null) ?? null
   }
-  const [fx, feriados, scTotal] = await Promise.all([latest('bcra_fx', '*'), latest('feriados', '*'), latest('search_console', '*')])
-  let searchConsole: DemandSignalRow[] = []
-  if (scTotal) {
-    const { data } = await db.from('demand_signals_weekly').select('*').eq('source', 'search_console').eq('week_label', scTotal.week_label).neq('destination_code', '*').order('value', { ascending: false }).limit(15)
-    searchConsole = (data ?? []) as DemandSignalRow[]
-  }
-  return { fx, feriados, searchConsole }
+  const [fx, feriados] = await Promise.all([latest('bcra_fx'), latest('feriados')])
+  return { fx, feriados }
 }
 
 /** Job de Tendencias en cola o corriendo, si hay. */

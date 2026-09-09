@@ -6,7 +6,7 @@ import type { TrendDestination } from '../types'
 function dest(overrides: Partial<TrendDestination>): TrendDestination {
   return {
     destination: 'X', destinationSlug: 'x', region: 'caribe', trendScore: 50, rank: 1,
-    signals: { googleTrends: 0, autocomplete: 0, searchConsole: 0, amadeusPrice: 0, newsEvents: 0, reddit: 0 },
+    signals: {},
     prevWeekScore: null, changePct: null, momentum: 'new', hasPackages: false, matchingPackageCount: 0,
     matchingPackageIds: [], cheapestPackagePrice: null, classification: 'declining', relatedQueries: [], rawSignals: {},
     ...overrides,

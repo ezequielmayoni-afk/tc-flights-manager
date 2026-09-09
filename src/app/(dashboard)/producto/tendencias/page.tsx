@@ -7,14 +7,17 @@ import { RunSelector } from '@/components/tendencias/RunSelector'
 import { AlertsList } from '@/components/tendencias/AlertsList'
 import { TrendsTable } from '@/components/tendencias/TrendsTable'
 import { SignalsPanel } from '@/components/tendencias/SignalsPanel'
+import { BuzzPanel } from '@/components/tendencias/BuzzPanel'
 import { getLatestSignals, getOpenAlerts, getPendingTrendJob, getRun, getRunDestinations, listRuns } from '@/lib/tendencias/queries'
 
 export const dynamic = 'force-dynamic'
 
 const SOURCE_LABEL: Record<string, string> = {
   autocomplete: 'Autocomplete',
+  google_related: 'Relacionadas',
   google_trends: 'Google Trends',
-  search_console: 'Search Console',
+  youtube: 'YouTube',
+  trending_now: 'Tendencias ahora',
 }
 
 function fmt(iso: string | null | undefined): string {
@@ -41,7 +44,8 @@ interface PageProps {
 
 /**
  * Tendencias (Fase 1 del loop): qué destinos buscan los argentinos esta
- * semana, cruzado con el catálogo. La corrida elegida es el filtro de fecha.
+ * semana según Google y YouTube, cruzado con el catálogo. Sólo demanda de
+ * mercado: nada de siviajo.com. La corrida elegida es el filtro de fecha.
  */
 export default async function TendenciasPage({ searchParams }: PageProps) {
   const { authorized } = await checkSectionAccess('producto')
@@ -108,9 +112,17 @@ export default async function TendenciasPage({ searchParams }: PageProps) {
         <section className="rounded-lg border border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-900">Destinos {run ? `· ${run.week_label}` : ''}</h2>
-            <p className="text-xs text-gray-500">Score 0–100 relativo a la corrida: 70 % Google Trends (Argentina, último mes) + 30 % Autocomplete. El momentum compara con la corrida anterior.</p>
+            <p className="text-xs text-gray-500">Score 0–100 relativo a la corrida: 45 % Google Trends (comparación directa, Argentina, último mes) + 20 % búsquedas relacionadas de “paquetes”, “viajes”, “vuelos”… + 20 % Autocomplete de Google + 10 % YouTube + 5 % tendencias ahora. El momentum compara con la corrida anterior.</p>
           </div>
           <TrendsTable destinations={destinations} />
+        </section>
+
+        <section className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-gray-900">Qué se busca y de qué se habla {run ? `· ${run.week_label}` : ''}</h2>
+            <p className="text-xs text-gray-500">Tal cual lo devuelve Google para Argentina. En negrita lo que el sistema reconoció como destino; lo demás igual vale la pena mirarlo.</p>
+          </div>
+          <BuzzPanel buzz={run?.buzz ?? null} />
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-white">

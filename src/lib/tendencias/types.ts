@@ -32,14 +32,8 @@ export interface TrendDestination {
   region: string
   trendScore: number
   rank: number
-  signals: {
-    googleTrends: number
-    autocomplete: number
-    searchConsole: number
-    amadeusPrice: number
-    newsEvents: number
-    reddit: number
-  }
+  /** Score normalizado 0–100 por fuente (google_trends, google_related, autocomplete, youtube, trending_now). */
+  signals: Record<string, number>
   prevWeekScore: number | null
   changePct: number | null
   momentum: Momentum
@@ -65,12 +59,40 @@ export interface TrendAlert {
   data: Record<string, unknown>
 }
 
+/** Lo que se busca y de lo que se habla, a nivel corrida (no por destino). */
+export interface TrendBuzz {
+  /** "Tendencias ahora" de Google en Argentina, últimos 7 días: viajes y destinos conocidos. */
+  trendingNow: TrendingItem[]
+  /** Consultas relacionadas de los términos genéricos ("paquetes", "vuelos"…). */
+  related: GenericRelatedList[]
+  /** Qué completa YouTube para "viaje a", "vlog viaje a"… */
+  youtube: Array<{ name: string; slug: string; weight: number; sampleQueries: string[] }>
+}
+
+export interface TrendingItem {
+  query: string
+  volume: number | null
+  increasePct: number | null
+  categories: string[]
+  travel: boolean
+  slug: string | null
+  breakdown: string[]
+}
+
+export interface GenericRelatedList {
+  seed: string
+  rising: Array<{ query: string; value: string; slug: string | null }>
+  top: Array<{ query: string; value: number; slug: string | null }>
+  error?: string
+}
+
 export interface TrendRunResult {
   runId: string | null
   weekLabel: string
   status: 'completed' | 'failed'
   destinations: TrendDestination[]
   alerts: TrendAlert[]
+  buzz: TrendBuzz
   sourcesCollected: Record<string, boolean>
   catalogSnapshotCount: number
   serpApiCalls: number

@@ -39,14 +39,16 @@ describe('computeScores', () => {
     collector('google_trends', { cancun: { score: 60, relatedQueries: [{ query: 'paquete cancun 2027', value: '+150%' }, { query: 'cancun clima', value: 'Aumento puntual' }] }, roma: { score: 100 } }),
   ]
 
-  it('combina 70/30, normaliza a 100 y rankea', () => {
+  it('reparte los pesos entre las fuentes presentes, normaliza a 100 y rankea', () => {
     const scored = computeScores(results, new Map())
-    // cancun = 60*0.7 + 100*0.3 = 72 · roma = 100*0.7 + 20*0.3 = 76 · albania = 12 → roma normaliza a 100
+    // Sólo hay google_trends (0,45) y autocomplete (0,2): pesos efectivos 0,69 y 0,31.
+    // cancun = (60*0,45 + 100*0,2)/0,65 = 72,3 · roma = (100*0,45 + 20*0,2)/0,65 = 75,4 · albania = 12,3 → roma normaliza a 100
     expect(scored[0].destinationSlug).toBe('roma')
     expect(scored[0].trendScore).toBe(100)
     expect(scored[0].rank).toBe(1)
     const cancun = scored.find(d => d.destinationSlug === 'cancun')!
-    expect(cancun.trendScore).toBe(Math.round(72 * (100 / 76)))
+    expect(cancun.trendScore).toBe(Math.round(72 * (100 / 75)))
+    expect(cancun.signals).toMatchObject({ google_trends: 60, autocomplete: 100, youtube: 0 })
     expect(cancun.destination).toBe('Cancún')
     expect(cancun.region).toBe('caribe')
   })

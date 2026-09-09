@@ -1,32 +1,38 @@
 import { SerpApiBudgetExhausted, type SerpApiClient } from '@/lib/serpapi/client'
+import { TRENDS_COMPARISON_GROUPS, TRENDS_RELATED_TEMPLATE, TRENDS_RELATED_TOP, TRENDS_TEMPLATES } from '../config'
 import type { CollectorResult, DestinationSignal } from '../types'
 
 /**
- * Google Trends vía SerpAPI: VALIDACIÓN, no descubrimiento.
+ * Google Trends vía SerpAPI: la comparación directa entre destinos.
  *
- * Autocomplete descubre; acá se toman los destinos más mencionados y se
- * comparan en grupos de 5 (una llamada por grupo). Google devuelve valores
- * relativos al grupo, así que un destino ancla viaja en todos los grupos y
- * los resultados se reescalan contra él (crossNormalize). Después, consultas
- * relacionadas para los más buscados (intención de compra).
- *
- * Presupuesto por corrida: MAX_SERPAPI_CALLS_PER_RUN (default 8): 4 grupos
- * (5 + 4 + 4 + 4 = 17 destinos) y 4 de consultas relacionadas.
+ * Para cada plantilla ("paquetes {d}", "viaje {d}", "vuelos {d}") se comparan
+ * los destinos candidatos en grupos de 5, una llamada por grupo. Google
+ * devuelve valores relativos al grupo (el más buscado vale 100), así que el
+ * más fuerte del primer grupo viaja como ancla en los demás y cada grupo se
+ * reescala contra él (crossNormalize). El score del destino es el promedio
+ * de las tres plantillas. Después, consultas relacionadas para los más
+ * buscados (intención de compra).
  */
 
 const GEO = 'AR'
 const DATE_RANGE = 'today 1-m'
 const DELAY_MS = 300
+/** Promedio de los últimos N días: el último suele venir en 0 por retraso de Google. */
+const RECENT_POINTS = 7
 
-interface ComparisonScore { slug: string; name: string; score: number }
 interface Named { slug: string; name: string }
+interface ComparisonScore { slug: string; name: string; score: number }
 
-async function compareDestinations(serpapi: SerpApiClient, batch: Named[]): Promise<ComparisonScore[]> {
+function fill(template: string, name: string): string {
+  return template.replace('{d}', name)
+}
+
+async function compareDestinations(serpapi: SerpApiClient, template: string, batch: Named[]): Promise<ComparisonScore[]> {
   if (batch.length === 0) return []
   try {
     const data = await serpapi.search({
       engine: 'google_trends',
-      q: batch.map(d => `paquete ${d.name}`).join(','),
+      q: batch.map(d => fill(template, d.name)).join(','),
       geo: GEO,
       date: DATE_RANGE,
       data_type: 'TIMESERIES',
@@ -34,31 +40,22 @@ async function compareDestinations(serpapi: SerpApiClient, batch: Named[]): Prom
     })
     const timeline = (data.interest_over_time as { timeline_data?: Array<{ values: Array<{ extracted_value?: number; value?: string }> }> })?.timeline_data ?? []
     if (timeline.length === 0) return batch.map(d => ({ ...d, score: 0 }))
-
-    // Promedio de los últimos 4 puntos con dato: el último suele venir en 0 por retraso de Google.
     return batch.map((d, i) => {
       const points = timeline.map(p => p.values?.[i]?.extracted_value ?? parseInt(p.values?.[i]?.value ?? '0', 10) ?? 0)
-      const recent = points.slice(-4).filter(v => v > 0)
+      const recent = points.slice(-RECENT_POINTS).filter(v => v > 0)
       const avg = recent.length ? Math.round(recent.reduce((s, v) => s + v, 0) / recent.length) : 0
       return { ...d, score: avg }
     })
   } catch (err) {
     if (err instanceof SerpApiBudgetExhausted) throw err
-    console.warn(`[tendencias/trends] comparación falló: ${(err as Error).message}`)
+    console.warn(`[tendencias/trends] comparación "${template}" falló: ${(err as Error).message}`)
     return batch.map(d => ({ ...d, score: 0 }))
   }
 }
 
 async function fetchRelatedQueries(serpapi: SerpApiClient, name: string): Promise<Array<{ query: string; value: string }>> {
   try {
-    const data = await serpapi.search({
-      engine: 'google_trends',
-      q: `paquete ${name}`,
-      geo: GEO,
-      date: DATE_RANGE,
-      data_type: 'RELATED_QUERIES',
-      hl: 'es',
-    })
+    const data = await serpapi.search({ engine: 'google_trends', q: fill(TRENDS_RELATED_TEMPLATE, name), geo: GEO, date: DATE_RANGE, data_type: 'RELATED_QUERIES', hl: 'es' })
     const rising = (data.related_queries as { rising?: Array<{ query: string; value: string | number }> })?.rising ?? []
     return rising.slice(0, 8).map(q => ({ query: q.query, value: String(q.value) }))
   } catch (err) {
@@ -76,10 +73,7 @@ export interface NormalizedScore {
 }
 
 /**
- * Google Trends devuelve valores relativos al grupo comparado: en cada llamada
- * el más buscado vale 100. Para que los grupos sean comparables entre sí, el
- * ancla (el más fuerte del primer grupo) viaja en todos los demás y cada
- * grupo se reescala para que el ancla valga lo mismo que en el primero. Puro.
+ * Reescala cada grupo para que el ancla valga lo mismo que en el primero. Puro.
  */
 export function crossNormalize(batches: ComparisonScore[][], anchorSlug: string): Map<string, NormalizedScore> {
   const out = new Map<string, NormalizedScore>()
@@ -103,56 +97,64 @@ export function crossNormalize(batches: ComparisonScore[][], anchorSlug: string)
   return out
 }
 
-export async function collectGoogleTrends(
-  serpapi: SerpApiClient,
-  topDestinations: Named[],
-  maxCalls: number
-): Promise<CollectorResult> {
+/** Compara los candidatos con una plantilla en grupos anclados. */
+async function compareWithTemplate(serpapi: SerpApiClient, template: string, candidates: Named[], groups: number): Promise<{ scores: Map<string, NormalizedScore>; anchor: Named | null; calls: number }> {
+  const queue = [...candidates]
+  const batches: ComparisonScore[][] = []
+  let calls = 0
+
+  const first = queue.splice(0, 5)
+  const firstScores = await compareDestinations(serpapi, template, first)
+  calls++
+  batches.push(firstScores)
+  const best = [...firstScores].sort((a, b) => b.score - a.score)[0]
+  const anchor: Named | null = best && best.score > 0 ? { slug: best.slug, name: best.name } : first[0] ?? null
+  await new Promise(r => setTimeout(r, DELAY_MS))
+
+  for (let b = 1; b < groups && anchor; b++) {
+    const next = queue.splice(0, 4)
+    if (next.length === 0) break
+    batches.push(await compareDestinations(serpapi, template, [anchor, ...next]))
+    calls++
+    await new Promise(r => setTimeout(r, DELAY_MS))
+  }
+  return { scores: anchor ? crossNormalize(batches, anchor.slug) : new Map(), anchor, calls }
+}
+
+export async function collectGoogleTrends(serpapi: SerpApiClient, candidates: Named[]): Promise<CollectorResult> {
   const started = Date.now()
   const destinations = new Map<string, DestinationSignal>()
   let queriesUsed = 0
   let error: string | undefined
 
-  if (topDestinations.length === 0 || maxCalls <= 0) {
+  if (candidates.length === 0) {
     return { source: 'google_trends', destinations, queriesUsed, durationMs: 0, error: 'Sin destinos para validar' }
   }
 
-  // Mitad del presupuesto para comparar, mitad para consultas relacionadas.
-  const comparisonBudget = Math.max(1, Math.floor(maxCalls / 2))
-  const relatedBudget = maxCalls - comparisonBudget
-  const queue = [...topDestinations]
-  const batches: ComparisonScore[][] = []
-  const names = new Map(topDestinations.map(d => [d.slug, d.name]))
-  let anchor: Named | null = null
-  const related = new Map<string, Array<{ query: string; value: string }>>()
+  const names = new Map(candidates.map(d => [d.slug, d.name]))
+  const perTemplate = new Map<string, { scores: Map<string, NormalizedScore>; anchor: Named | null }>()
 
   try {
-    // Grupo 1: los 5 más mencionados. El más buscado de ellos es el ancla.
-    const first = queue.splice(0, 5)
-    const firstScores = await compareDestinations(serpapi, first)
-    queriesUsed++
-    batches.push(firstScores)
-    const best = [...firstScores].sort((a, b) => b.score - a.score)[0]
-    anchor = best && best.score > 0 ? { slug: best.slug, name: best.name } : first[0]
-    await new Promise(r => setTimeout(r, DELAY_MS))
-
-    // Grupos siguientes: ancla + 4 destinos nuevos.
-    for (let b = 1; b < comparisonBudget; b++) {
-      const next = queue.splice(0, 4)
-      if (next.length === 0) break
-      batches.push(await compareDestinations(serpapi, [anchor, ...next]))
-      queriesUsed++
-      await new Promise(r => setTimeout(r, DELAY_MS))
+    for (const template of TRENDS_TEMPLATES) {
+      const { scores, anchor, calls } = await compareWithTemplate(serpapi, template, candidates, TRENDS_COMPARISON_GROUPS)
+      queriesUsed += calls
+      perTemplate.set(template, { scores, anchor })
     }
   } catch (err) {
     error = (err as Error).message
   }
 
-  const normalized = anchor ? crossNormalize(batches, anchor.slug) : new Map<string, NormalizedScore>()
+  // Promedio de plantillas por destino (una plantilla sin dato cuenta 0).
+  const composite = new Map<string, number>()
+  for (const d of candidates) {
+    const values = [...perTemplate.values()].map(t => t.scores.get(d.slug)?.score ?? 0)
+    if (values.length === 0) continue
+    composite.set(d.slug, Math.round(values.reduce((s, v) => s + v, 0) / TRENDS_TEMPLATES.length))
+  }
 
-  // Consultas relacionadas para los más buscados según el score ya comparable.
+  const related = new Map<string, Array<{ query: string; value: string }>>()
   if (!error) {
-    const topForRelated = [...normalized.entries()].sort((a, b) => b[1].score - a[1].score).slice(0, relatedBudget)
+    const topForRelated = [...composite.entries()].sort((a, b) => b[1] - a[1]).slice(0, TRENDS_RELATED_TOP)
     try {
       for (const [slug] of topForRelated) {
         related.set(slug, await fetchRelatedQueries(serpapi, names.get(slug) ?? slug))
@@ -160,26 +162,20 @@ export async function collectGoogleTrends(
         await new Promise(r => setTimeout(r, DELAY_MS))
       }
     } catch (err) {
-      // Presupuesto agotado a mitad de camino: se guarda lo que hay.
       error = (err as Error).message
     }
   }
 
-  for (const [slug, n] of normalized) {
+  for (const [slug, score] of composite) {
+    const templates: Record<string, unknown> = {}
+    for (const [template, t] of perTemplate) {
+      const n = t.scores.get(slug)
+      templates[template.replace(' {d}', '')] = n ? { score: n.score, rawBatchScore: n.rawBatchScore, batch: n.batch, factor: n.factor, comparable: n.comparable, anchor: t.anchor?.name ?? null } : null
+    }
     destinations.set(slug, {
-      rawScore: n.score,
-      normalizedScore: Math.min(100, n.score),
-      metadata: {
-        name: names.get(slug) ?? slug,
-        paqueteScore: n.score,
-        rawBatchScore: n.rawBatchScore,
-        batch: n.batch,
-        anchor: anchor?.name ?? null,
-        anchorFactor: n.factor,
-        comparable: n.comparable,
-        relatedQueries: related.get(slug) ?? [],
-        comparisonBatch: true,
-      },
+      rawScore: score,
+      normalizedScore: Math.min(100, score),
+      metadata: { name: names.get(slug) ?? slug, paqueteScore: score, templates, relatedQueries: related.get(slug) ?? [], comparisonBatch: true },
     })
   }
 

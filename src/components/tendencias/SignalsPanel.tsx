@@ -23,14 +23,14 @@ function fmtDate(iso: string): string {
   return new Date(`${iso}T12:00:00Z`).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
 }
 
-/** Señales macro de la última semana con datos: dólar, feriados, Search Console. */
+/** Señales macro de la última semana con datos: dólar y feriados. */
 export function SignalsPanel({ signals }: { signals: LatestSignals }) {
   const fx = (signals.fx?.metadata ?? {}) as FxMeta
   const feriados = (signals.feriados?.metadata ?? {}) as FeriadosMeta
   const weekends = (feriados.longWeekends ?? []).slice(0, 5)
 
   return (
-    <div className="grid gap-4 p-4 md:grid-cols-3">
+    <div className="grid gap-4 p-4 md:grid-cols-2">
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Dólar {signals.fx ? `· ${signals.fx.week_label}` : ''}</h3>
         {signals.fx ? (
@@ -50,22 +50,6 @@ export function SignalsPanel({ signals }: { signals: LatestSignals }) {
                 {fmtDate(w.start)} – {fmtDate(w.end)} <span className="text-xs text-gray-500">({w.days} días, en {w.daysUntil} d) · {w.names.join(', ')}</span>
               </li>
             ))}
-          </ul>
-        ) : <p className="mt-2 text-sm text-gray-500">Sin datos todavía.</p>}
-      </div>
-      <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">Search Console · impresiones 28 d</h3>
-        {signals.searchConsole.length > 0 ? (
-          <ul className="mt-2 space-y-1 text-sm text-gray-800">
-            {signals.searchConsole.slice(0, 8).map(s => {
-              const meta = s.metadata as { name?: string; clicks?: number }
-              return (
-                <li key={s.destination_code} className="flex justify-between">
-                  <span>{meta.name ?? s.destination_code}</span>
-                  <span className="tabular-nums text-gray-600">{Number(s.value ?? 0).toLocaleString('es-AR')} <span className="text-xs text-gray-400">/ {meta.clicks ?? 0} clics</span></span>
-                </li>
-              )
-            })}
           </ul>
         ) : <p className="mt-2 text-sm text-gray-500">Sin datos todavía.</p>}
       </div>
