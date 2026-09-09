@@ -3,7 +3,8 @@
 Documento de seguimiento. Se actualiza al cerrar cada fase. El plan completo, con el detalle
 técnico de cada una, está en `~/.claude/plans/perfecto-ahora-una-vez-abstract-meteor.md`.
 
-**Última actualización: 2026-09-09.** Fases 0 y 1 hechas y en producción. Sigue la Fase 2.
+**Última actualización: 2026-09-09.** Fases 0 y 1 hechas y en producción. Sigue la Fase 2 (con la
+regla de salidas múltiples agregada ese día).
 
 ## De un vistazo
 
@@ -89,6 +90,15 @@ mano, y ningún anuncio se apaga cuando el paquete vence, se oculta en TC o el c
 agotado con vínculo confirmado → pausar; precio distinto al de la creatividad → pedido de diseño;
 CTR o costo por conversación fuera de umbral → alerta); decisiones en `/tareas` con aprobar, rechazar
 y deshacer; chequeo diario del token de Meta; reconciliación nocturna con TC.
+
+**Salidas múltiples** (agregado 2026-09-09): un destino con 3 cupos son 3 paquetes con 3 IDs, pero en
+Meta se publica uno solo. Cuando ese ID se agota **no se pausa el anuncio ni se edita el mensaje en
+Meta** (los creativos son inmutables y cambiarlos reinicia el aprendizaje). HUB redirige el ID: el bot
+del CRM consulta el SIV en HUB y HUB le devuelve la siguiente salida con lugares, con la nota "la salida
+del 12/03 se agotó; hay lugar el 26/03". En paralelo pide a diseño la creatividad con la fecha nueva y,
+cuando está, relanza el anuncio con el ID nuevo y pausa el viejo. Sólo si no queda ninguna salida con
+lugares se pausa. Requiere agrupar las salidas en `/packages` ("Agrupar salidas"); en la Fase 6 se
+agrupan solas al nacer de una idea.
 
 **Modo**: 14 días en sombra (sólo propone), después semi (pausa y avisa con deshacer).
 
