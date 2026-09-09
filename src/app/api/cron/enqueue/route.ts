@@ -4,6 +4,7 @@ import { authorizeCron } from '@/lib/cron/auth'
 import { enqueueJob } from '@/lib/jobs/queue'
 import type { Db, EnqueueInput } from '@/lib/jobs/types'
 import { logEvent } from '@/lib/logs'
+import { isoWeekLabel } from '@/lib/tendencias/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,11 +37,14 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         // Fase 8: crm.rollup (lane crm, ventana 05:00–09:00 UTC)
         { kind: 'noop', payload: { ms: 0, schedule, at: day }, dedupeKey: `noop:nightly:${day}` },
       ]
-    case 'weekly':
+    case 'weekly': {
+      // Fase 3: profile.audit · Fase 13: competencia.run
+      const week = isoWeekLabel(now)
       return [
-        // Fase 1: trend.run, demand.signals · Fase 3: profile.audit · Fase 13: competencia.run
-        { kind: 'noop', payload: { ms: 0, schedule, at: day }, dedupeKey: `noop:weekly:${day}` },
+        { kind: 'trend.run', payload: { trigger: 'cron', week }, dedupeKey: 'trend.run', maxAttempts: 2 },
+        { kind: 'demand.signals', payload: { week }, dedupeKey: 'demand.signals' },
       ]
+    }
   }
 }
 

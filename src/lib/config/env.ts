@@ -37,6 +37,10 @@ type OptionalEnvVars = {
   TC_WEBHOOK_SECRET?: string
   CRON_SECRET?: string
   SLACK_WEBHOOK_URL?: string
+  /** Tendencias (Fase 1), fechas de vuelo (Fase 3), competencia (Fase 13). */
+  SERPAPI_API_KEY?: string
+  /** Propiedad de Search Console; default https://www.siviajo.com/ */
+  GOOGLE_SEARCH_CONSOLE_SITE_URL?: string
 }
 
 const REQUIRED_VARS: (keyof RequiredEnvVars)[] = [

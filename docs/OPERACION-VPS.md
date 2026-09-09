@@ -59,11 +59,29 @@ Cola en Postgres (`hub_jobs`), drenada por el tick. Un job por `kind`, handler e
 Depurar: `SELECT id, kind, status, attempts, last_error, created_at FROM hub_jobs ORDER BY id DESC LIMIT 50;`
 Disparar un tick a mano: `ssh ... '/opt/hub/bin/hub-cron.sh jobs-tick'`.
 
+## Tendencias (Fase 1 del loop)
+
+Corre sola los lunes a las 08:00 UTC (`enqueue?schedule=weekly` → jobs `trend.run` y `demand.signals`) o con
+"Correr ahora" en `/producto/tendencias` (sección `producto`: admin, marketing y producto).
+
+- `trend.run` (lane `serpapi`, flag `automation.serpapi_calls`, presupuesto `serpapi`): Autocomplete descubre
+  destinos (gratis) → Google Trends vía SerpAPI valida los 20 más mencionados (**8 llamadas por corrida**) →
+  cruce con `packages` + `package_destinations` (alias ES↔EN en `src/lib/tendencias/config.ts`) → clasificación
+  opportunity | gap | saturated | declining → alertas. Escribe `trend_runs`, `trend_destinations`, `trend_alerts`.
+  Tarda ~1 min. El momentum sólo se calcula contra una corrida de menos de 21 días.
+- `demand.signals` (lane `default`, sin proveedor): dólar minorista/mayorista del BCRA (API v4) y blue con brecha,
+  fines de semana largos (argentinadatos) y Search Console por destino (Service Account de Drive, propiedad
+  `GOOGLE_SEARCH_CONSOLE_SITE_URL`, default `https://www.siviajo.com/`). Upsert en `demand_signals_weekly`.
+- Código: `src/lib/tendencias/**`; cliente `src/lib/serpapi/client.ts` (registra cada llamada en `external_calls`).
+- Requiere `SERPAPI_API_KEY` en `/opt/hub/.env.local` (misma cuenta que usaba media-os).
+- Depurar: `SELECT week_label, status, trigger, duration_ms, error FROM trend_runs ORDER BY created_at DESC LIMIT 5;`
+  y `SELECT * FROM demand_signals_weekly WHERE destination_code = '*' ORDER BY week_label DESC;`
+
 ## Rotación de secretos
 
 - `CRON_SECRET`: cambiarlo en `/opt/hub/.env.local` **y** en `/opt/hub/.env.cron`, después `pm2 restart hub`.
 - `HUB_API_KEY`: también la usa el bot del CRM (`/api/bot/packages`): coordinar con el equipo del CRM.
-- Token de Meta, SerpAPI, credenciales del RDS del CRM: sólo en `/opt/hub/.env.local`.
+- Token de Meta, `SERPAPI_API_KEY`, credenciales del RDS del CRM: sólo en `/opt/hub/.env.local`.
 
 ## Bases
 

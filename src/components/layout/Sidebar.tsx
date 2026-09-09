@@ -24,6 +24,7 @@ import {
   Users,
   Video,
   Cog,
+  TrendingUp,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -47,6 +48,7 @@ const cuposItems: NavItem[] = [
 
 const productosItems: NavItem[] = [
   { name: 'Paquetes', href: '/packages', icon: Briefcase, section: 'productos' },
+  { name: 'Tendencias', href: '/producto/tendencias', icon: TrendingUp, section: 'producto' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
   { name: 'Diseño', href: '/packages/design', icon: Palette, section: 'diseño' },
   { name: 'Video', href: 'https://hub.siviajo.com:8095', icon: Video, section: 'diseño', external: true },
@@ -56,9 +58,9 @@ const productosItems: NavItem[] = [
 
 // Role permissions - must match middleware
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas', 'producto'],
   diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial'],
 }
