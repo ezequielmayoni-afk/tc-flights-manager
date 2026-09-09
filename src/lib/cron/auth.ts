@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { timingSafeEqual } from 'node:crypto'
 
 export type CronAuthResult =
   | { ok: true; via: 'cron_secret' | 'api_key' }
@@ -16,6 +17,15 @@ export type CronAuthResult =
  * Si ninguno de los dos secretos está configurado, rechaza: antes el cron se
  * bypasseaba cuando faltaba CRON_SECRET, y eso dejaba la ruta abierta.
  */
+/** Comparación en tiempo constante: no filtra por cuánto coincide el secreto. */
+function secretMatches(provided: string | null, expected: string): boolean {
+  if (!provided) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 export function authorizeCron(request: NextRequest): CronAuthResult {
   const cronSecret = process.env.CRON_SECRET
   const apiKey = process.env.HUB_API_KEY
@@ -29,12 +39,12 @@ export function authorizeCron(request: NextRequest): CronAuthResult {
   }
 
   const authHeader = request.headers.get('authorization')
-  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+  if (cronSecret && secretMatches(authHeader, `Bearer ${cronSecret}`)) {
     return { ok: true, via: 'cron_secret' }
   }
 
   const headerKey = request.headers.get('x-api-key')
-  if (apiKey && headerKey === apiKey) {
+  if (apiKey && secretMatches(headerKey, apiKey)) {
     return { ok: true, via: 'api_key' }
   }
 
