@@ -96,7 +96,8 @@ export const ideaQuoteHandler: HandlerDefinition = {
     if (s.direct === null) soft.push('No se pudo confirmar si el vuelo es directo')
     if (profile.regimen_required && s.regimen && s.regimen !== profile.regimen_required) soft.push(`El hotel cotizado es ${s.board}; el perfil pide ${profile.regimen_required.replace('_', ' ')}`)
     const status = soft.length > 0 ? 'needs_review' : 'priced'
-    const dateReason = [s.dateReason, stopoverNote].filter(Boolean).join(' · ') || idea.chosen_departure_date ? [s.dateReason, stopoverNote].filter(Boolean).join(' · ') : null
+    // Con fecha fija el cotizador no explica la elección: se conserva el motivo que ya tenía la idea.
+    const dateReason = [s.dateReason, stopoverNote].filter(Boolean).join(' · ') || null
 
     if (s.alternatives.length > 0) {
       await db.from('flight_price_probes').insert(s.alternatives.map(c => ({ origin: idea.origin || 'BUE', destination: profile.iata_airport ?? profile.name, destination_code: profile.code, departure_date: c.date, nights: idea.nights, price_per_pax: c.pricePerPax, currency: c.currency, direct: c.direct, duration_minutes: c.durationMinutes, stops: c.stops ?? null, source: 'cotizador_probe', idea_id: ideaId, job_id: job.id })))
@@ -110,7 +111,7 @@ export const ideaQuoteHandler: HandlerDefinition = {
       quote_summary: { chosen: s, alternativeQuote: chosen === a ? null : a.summary, stopover: stopoverNote, runs: [a.runId, ...(chosen !== a ? [chosen.runId] : [])] },
       chosen_departure_date: s.departureDate,
       return_date: s.returnDate,
-      date_choice_reason: dateReason ?? (idea as unknown as { date_choice_reason?: string }).date_choice_reason ?? null,
+      date_choice_reason: dateReason ?? (idea as unknown as { date_choice_reason?: string | null }).date_choice_reason ?? null,
       title_suggested: suggestTitle(profile, idea, s),
       themes: profile.themes_default,
       validation: { ...validation, soft },
