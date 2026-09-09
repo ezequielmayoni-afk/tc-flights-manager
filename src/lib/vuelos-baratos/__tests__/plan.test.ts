@@ -105,6 +105,18 @@ describe('buildSweepJobs', () => {
     expect(new Set(jobs.map((j) => j.dedupeKey)).size).toBe(3)
   })
 
+  it('con includeInactive barre igual las rutas y los destinos apagados (barrido manual)', () => {
+    const routes = [ruta({ id: 8, active: false }), ruta({ id: 9, destination_code: 'MAD' })]
+    const destinations = [destino(), destino({ code: 'MAD', slug: 'madrid', name: 'Madrid', tc_code: 'MAD', active: false })]
+    const opts = { routes, destinations, today: HOY, day: DIA, monthsOverride: 1, trigger: 'manual' as const }
+
+    expect(buildSweepJobs(opts)).toHaveLength(0)
+    const conInactivas = buildSweepJobs({ ...opts, includeInactive: true })
+    expect(conInactivas.map((j) => j.payload!.routeId)).toEqual([8, 9])
+    // Una ruta sin destino en la landing no se sondea ni así: no hay tc_code.
+    expect(buildSweepJobs({ ...opts, routes: [ruta({ id: 10, destination_code: 'CUN' })], includeInactive: true })).toHaveLength(0)
+  })
+
   it('saltea rutas inactivas, destinos inactivos y rutas sin destino publicado', () => {
     const routes = [ruta(), ruta({ id: 8, active: false }), ruta({ id: 9, destination_code: 'MAD' }), ruta({ id: 10, destination_code: 'CUN' })]
     const destinations = [destino(), destino({ code: 'MAD', slug: 'madrid', name: 'Madrid', tc_code: 'MAD', active: false })]
@@ -190,6 +202,13 @@ describe('probeResultToInsert', () => {
     expect(row.options).toHaveLength(5)
     expect(row.direct).toBe(false)
     expect(row.stops).toBe(1)
+  })
+
+  it('sin dato de escalas no afirma que el vuelo sea directo', () => {
+    const result: ProbeResult = { status: 'ok', options: [{ ...opcion, stopsOut: null, stopsBack: null }], elapsedMs: 1000, originCode: 'BUE', destCode: 'MIA' }
+    const row = probeResultToInsert({ ...base, result })
+    expect(row.stops).toBeNull()
+    expect(row.direct).toBeNull()
   })
 
   it('sin número de vuelo no inventa el código de aerolínea', () => {

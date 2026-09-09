@@ -212,6 +212,8 @@ describe('runSweep', () => {
     expect(summary.errors).toBe(1)
     expect(corrida.guardadas).toHaveLength(2)
     expect(corrida.log).toHaveBeenCalledWith(expect.stringContaining('se cayó la red'), expect.anything(), 'warning')
+    // El par que falló también consumió lease: el heartbeat va igual.
+    expect(corrida.heartbeat).toHaveBeenCalledTimes(3)
   })
 
   it('si save lanza, el par se pierde pero el resto se guarda igual', async () => {

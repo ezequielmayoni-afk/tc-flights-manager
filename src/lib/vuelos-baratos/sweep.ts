@@ -63,6 +63,12 @@ export interface BuildSweepJobsInput {
   monthsOverride?: number
   priority?: number
   trigger: 'cron' | 'manual'
+  /**
+   * Sondear también rutas o destinos apagados. El plan nocturno nunca; un
+   * barrido a mano sí, que es cómo se prueba una ruta antes de publicarla
+   * (el handler deja correr las inactivas con prioridad manual).
+   */
+  includeInactive?: boolean
 }
 
 /**
@@ -78,9 +84,10 @@ export function buildSweepJobs(input: BuildSweepJobsInput): EnqueueInput[] {
   const jobs: EnqueueInput[] = []
 
   for (const route of input.routes) {
-    if (!route.active) continue
+    if (!route.active && !input.includeInactive) continue
     const destination = porCodigo.get(route.destination_code)
-    if (!destination || !destination.active) continue
+    if (!destination) continue
+    if (!destination.active && !input.includeInactive) continue
 
     const meses = monthsAhead(input.today, input.monthsOverride ?? route.months_ahead)
     meses.forEach((month, monthIndex) => {
@@ -170,7 +177,9 @@ export function probeResultToInsert(input: ProbeResultToInsertInput): ProbeInser
       airline_code: airlineCode(mejor.flightOut),
       stops: mejor.stopsOut,
       stops_back: mejor.stopsBack,
-      direct: mejor.stopsOut === 0,
+      // El bot manda -1 cuando no pudo leer las escalas (acá, null): eso no
+      // es "tiene escalas", es "no sé".
+      direct: mejor.stopsOut === null ? null : mejor.stopsOut === 0,
       duration_minutes: mejor.durationOutMin,
       duration_back_minutes: mejor.durationBackMin,
       fare_family: mejor.fareFamily || null,
@@ -237,43 +246,47 @@ export async function runSweep(deps: SweepDeps, input: SweepInput): Promise<Swee
       const pair = cola.shift()
       if (!pair) return
 
-      let attempt = 1
-      let result: ProbeResult
+      // El heartbeat va en el finally: un par que falló también consumió
+      // tiempo del lease, y sin renovarlo el job se reencola solo.
       try {
-        result = await deps.probe(sondaDe(pair))
-        if (result.status === 'error' && result.retryable && !summary.budgetStopped) {
-          await sleep(PROBE_RETRY_DELAY_MS)
-          attempt = 2
+        let attempt = 1
+        let result: ProbeResult
+        try {
           result = await deps.probe(sondaDe(pair))
+          if (result.status === 'error' && result.retryable && !summary.budgetStopped) {
+            await sleep(PROBE_RETRY_DELAY_MS)
+            attempt = 2
+            result = await deps.probe(sondaDe(pair))
+          }
+        } catch (err) {
+          if (err instanceof CotizadorBudgetExhausted) {
+            summary.budgetStopped = true
+            return
+          }
+          summary.probes++
+          summary.errors++
+          await deps.log(`Sonda ${etiqueta} ${pair.depart}/${pair.return} falló: ${err instanceof Error ? err.message : String(err)}`, { routeId: input.route.id, pair }, 'warning')
+          continue
         }
-      } catch (err) {
-        if (err instanceof CotizadorBudgetExhausted) {
-          summary.budgetStopped = true
-          return
-        }
+
+        const row = probeResultToInsert({ result, route: input.route, destination: input.destination, pair, jobId: input.jobId, now: now(), attempt })
         summary.probes++
-        summary.errors++
-        await deps.log(`Sonda ${etiqueta} ${pair.depart}/${pair.return} falló: ${err instanceof Error ? err.message : String(err)}`, { routeId: input.route.id, pair }, 'warning')
-        continue
+        if (row.status === 'ok') {
+          summary.ok++
+          if (row.price_per_pax !== null && (summary.minPrice === null || row.price_per_pax < summary.minPrice)) summary.minPrice = row.price_per_pax
+        } else if (row.status === 'empty') summary.empty++
+        else if (row.status === 'timeout') summary.timeouts++
+        else summary.errors++
+
+        try {
+          await deps.save(row)
+        } catch (err) {
+          summary.errors++
+          await deps.log(`No se pudo guardar la sonda ${etiqueta} ${pair.depart}/${pair.return}: ${err instanceof Error ? err.message : String(err)}`, { routeId: input.route.id, pair }, 'warning')
+        }
+      } finally {
+        await deps.heartbeat()
       }
-
-      const row = probeResultToInsert({ result, route: input.route, destination: input.destination, pair, jobId: input.jobId, now: now(), attempt })
-      summary.probes++
-      if (row.status === 'ok') {
-        summary.ok++
-        if (row.price_per_pax !== null && (summary.minPrice === null || row.price_per_pax < summary.minPrice)) summary.minPrice = row.price_per_pax
-      } else if (row.status === 'empty') summary.empty++
-      else if (row.status === 'timeout') summary.timeouts++
-      else summary.errors++
-
-      try {
-        await deps.save(row)
-      } catch (err) {
-        summary.errors++
-        await deps.log(`No se pudo guardar la sonda ${etiqueta} ${pair.depart}/${pair.return}: ${err instanceof Error ? err.message : String(err)}`, { routeId: input.route.id, pair }, 'warning')
-      }
-
-      await deps.heartbeat()
     }
   }
 

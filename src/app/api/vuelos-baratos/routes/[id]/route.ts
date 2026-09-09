@@ -4,7 +4,7 @@ import { checkSectionAccess } from '@/lib/auth'
 import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { updateRoute } from '@/lib/vuelos-baratos/queries'
+import { getRoute, updateRoute } from '@/lib/vuelos-baratos/queries'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,6 +43,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (Object.keys(parsed.data).length === 0) throw API_ERRORS.BAD_REQUEST('No hay nada que cambiar')
 
     const db = createAdminClient()
+    // Un id inexistente es un 404, no un 500: `updateRoute` lanza un Error
+    // pelado que `errorResponse` no sabe traducir.
+    if (!(await getRoute(db, id))) throw API_ERRORS.NOT_FOUND(`La ruta ${id}`)
     const route = await updateRoute(db, id, parsed.data)
 
     await logEvent(

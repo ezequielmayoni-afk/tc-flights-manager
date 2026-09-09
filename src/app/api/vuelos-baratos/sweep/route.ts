@@ -20,9 +20,10 @@ const MESES_MAX = 12
  * POST /api/vuelos-baratos/sweep — "Barrer ahora" una ruta desde la pantalla.
  *
  * Encola los mismos `flights.sweep` que el plan nocturno pero con prioridad
- * manual, así saltan la ventana horaria del lane `cotizador`. Comparten la
- * clave de dedupe con los del cron: si esta noche ya se encolaron, devuelve
- * esos en vez de duplicar sondas.
+ * manual, así saltan la ventana horaria del lane `cotizador` y corren aunque
+ * la ruta todavía no esté publicada. Comparten la clave de dedupe con los del
+ * cron: si esta noche ya se encolaron, devuelve esos en vez de duplicar
+ * sondas.
  */
 export async function POST(request: NextRequest) {
   const { authorized, user } = await checkSectionAccess('producto')
@@ -56,6 +57,9 @@ export async function POST(request: NextRequest) {
       monthsOverride: months,
       priority: MANUAL_PRIORITY,
       trigger: 'manual',
+      // A mano se puede barrer una ruta apagada: es como se prueba antes de
+      // publicarla. El handler deja pasar las inactivas con prioridad manual.
+      includeInactive: true,
     })
 
     const createdBy = user?.email ?? 'ui'

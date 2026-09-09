@@ -61,7 +61,8 @@ export interface ProbeRow {
   fare_family: string | null
   checked_bag: boolean | null
   carry_on: boolean | null
-  options: unknown[] | null
+  /** Opcional: las lecturas de la landing no piden esta columna. */
+  options?: unknown[] | null
   status: 'ok' | 'empty' | 'error' | 'timeout'
   source: string
   job_id: number | null

@@ -26,6 +26,8 @@ const PROBE_COLUMNS =
 const MAX_PROBE_ROWS = 2000
 /** La home lee todas las rutas de una: mismo criterio, por lote. */
 const MAX_PROBE_ROWS_MULTI = 5000
+/** Salud: son 3 columnas por sonda, un día entero del barrido entra de sobra. */
+const MAX_HEALTH_ROWS = 20_000
 
 /** Fila a insertar en `flight_price_probes` (el id y las fechas los pone la base). */
 export type ProbeInsert = Omit<ProbeRow, 'id' | 'probed_at'> & {
@@ -82,7 +84,10 @@ export async function listLandingDestinations(db: Db, opts: { activeOnly?: boole
 }
 
 export async function getLandingDestinationBySlug(db: Db, slug: string): Promise<LandingDestinationRow | null> {
-  const { data } = await db.from('flight_landing_destinations').select(DESTINATION_COLUMNS).eq('slug', slug).maybeSingle()
+  const { data, error } = await db.from('flight_landing_destinations').select(DESTINATION_COLUMNS).eq('slug', slug).maybeSingle()
+  // Un fallo de la base no es "no existe": si se traga el error, el job lo
+  // toma como destino despublicado y muere sin reintento.
+  if (error) throw new Error(`No se pudo leer el destino ${slug}: ${error.message}`)
   return data ? toDestination(data as unknown as Record<string, unknown>) : null
 }
 
@@ -100,17 +105,19 @@ export async function listRoutes(db: Db, opts: { activeOnly?: boolean; destinati
 }
 
 export async function getRoute(db: Db, id: number): Promise<LandingRouteRow | null> {
-  const { data } = await db.from('flight_landing_routes').select(ROUTE_COLUMNS).eq('id', id).maybeSingle()
+  const { data, error } = await db.from('flight_landing_routes').select(ROUTE_COLUMNS).eq('id', id).maybeSingle()
+  if (error) throw new Error(`No se pudo leer la ruta ${id}: ${error.message}`)
   return (data as unknown as LandingRouteRow | null) ?? null
 }
 
 export async function getRouteByCodes(db: Db, destinationCode: string, originCode: string): Promise<LandingRouteRow | null> {
-  const { data } = await db
+  const { data, error } = await db
     .from('flight_landing_routes')
     .select(ROUTE_COLUMNS)
     .eq('destination_code', destinationCode)
     .eq('origin_tc_code', originCode)
     .maybeSingle()
+  if (error) throw new Error(`No se pudo leer la ruta ${originCode}→${destinationCode}: ${error.message}`)
   return (data as unknown as LandingRouteRow | null) ?? null
 }
 
@@ -153,6 +160,9 @@ export async function getRecentProbesForRoutes(db: Db, routeIds: number[], opts:
     .eq('status', 'ok')
     .gte('probed_at', sinceIso(opts.sinceHours))
     .gte('departure_date', opts.fromDate)
+    // Primero por ruta: con el tope global, ordenar sólo por precio dejaría
+    // sin filas a las rutas caras.
+    .order('route_id', { ascending: true })
     .order('price_per_pax', { ascending: true })
     .limit(MAX_PROBE_ROWS_MULTI)
   if (error) throw new Error(`No se pudieron leer las observaciones del barrido: ${error.message}`)
@@ -174,13 +184,14 @@ export async function insertProbe(db: Db, row: ProbeInsert): Promise<void> {
 
 /** Jobs del barrido en cola o corriendo, para el tablero. */
 export async function getPendingSweepJobs(db: Db): Promise<JobRow[]> {
-  const { data } = await db
+  const { data, error } = await db
     .from('hub_jobs')
     .select('*')
     .in('kind', ['flights.sweep', 'flights.sweep.plan'])
     .in('status', ['queued', 'running'])
     .order('created_at', { ascending: false })
     .limit(200)
+  if (error) throw new Error(`No se pudieron leer los jobs del barrido: ${error.message}`)
   return (data ?? []) as JobRow[]
 }
 
@@ -202,6 +213,7 @@ export async function getSweepHealth(db: Db, sinceHours = 24): Promise<Map<numbe
     .select('route_id, status, probed_at')
     .not('route_id', 'is', null)
     .gte('probed_at', new Date(Date.now() - sinceHours * 3_600_000).toISOString())
+    .limit(MAX_HEALTH_ROWS)
   if (error) throw new Error(`No se pudo leer la salud del barrido: ${error.message}`)
 
   const salud = new Map<number, RouteHealth>()
@@ -229,8 +241,10 @@ export async function updateRoute(db: Db, id: number, patch: RoutePatch): Promis
     .update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', id)
     .select(ROUTE_COLUMNS)
-    .single()
+    .maybeSingle()
   if (error) throw new Error(`No se pudo actualizar la ruta ${id}: ${error.message}`)
+  // Un id que no existe no es un error de la base: el API lo traduce a 404.
+  if (!data) throw new Error(`La ruta ${id} no existe`)
   return data as unknown as LandingRouteRow
 }
 
@@ -242,7 +256,15 @@ export async function updateRoute(db: Db, id: number, patch: RoutePatch): Promis
  * sólo tapa la cola del lane `cotizador`, que corre de a uno.
  */
 export async function cancelStaleSweepJobs(db: Db, day: string): Promise<number> {
-  const { data } = await db.from('hub_jobs').select('id, dedupe_key').eq('kind', 'flights.sweep').eq('status', 'queued').limit(1000)
+  const { data, error } = await db
+    .from('hub_jobs')
+    .select('id, dedupe_key')
+    .eq('kind', 'flights.sweep')
+    .eq('status', 'queued')
+    .order('created_at', { ascending: true })
+    .limit(1000)
+  // Sin esto, una lectura fallida se veía igual que "no había nada viejo".
+  if (error) throw new Error(`No se pudieron leer los barridos en cola: ${error.message}`)
   const viejos = ((data ?? []) as Array<{ id: number; dedupe_key: string | null }>).filter(j => !j.dedupe_key?.endsWith(`:${day}`))
 
   let cancelados = 0
