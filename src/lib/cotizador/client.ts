@@ -175,6 +175,8 @@ export async function quoteMulti(
 
 export const COTIZADOR_PROBE_PROVIDER = 'cotizador_probe'
 const PROBE_TIMEOUT_MS = 60_000
+/** Resolver un destino es una consulta corta: o contesta rápido o no sirve. */
+const RESOLVE_TIMEOUT_MS = 20_000
 
 export class CotizadorBudgetExhausted extends Error {
   constructor(pct: number) {
@@ -432,6 +434,66 @@ export async function probeFlights(
       status: registro,
       durationMs: Date.now() - started,
       jobId,
+    })
+  }
+}
+
+/**
+ * Traduce un texto libre ("Miami", "FLN") al código de destino de Travel
+ * Compositor y a su `valor_form`.
+ *
+ * Sirve para dar de alta rutas nuevas del barrido sin adivinar códigos: el
+ * bot resuelve contra su mapa y, si hace falta, contra siviajo.com. No
+ * resolver NO es un error (el bot devuelve 200 con `no_resuelto` y el
+ * motivo); sí lanza si el HTTP falla o falta la API key.
+ */
+export async function resolveDestination(
+  db: Db,
+  query: string,
+  options: { jobId?: number | null } = {}
+): Promise<{ status: 'ok'; code: string; label: string; valorForm: string } | { status: 'no_resuelto'; motivo: string }> {
+  const started = Date.now()
+  let registro: 'ok' | 'error' | 'timeout' = 'ok'
+
+  try {
+    const res = await fetch(`${baseUrl('emisivo')}/flights/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey('emisivo') },
+      body: JSON.stringify({ consulta: query }),
+      signal: AbortSignal.timeout(RESOLVE_TIMEOUT_MS),
+    })
+    if (!res.ok) {
+      registro = 'error'
+      throw new Error(`Cotizador /flights/resolve HTTP ${res.status}: ${await errorDetail(res)}`)
+    }
+
+    const payload = (await res.json().catch(() => null)) as Record<string, unknown> | null
+    if (!payload) {
+      registro = 'error'
+      throw new Error('Respuesta ilegible del cotizador al resolver el destino')
+    }
+
+    if (payload.status === 'ok') {
+      const code = asText(payload.code)
+      if (!code) {
+        registro = 'error'
+        throw new Error('El cotizador resolvió el destino sin código')
+      }
+      return { status: 'ok', code, label: asText(payload.label), valorForm: asText(payload.valor_form) || `Destination::${code}` }
+    }
+    return { status: 'no_resuelto', motivo: asText(payload.motivo) || `No se pudo resolver "${query}"` }
+  } catch (err) {
+    if (err instanceof Error && err.name === 'TimeoutError') registro = 'timeout'
+    else registro = 'error'
+    throw err
+  } finally {
+    await recordExternalCall(db, {
+      provider: COTIZADOR_PROBE_PROVIDER,
+      endpoint: 'vuelos-baratos:resolve',
+      units: 1,
+      status: registro,
+      durationMs: Date.now() - started,
+      jobId: options.jobId ?? null,
     })
   }
 }

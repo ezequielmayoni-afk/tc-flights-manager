@@ -48,6 +48,14 @@ type OptionalEnvVars = {
   VUELOS_URL?: string
   /** HUB_API_KEY: también lo usa el bot del CRM. */
   HUB_API_KEY?: string
+  /** URL pública de la landing, default https://vuelos.siviajo.com */
+  NEXT_PUBLIC_VUELOS_BASE_URL?: string
+  /** Host que sirve la landing, ej. vuelos.siviajo.com; activa el rewrite del middleware. */
+  VUELOS_PUBLIC_HOST?: string
+  /** Contenedor de Google Tag Manager de la landing pública. */
+  NEXT_PUBLIC_GTM_ID?: string
+  /** Motor de reservas al que apuntan los deep links, default https://www.siviajo.com */
+  SIVIAJO_BASE_URL?: string
 }
 
 const REQUIRED_VARS: (keyof RequiredEnvVars)[] = [

@@ -11,6 +11,7 @@ export const FLAGS = {
   crmReads: 'automation.crm_reads',
   gscWrites: 'automation.gsc_writes',
   vuelosCalls: 'automation.vuelos_calls',
+  flightsSweep: 'automation.flights_sweep',
 } as const
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS]

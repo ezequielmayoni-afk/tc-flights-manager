@@ -5,6 +5,7 @@ import { enqueueJob } from '@/lib/jobs/queue'
 import type { Db, EnqueueInput } from '@/lib/jobs/types'
 import { logEvent } from '@/lib/logs'
 import { isoWeekLabel } from '@/lib/tendencias/config'
+import { SWEEP_ENQUEUE_HOUR_UTC } from '@/lib/vuelos-baratos/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,9 +27,15 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
       const utcHour = now.getUTCHours()
       const sunday = now.getUTCDay() === 0
       const datePreset = sunday && utcHour === 9 ? 'last_30d' : utcHour === 9 ? 'last_7d' : 'yesterday'
-      return [
+      const inputs: EnqueueInput[] = [
         { kind: 'insights.sync', payload: { datePreset, at: hour }, dedupeKey: `insights.sync:${hour}` },
       ]
+      // Barrido de vuelos.siviajo.com: una sola vez por noche, al abrir la
+      // ventana del lane `cotizador`.
+      if (utcHour === SWEEP_ENQUEUE_HOUR_UTC) {
+        inputs.push({ kind: 'flights.sweep.plan', payload: { day }, dedupeKey: `flights.sweep.plan:${day}` })
+      }
+      return inputs
     }
     case 'daily': {
       // Fase 4: marketing.evaluate · Fase 10: requote.alternatives · Fase 11: ig.media_sync
