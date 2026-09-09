@@ -29,6 +29,8 @@ export interface TrendDestinationRow {
   signal_google_trends: number
   signal_autocomplete: number
   signals: Record<string, number>
+  /** Evidencia por fuente: consultas de ejemplo, valores crudos, plantillas de Trends. */
+  raw_signals: Record<string, Record<string, unknown>>
   prev_week_score: number | null
   change_pct: number | null
   momentum: Momentum
@@ -67,7 +69,7 @@ export interface DemandSignalRow {
   collected_at: string
 }
 
-const DESTINATION_COLUMNS = 'id, destination, destination_slug, region, trend_score, rank, signal_google_trends, signal_autocomplete, signals, prev_week_score, change_pct, momentum, has_packages, matching_package_count, matching_package_ids, cheapest_package_price, classification, related_queries'
+const DESTINATION_COLUMNS = 'id, destination, destination_slug, region, trend_score, rank, signal_google_trends, signal_autocomplete, signals, raw_signals, prev_week_score, change_pct, momentum, has_packages, matching_package_count, matching_package_ids, cheapest_package_price, classification, related_queries'
 
 export async function listRuns(db: Db, limit = 12): Promise<TrendRunRow[]> {
   const { data } = await db.from('trend_runs').select('*').order('created_at', { ascending: false }).limit(limit)
@@ -95,6 +97,7 @@ export async function getRunDestinations(db: Db, runId: string): Promise<TrendDe
     change_pct: d.change_pct === null ? null : Number(d.change_pct),
     cheapest_package_price: d.cheapest_package_price === null ? null : Number(d.cheapest_package_price),
     related_queries: Array.isArray(d.related_queries) ? d.related_queries : [],
+    raw_signals: d.raw_signals && typeof d.raw_signals === 'object' ? d.raw_signals : {},
   }))
 }
 

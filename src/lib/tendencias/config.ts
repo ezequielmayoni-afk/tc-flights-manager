@@ -161,6 +161,9 @@ export const CANONICAL_SLUGS: Record<string, string> = {
   'islas-canarias': 'canarias',
   'dubai-emiratos': 'dubai',
   'emiratos': 'dubai',
+  'la-romana': 'bayahibe',
+  'bayahibe-la-romana': 'bayahibe',
+  'dominicana': 'punta-cana',
   'san-andres-colombia': 'san-andres',
   'san-andres-islas': 'san-andres',
   'san-pablo': 'sao-paulo',
@@ -222,12 +225,19 @@ export const SOURCE_WEIGHTS: Record<string, number> = {
   trending_now: 0.05,    // el destino aparece en "tendencias ahora" de Argentina
 }
 
-/** Grupos de comparación por plantilla: 5 + 4 + 4 + 4 = 17 destinos validados. */
-export const TRENDS_COMPARISON_GROUPS = 4
+/**
+ * Grupos de comparación por plantilla: 5 + 4 × 7 = 33 destinos comparados.
+ * Entran los más fuertes del descubrimiento y, siempre, los destinos que
+ * tienen paquetes en el catálogo: sin comparar en Trends la fuente de más
+ * peso les daba 0 y Bayahibe quedaba en el puesto 28 con más búsquedas que Cancún.
+ */
+export const TRENDS_COMPARISON_GROUPS = 8
+export const MAX_TRENDS_CANDIDATES = 5 + 4 * (TRENDS_COMPARISON_GROUPS - 1)
+/** Cuántos de los cupos se reservan para lo más buscado del descubrimiento; el resto es catálogo. */
 export const TOP_DISCOVERED_FOR_VALIDATION = 17
 /** Destinos para los que se piden consultas relacionadas propias. */
 export const TRENDS_RELATED_TOP = 4
-/** Llamadas a SerpAPI por corrida: 3 × 4 comparaciones + 4 relacionadas + 7 genéricas + 1 tendencias ahora = 24. */
+/** Llamadas a SerpAPI por corrida: 3 × 8 comparaciones + 4 relacionadas + 7 genéricas + 1 tendencias ahora = 36. */
 export const SERPAPI_CALLS_PER_RUN = TRENDS_TEMPLATES.length * TRENDS_COMPARISON_GROUPS + TRENDS_RELATED_TOP + GENERIC_TREND_SEEDS.length + 1
 
 /** Umbrales de momentum (% de cambio contra la corrida anterior). */

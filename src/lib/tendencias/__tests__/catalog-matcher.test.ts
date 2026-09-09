@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { catalogSlugMatches, matchCatalogEntries } from '../catalog-matcher'
+import { catalogSlugMatches, matchCatalogEntries, seedSlugsWithPackages } from '../catalog-matcher'
 import type { CatalogEntry, TrendDestination } from '../types'
 
 describe('catalogSlugMatches', () => {
@@ -61,5 +61,19 @@ describe('matchCatalogEntries', () => {
     expect(orlando.matchingPackageIds).toEqual([4])
     expect(ushuaia.hasPackages).toBe(false)
     expect(ushuaia.matchingPackageCount).toBe(0)
+  })
+})
+
+describe('seedSlugsWithPackages', () => {
+  it('devuelve las semillas que tienen paquetes, resolviendo alias', () => {
+    const slugs = seedSlugsWithPackages([
+      { packageId: 1, tcPackageId: 1, title: '', destinationNames: ['Bayahibe'], pricePerPax: 1 },
+      { packageId: 2, tcPackageId: 2, title: '', destinationNames: ['Rome', 'Florence'], pricePerPax: 1 },
+    ])
+    expect(slugs.has('bayahibe')).toBe(true)
+    expect(slugs.has('roma')).toBe(true)
+    expect(slugs.has('italia')).toBe(true)
+    expect(slugs.has('caribe')).toBe(true)
+    expect(slugs.has('cancun')).toBe(false)
   })
 })

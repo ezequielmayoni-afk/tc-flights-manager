@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { longWeekends } from '../collectors/feriados'
 import { summarizeSeries } from '../collectors/bcra'
-import { extractDestination, finalizeDiscoveries, positionWeight, registerSuggestion, type Discovered } from '../collectors/autocomplete'
+import { canonicalizeSlug, extractDestination, finalizeDiscoveries, isCrowded, positionWeight, registerSuggestion, type Discovered } from '../collectors/autocomplete'
 import { crossNormalize } from '../collectors/serpapi-trends'
 import { buildKnown, matchKnownDestination, stripOrigin } from '../collectors/known'
 import { countsAsTravelDemand, isTravelQuery } from '../travel-terms'
@@ -92,7 +92,7 @@ describe('registerSuggestion + finalizeDiscoveries', () => {
     registerSuggestion(discovered, 'luna de miel maldivas', 'luna de miel ', 'luna de miel', 5)
 
     const signals = finalizeDiscoveries(discovered)
-    expect(signals.get('cancun')).toMatchObject({ rawScore: 1.8, normalizedScore: 95, metadata: { name: 'Cancún', mentions: 2, placeMentions: 2 } })
+    expect(signals.get('cancun')).toMatchObject({ rawScore: 1.8, normalizedScore: 97, metadata: { name: 'Cancún', mentions: 2, placeMentions: 2 } })
     expect(signals.get('curacao')).toMatchObject({ rawScore: 1.9, normalizedScore: 100, metadata: { name: 'Curaçao', placeMentions: 1 } })
     expect(signals.has('personas')).toBe(false)
     expect(signals.get('maldivas')).toMatchObject({ metadata: { placeMentions: 0 } }) // semilla: entra igual
@@ -107,6 +107,23 @@ describe('registerSuggestion + finalizeDiscoveries', () => {
     registerSuggestion(discovered, 'viaje a villa traful', 'viaje a ', 'viaje a', 3)
     const signals = finalizeDiscoveries(discovered, buildKnown())
     expect([...signals.keys()]).toEqual(['japon'])
+  })
+})
+
+describe('canonicalizeSlug + isCrowded', () => {
+  it('unifica variantes y nombres con cola', () => {
+    expect(canonicalizeSlug('curazao')).toBe('curacao')
+    expect(canonicalizeSlug('la-romana')).toBe('bayahibe')
+    expect(canonicalizeSlug('bayahibe-republica-dominicana')).toBe('bayahibe')
+    expect(canonicalizeSlug('rio-de-janeiro-brasil')).toBe('rio-de-janeiro')
+    expect(canonicalizeSlug('villa-traful')).toBe('villa-traful')
+    expect(canonicalizeSlug('salta')).toBe('salta')
+  })
+
+  it('detecta una letra saturada por dos destinos', () => {
+    expect(isCrowded(['brasil', 'bariloche', 'buzios', 'brasil', 'brasil', 'brasil', 'bayahibe', 'bayahibe', 'brasil', 'bariloche'])).toBe(true)
+    expect(isCrowded(['chile', 'cordoba', 'cancun', 'colombia', 'cataratas', 'costa-rica', 'curacao', 'corrientes', 'catamarca', 'cuba'])).toBe(false)
+    expect(isCrowded(['brasil', 'brasil'])).toBe(false)
   })
 })
 

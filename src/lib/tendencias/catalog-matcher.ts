@@ -1,4 +1,4 @@
-import { DESTINATION_ALIASES, slugify } from './config'
+import { DESTINATION_ALIASES, getAllDestinations, slugify } from './config'
 import type { Db } from '@/lib/jobs/types'
 import type { CatalogEntry, TrendDestination } from './types'
 
@@ -70,7 +70,17 @@ export async function loadCatalog(db: Db): Promise<CatalogEntry[]> {
   })
 }
 
-export async function matchCatalog(db: Db, destinations: TrendDestination[]): Promise<{ destinations: TrendDestination[]; catalogSize: number }> {
-  const entries = await loadCatalog(db)
-  return { destinations: matchCatalogEntries(destinations, entries), catalogSize: entries.length }
+/** Slugs semilla con al menos un paquete activo. Puro. */
+export function seedSlugsWithPackages(entries: CatalogEntry[]): Set<string> {
+  const slugs = new Set<string>()
+  const catalogSlugs = entries.flatMap(e => e.destinationNames.map(slugify)).filter(Boolean)
+  for (const seed of getAllDestinations()) {
+    if (catalogSlugs.some(c => catalogSlugMatches(seed.slug, c))) slugs.add(seed.slug)
+  }
+  return slugs
+}
+
+export async function matchCatalog(db: Db, destinations: TrendDestination[], entries?: CatalogEntry[]): Promise<{ destinations: TrendDestination[]; catalogSize: number }> {
+  const catalog = entries ?? await loadCatalog(db)
+  return { destinations: matchCatalogEntries(destinations, catalog), catalogSize: catalog.length }
 }

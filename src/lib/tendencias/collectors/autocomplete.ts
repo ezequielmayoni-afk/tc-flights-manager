@@ -58,6 +58,8 @@ const STOPWORDS = new Set([
   'largo', 'corto', 'claro', 'promo', 'promocion', 'promoción', 'promociones', 'oferta', 'ofertas', 'cuotas', 'pesos', 'dolares', 'dólares',
   'año', 'años', 'quince', 'xv', 'fiesta', 'fiestas', 'mundial', 'caba', 'capital', 'ezeiza', 'aeroparque',
   'hoy', 'ahora', 'ultimo', 'último', 'momento', 'dias', 'días', 'noches', 'noche', 'ingles', 'inglés', 'idioma', 'casa', 'auto',
+  'avion', 'avión', 'micro', 'bus', 'colectivo', 'tren', 'barco', 'ferry', 'aeropuerto', 'mapa', 'clima', 'queda', 'sargazo', 'tiene',
+  'requisitos', 'visa', 'moneda', 'fotos', 'imagenes', 'imágenes', 'opiniones', 'reseñas', 'ubicacion', 'ubicación', 'wikipedia',
   // Lugares de fantasía y no destinos que devuelve YouTube
   'estrellas', 'marte', 'centro', 'tierra', 'inesperado', 'desconocido', 'pasado', 'futuro', 'tiempo', 'infierno', 'cielo', 'espacio',
   // Marcas y agencias
@@ -110,6 +112,38 @@ export function extractDestination(suggestion: string, prefix: string): string |
     .join(' ')
 }
 
+const SEED_SLUGS = getAllDestinations().map(d => d.slug).filter(slug => slug.length >= 4).sort((a, b) => b.length - a.length)
+
+/**
+ * Lleva un slug a su forma canónica: variantes conocidas (curazao → curacao)
+ * y nombres con cola ("bayahibe-republica-dominicana", "rio-de-janeiro-brasil")
+ * que empiezan con un destino semilla. Puro.
+ */
+export function canonicalizeSlug(rawSlug: string): string {
+  const direct = CANONICAL_SLUGS[rawSlug]
+  if (direct) return direct
+  for (const seed of SEED_SLUGS) {
+    if (rawSlug === seed) return seed
+    if (rawSlug.startsWith(`${seed}-`)) return seed
+  }
+  return rawSlug
+}
+
+/**
+ * Una letra "saturada" es la que Google llena con dos o tres destinos
+ * gigantes ("paquetes a b" → Brasil, Bariloche, Búzios): lo que queda atrás
+ * (Bayahibe, Bahía) no tiene lugar. Puro.
+ */
+export function isCrowded(slugs: string[]): boolean {
+  if (slugs.length < 8) return false
+  const counts = new Map<string, number>()
+  for (const s of slugs) counts.set(s, (counts.get(s) ?? 0) + 1)
+  const top2 = [...counts.values()].sort((a, b) => b - a).slice(0, 2).reduce((a, b) => a + b, 0)
+  return top2 / slugs.length >= 0.7
+}
+
+const VOWELS = ['a', 'e', 'i', 'o', 'u']
+
 export interface Discovered {
   name: string
   slug: string
@@ -147,14 +181,14 @@ export function positionWeight(position: number): number {
   return Math.max(0.1, (11 - Math.min(position, 10)) / 10)
 }
 
-/** Registra una sugerencia. `seedType` es la semilla base (sin la letra de expansión). Puro. */
-export function registerSuggestion(discovered: Map<string, Discovered>, suggestion: string, prefix: string, seedType: string, position: number): void {
+/** Registra una sugerencia y devuelve el slug. `seedType` es la semilla base (sin la letra de expansión). Puro. */
+export function registerSuggestion(discovered: Map<string, Discovered>, suggestion: string, prefix: string, seedType: string, position: number): string | null {
   void prefix // el prefijo puede llevar la letra de expansión: se recorta la semilla base
   const name = extractDestination(suggestion, seedType)
-  if (!name || name.length < 3) return
+  if (!name || name.length < 3) return null
   const rawSlug = slugify(name)
-  if (!rawSlug || rawSlug.length < 2) return
-  const slug = CANONICAL_SLUGS[rawSlug] ?? rawSlug
+  if (!rawSlug || rawSlug.length < 2) return null
+  const slug = canonicalizeSlug(rawSlug)
   const isPlaceSeed = PLACE_SEEDS.has(seedType)
   const weight = positionWeight(position)
 
@@ -168,12 +202,16 @@ export function registerSuggestion(discovered: Map<string, Discovered>, suggesti
   } else {
     discovered.set(slug, { name: slug === rawSlug ? name : slug, slug, mentions: 1, weight, placeMentions: isPlaceSeed ? 1 : 0, queries: [suggestion], seedTypes: new Set([seedType]) })
   }
+  return slug
 }
 
 /**
  * Descarta lo que no es un lugar y normaliza (el de más peso vale 100).
- * Con `known`, sólo pasan destinos ya conocidos: es el modo de YouTube, que
- * corrobora pero no descubre. Puro.
+ * La normalización es por raíz cuadrada: los diez lugares de cada prefijo
+ * los copan dos o tres gigantes, así que las menciones crudas exageran la
+ * distancia (Punta Cana 21 contra Bayahibe 2,8 cuando en Trends es 55 contra
+ * 19). Con `known`, sólo pasan destinos ya conocidos: es el modo de YouTube,
+ * que corrobora pero no descubre. Puro.
  */
 export function finalizeDiscoveries(discovered: Map<string, Discovered>, known?: KnownDestinations): Map<string, DestinationSignal> {
   const seeds = getAllDestinations()
@@ -186,7 +224,7 @@ export function finalizeDiscoveries(discovered: Map<string, Discovered>, known?:
   for (const dest of kept) {
     destinations.set(dest.slug, {
       rawScore: Math.round(dest.weight * 10) / 10,
-      normalizedScore: Math.round((dest.weight / maxWeight) * 100),
+      normalizedScore: Math.round(Math.sqrt(dest.weight / maxWeight) * 100),
       metadata: {
         name: seedNames.get(dest.slug) ?? known?.names.get(dest.slug) ?? dest.name,
         mentions: dest.mentions,
@@ -216,25 +254,33 @@ export interface SuggestCollectorResult extends CollectorResult {
 export async function collectSuggestions(options: SuggestCollectorOptions): Promise<SuggestCollectorResult> {
   const started = Date.now()
   const discovered = new Map<string, Discovered>()
-  const prefixes: Array<{ prefix: string; seedType: string }> = options.seeds.map(s => ({ prefix: s, seedType: s.trim() }))
+  const queue: Array<{ prefix: string; seedType: string; expandable: boolean }> = options.seeds.map(s => ({ prefix: s, seedType: s.trim(), expandable: false }))
   for (const seed of options.expandSeeds ?? []) {
-    for (const letter of LETTERS) prefixes.push({ prefix: `${seed}${letter}`, seedType: seed.trim() })
+    for (const letter of LETTERS) queue.push({ prefix: `${seed}${letter}`, seedType: seed.trim(), expandable: true })
   }
   let queriesUsed = 0
   let failures = 0
+  let index = 0
 
-  for (const [index, { prefix, seedType }] of prefixes.entries()) {
+  while (index < queue.length) {
+    const { prefix, seedType, expandable } = queue[index]
     try {
       const suggestions = await getSuggestions(prefix, options.ds)
       queriesUsed++
-      suggestions.forEach((suggestion, i) => registerSuggestion(discovered, suggestion, prefix, seedType, i + 1))
+      const slugs = suggestions.map((suggestion, i) => registerSuggestion(discovered, suggestion, prefix, seedType, i + 1)).filter((x): x is string => Boolean(x))
+      // Letra saturada por dos gigantes: se baja un nivel ("paquetes a ba", "be", "bi"…).
+      if (expandable && isCrowded(slugs)) {
+        for (const vowel of VOWELS) queue.push({ prefix: `${prefix}${vowel}`, seedType, expandable: false })
+      }
       await new Promise(r => setTimeout(r, DELAY_BETWEEN_REQUESTS_MS))
     } catch (err) {
       failures++
       console.warn(`[tendencias/${options.source}] falló "${prefix}": ${(err as Error).message}`)
     }
-    if (index % 25 === 24) await options.heartbeat?.()
+    index++
+    if (index % 25 === 0) await options.heartbeat?.()
   }
+  const prefixes = queue
 
   const destinations = finalizeDiscoveries(discovered, options.known)
   return {

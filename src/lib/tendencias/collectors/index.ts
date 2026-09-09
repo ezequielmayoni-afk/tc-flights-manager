@@ -3,7 +3,7 @@ import { collectGoogleRelated } from './google-related'
 import { collectGoogleTrends } from './serpapi-trends'
 import { collectTrendingNow } from './trending-now'
 import { buildKnown } from './known'
-import { TOP_DISCOVERED_FOR_VALIDATION } from '../config'
+import { MAX_TRENDS_CANDIDATES, TOP_DISCOVERED_FOR_VALIDATION } from '../config'
 import type { CollectorResult, TendenciasContext, TrendBuzz } from '../types'
 
 export interface CollectAllResult {
@@ -47,15 +47,25 @@ export async function collectAll(ctx: TendenciasContext): Promise<CollectAllResu
   await ctx.log(`Relacionadas genéricas: ${related.destinations.size} destinos en ${related.lists.length} términos (${related.queriesUsed} llamadas)`, { error: related.error ?? null, top: summarize(related), rising: related.lists.flatMap(l => l.rising.slice(0, 4).map(r => `${l.seed}: ${r.query} ${r.value}`)).slice(0, 12) }, related.error ? 'warning' : 'info')
   await ctx.heartbeat?.()
 
-  // 3. Candidatos = lo más fuerte entre autocompletado y relacionadas
+  // 3. Candidatos = lo más fuerte del descubrimiento + los destinos con paquetes en el catálogo
   const candidateScore = new Map<string, number>()
   for (const r of [autocomplete, related]) {
     for (const [slug, s] of r.destinations) candidateScore.set(slug, Math.max(candidateScore.get(slug) ?? 0, s.normalizedScore))
   }
-  const candidates = [...candidateScore.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, TOP_DISCOVERED_FOR_VALIDATION)
-    .map(([slug]) => ({ slug, name: known.names.get(slug) ?? slug }))
+  const ranked = [...candidateScore.entries()].sort((a, b) => b[1] - a[1]).map(([slug]) => slug)
+  const chosen: string[] = ranked.slice(0, TOP_DISCOVERED_FOR_VALIDATION)
+  const fromCatalog = [...(ctx.catalogSlugs ?? [])]
+    .filter(slug => !chosen.includes(slug))
+    .sort((a, b) => (candidateScore.get(b) ?? 0) - (candidateScore.get(a) ?? 0))
+  for (const slug of fromCatalog) {
+    if (chosen.length >= MAX_TRENDS_CANDIDATES) break
+    chosen.push(slug)
+  }
+  for (const slug of ranked) {
+    if (chosen.length >= MAX_TRENDS_CANDIDATES) break
+    if (!chosen.includes(slug)) chosen.push(slug)
+  }
+  const candidates = chosen.map(slug => ({ slug, name: known.names.get(slug) ?? slug }))
 
   const [trends, youtube] = await Promise.all([
     collectGoogleTrends(ctx.serpapi, candidates),
@@ -65,7 +75,7 @@ export async function collectAll(ctx: TendenciasContext): Promise<CollectAllResu
   serpApiCalls += trends.queriesUsed
   sourcesCollected.google_trends = trends.destinations.size > 0 && !trends.error
   sourcesCollected.youtube = !youtube.error && youtube.destinations.size > 0
-  await ctx.log(`Google Trends: ${trends.destinations.size} destinos comparados con ${trends.queriesUsed} llamadas`, { error: trends.error ?? null, candidates: candidates.map(c => c.name), top: summarize(trends) }, trends.error ? 'warning' : 'info')
+  await ctx.log(`Google Trends: ${trends.destinations.size} destinos comparados con ${trends.queriesUsed} llamadas (${fromCatalog.length} del catálogo)`, { error: trends.error ?? null, candidates: candidates.map(c => c.name), top: summarize(trends) }, trends.error ? 'warning' : 'info')
   await ctx.log(`YouTube: ${youtube.destinations.size} destinos conocidos con ${youtube.queriesUsed} consultas`, { error: youtube.error ?? null, top: summarize(youtube) }, youtube.error ? 'warning' : 'info')
   await ctx.heartbeat?.()
 

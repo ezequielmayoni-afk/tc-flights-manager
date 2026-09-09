@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import type { TrendDestinationRow } from '@/lib/tendencias/queries'
 
 const CLASS_LABEL: Record<string, { label: string; className: string }> = {
@@ -25,12 +25,71 @@ const REGION_LABEL: Record<string, string> = {
 
 type SortKey = 'rank' | 'change' | 'packages'
 
+const SOURCE_LABEL: Record<string, string> = {
+  google_trends: 'Google Trends',
+  google_related: 'Búsquedas relacionadas',
+  autocomplete: 'Autocomplete Google',
+  youtube: 'YouTube',
+  trending_now: 'Tendencias ahora',
+}
+
+/** Las búsquedas concretas que sostienen el score de un destino, por fuente. */
+function Evidence({ d }: { d: TrendDestinationRow }) {
+  const raw = d.raw_signals ?? {}
+  const ac = raw.autocomplete as { sampleQueries?: string[]; mentions?: number; weight?: number } | undefined
+  const yt = raw.youtube as { sampleQueries?: string[]; mentions?: number } | undefined
+  const rel = raw.google_related as { queries?: Array<{ query: string; value: string; seed: string }> } | undefined
+  const gt = raw.google_trends as { templates?: Record<string, { score: number; rawBatchScore: number; batch: number; anchor: string | null } | null>; relatedQueries?: Array<{ query: string; value: string }> } | undefined
+  const now = raw.trending_now as { queries?: string[]; volume?: number } | undefined
+  const templates = gt?.templates ? Object.entries(gt.templates) : []
+  return (
+    <div className="grid gap-3 bg-gray-50 px-6 py-3 text-xs text-gray-700 md:grid-cols-2 lg:grid-cols-3">
+      <div>
+        <p className="font-semibold text-gray-900">{SOURCE_LABEL.google_trends} · {d.signals.google_trends ?? 0}</p>
+        {templates.length ? (
+          <ul className="mt-1 space-y-0.5">
+            {templates.map(([name, t]) => (
+              <li key={name}>“{name} {d.destination}”: {t ? `${t.score} (grupo ${t.batch}, ancla ${t.anchor ?? '—'})` : 'sin dato'}</li>
+            ))}
+            {gt?.relatedQueries?.length ? <li className="text-gray-500">En alza: {gt.relatedQueries.slice(0, 4).map(q => `${q.query} ${q.value}`).join(' · ')}</li> : null}
+          </ul>
+        ) : <p className="text-gray-400">No se comparó en esta corrida.</p>}
+      </div>
+      <div>
+        <p className="font-semibold text-gray-900">{SOURCE_LABEL.google_related} · {d.signals.google_related ?? 0}</p>
+        {rel?.queries?.length ? (
+          <ul className="mt-1 space-y-0.5">{rel.queries.map((q, i) => <li key={i}>{q.query} <span className="text-gray-500">{q.value} · {q.seed}</span></li>)}</ul>
+        ) : <p className="text-gray-400">No aparece en las relacionadas.</p>}
+      </div>
+      <div>
+        <p className="font-semibold text-gray-900">{SOURCE_LABEL.autocomplete} · {d.signals.autocomplete ?? 0}</p>
+        {ac?.sampleQueries?.length ? (
+          <ul className="mt-1 space-y-0.5">{ac.sampleQueries.map((q, i) => <li key={i}>{q}</li>)}<li className="text-gray-500">{ac.mentions} sugerencias, peso {ac.weight}</li></ul>
+        ) : <p className="text-gray-400">Google no lo completa.</p>}
+      </div>
+      <div>
+        <p className="font-semibold text-gray-900">{SOURCE_LABEL.youtube} · {d.signals.youtube ?? 0}</p>
+        {yt?.sampleQueries?.length ? (
+          <ul className="mt-1 space-y-0.5">{yt.sampleQueries.map((q, i) => <li key={i}>{q}</li>)}</ul>
+        ) : <p className="text-gray-400">YouTube no lo completa.</p>}
+      </div>
+      <div>
+        <p className="font-semibold text-gray-900">{SOURCE_LABEL.trending_now} · {d.signals.trending_now ?? 0}</p>
+        {now?.queries?.length ? (
+          <ul className="mt-1 space-y-0.5">{now.queries.map((q, i) => <li key={i}>{q}</li>)}</ul>
+        ) : <p className="text-gray-400">No está en tendencias ahora.</p>}
+      </div>
+    </div>
+  )
+}
+
 /** Tabla de destinos de una corrida con filtros por clasificación, región y catálogo. */
 export function TrendsTable({ destinations }: { destinations: TrendDestinationRow[] }) {
   const [classification, setClassification] = useState<string>('')
   const [region, setRegion] = useState<string>('')
   const [onlyWithPackages, setOnlyWithPackages] = useState(false)
   const [sort, setSort] = useState<SortKey>('rank')
+  const [open, setOpen] = useState<string | null>(null)
 
   const regions = useMemo(() => [...new Set(destinations.map(d => d.region))].sort(), [destinations])
 
@@ -75,7 +134,7 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
             <option value="packages">Paquetes</option>
           </select>
         </label>
-        <span className="ml-auto">{rows.length} de {destinations.length}</span>
+        <span className="ml-auto">{rows.length} de {destinations.length} · clic en un destino para ver sus búsquedas</span>
       </div>
 
       {rows.length === 0 ? (
@@ -106,10 +165,14 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
                 const cls = CLASS_LABEL[d.classification] ?? CLASS_LABEL.declining
                 const mom = MOMENTUM_LABEL[d.momentum] ?? MOMENTUM_LABEL.new
                 const buy = d.related_queries.filter(q => q.intent === 'buy').slice(0, 3)
+                const isOpen = open === d.id
                 return (
-                  <tr key={d.id} className="align-top">
+                  <Fragment key={d.id}>
+                  <tr className={`align-top ${isOpen ? 'bg-gray-50' : ''}`}>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-500">{d.rank}</td>
-                    <td className="px-3 py-2 font-medium text-gray-900">{d.destination}</td>
+                    <td className="px-3 py-2 font-medium text-gray-900">
+                      <button type="button" onClick={() => setOpen(isOpen ? null : d.id)} className="text-left hover:underline">{d.destination}</button>
+                    </td>
                     <td className="px-3 py-2 text-gray-600">{REGION_LABEL[d.region] ?? d.region}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold text-gray-900">{d.trend_score}</td>
                     <td className={`px-3 py-2 ${mom.className}`}>
@@ -123,6 +186,8 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
                     <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.cheapest_package_price ? `USD ${Math.round(d.cheapest_package_price).toLocaleString('es-AR')}` : '—'}</td>
                     <td className="px-3 py-2 text-xs text-gray-600">{buy.map(q => q.query).join(' · ') || '—'}</td>
                   </tr>
+                  {isOpen && <tr><td colSpan={13} className="p-0"><Evidence d={d} /></td></tr>}
+                  </Fragment>
                 )
               })}
             </tbody>
