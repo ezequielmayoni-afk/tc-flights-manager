@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { GtmScript } from '@/components/vuelos-baratos/GtmScript'
 import { PublicFooter } from '@/components/vuelos-baratos/PublicFooter'
 import { PublicHeader } from '@/components/vuelos-baratos/PublicHeader'
+import { OG_BASE } from '@/components/vuelos-baratos/seo'
 import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
 
 /**
@@ -17,7 +18,7 @@ export const dynamic = 'force-dynamic'
 export const metadata: Metadata = {
   metadataBase: new URL(publicBaseUrl()),
   title: { default: 'Vuelos baratos | Sí, Viajo', template: '%s | Sí, Viajo' },
-  openGraph: { locale: 'es_AR', siteName: 'Sí, Viajo' },
+  openGraph: { ...OG_BASE },
 }
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {

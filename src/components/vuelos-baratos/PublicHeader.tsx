@@ -10,9 +10,11 @@ export function PublicHeader() {
     <header className="border-b border-[#E3E3E3] bg-white">
       <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link href="/vuelos-baratos" aria-label="Sí, Viajo — vuelos baratos">
-          {/* El logo vive en el CDN de Travel Compositor: no pasa por el optimizador de Next. */}
+          {/* El logo vive en el CDN de Travel Compositor: no pasa por el optimizador de Next.
+              width/height son los del asset real (775 × 253): le dan al navegador la
+              relación de aspecto para reservar los 123 × 40 px antes de que baje. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={LOGO} alt="Sí, Viajo" height={40} className="h-10 w-auto" />
+          <img src={LOGO} alt="Sí, Viajo" width={775} height={253} className="h-10 w-auto" />
         </Link>
         <a
           href={siviajoBaseUrl()}

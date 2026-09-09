@@ -10,6 +10,7 @@ import { JsonLd } from '@/components/vuelos-baratos/JsonLd'
 import { MonthChips } from '@/components/vuelos-baratos/MonthChips'
 import { OriginSelect } from '@/components/vuelos-baratos/OriginSelect'
 import { Pagination } from '@/components/vuelos-baratos/Pagination'
+import { OG_BASE } from '@/components/vuelos-baratos/seo'
 import { BOTON_PRIMARIO, CARD, formatUsd } from '@/components/vuelos-baratos/ui'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
@@ -148,7 +149,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     alternates: { canonical: `/vuelos-baratos/${slug}` },
     // Sólo la versión limpia va al índice: filtros y meses son la misma página.
     robots: { index: origen.code === DEFAULT_ORIGIN && !hasActiveFilters(filters) && !filters.month, follow: true },
-    openGraph: { title, description, type: 'website', url: `/vuelos-baratos/${slug}` },
+    // El openGraph de la página pisa al del layout: `locale` y `siteName` van de nuevo.
+    openGraph: { ...OG_BASE, title, description, type: 'website', url: `/vuelos-baratos/${slug}` },
   }
 }
 

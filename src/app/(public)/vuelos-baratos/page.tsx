@@ -5,6 +5,7 @@ import { JsonLd } from '@/components/vuelos-baratos/JsonLd'
 import { OriginTabs } from '@/components/vuelos-baratos/OriginTabs'
 import { PublicHero } from '@/components/vuelos-baratos/PublicHero'
 import { SearchBoxSlot } from '@/components/vuelos-baratos/SearchBoxSlot'
+import { OG_BASE } from '@/components/vuelos-baratos/seo'
 import { BOTON_PRIMARIO, formatUsd } from '@/components/vuelos-baratos/ui'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { summarizeDestinations } from '@/lib/vuelos-baratos/aggregates'
@@ -97,7 +98,8 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
     alternates: { canonical: '/vuelos-baratos' },
     // Una sola versión indexable: las demás ciudades son la misma página filtrada.
     robots: { index: origen.code === DEFAULT_ORIGIN, follow: true },
-    openGraph: { title, description, type: 'website', url: '/vuelos-baratos' },
+    // El openGraph de la página pisa al del layout: `locale` y `siteName` van de nuevo.
+    openGraph: { ...OG_BASE, title, description, type: 'website', url: '/vuelos-baratos' },
   }
 }
 

@@ -40,6 +40,15 @@ const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
   ventas: ['productos', 'comercial', 'vendedores'],
 }
 
+/**
+ * El `Host` lo manda el cliente: puede venir con puerto, en mayúsculas o con
+ * el punto final del FQDN ('Vuelos.Siviajo.Com.'). Sin normalizar, cualquiera
+ * de esas variantes se saltea el bloque del host público.
+ */
+function normalizeHost(host: string | null | undefined): string {
+  return (host ?? '').split(':')[0].trim().toLowerCase().replace(/\.$/, '')
+}
+
 function isAdminRole(role: UserRole): boolean {
   return role === 'admin' || role === 'marketing'
 }
@@ -62,10 +71,17 @@ export async function updateSession(request: NextRequest) {
   // las mismas rutas siguen siendo públicas, pero el resto pide sesión.
   const pathname = request.nextUrl.pathname
   const isPublicPath = PUBLIC_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
-  const publicHost = process.env.VUELOS_PUBLIC_HOST?.trim()
-  const host = request.headers.get('host')?.split(':')[0]
+  const publicHost = normalizeHost(process.env.VUELOS_PUBLIC_HOST)
+  const host = normalizeHost(request.headers.get('host'))
   if (publicHost && host === publicHost) {
-    if (pathname === '/') return NextResponse.rewrite(new URL('/vuelos-baratos', request.url))
+    if (pathname === '/') {
+      // Con `new URL('/vuelos-baratos', request.url)` se perdían `?from=`, los
+      // `utm_*` y el `gclid` de la campaña: se clona la URL y sólo se cambia
+      // el path.
+      const url = request.nextUrl.clone()
+      url.pathname = '/vuelos-baratos'
+      return NextResponse.rewrite(url)
+    }
     if (!isPublicPath && !pathname.startsWith('/api/vuelos-baratos') && !pathname.startsWith('/_next')) {
       return NextResponse.redirect(new URL('/vuelos-baratos', request.url), 307)
     }
