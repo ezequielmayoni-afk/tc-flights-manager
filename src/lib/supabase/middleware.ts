@@ -3,6 +3,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
 
+// Rutas públicas de vuelos.siviajo.com: la landing y los archivos de SEO se
+// responden sin pasar por Supabase (no hay sesión que refrescar).
+const PUBLIC_PREFIXES = ['/vuelos-baratos', '/robots.txt', '/sitemap.xml']
+
 // Routes that require admin role (admin or marketing)
 const ADMIN_ROUTES = ['/users']
 
@@ -52,6 +56,22 @@ function getHomePageForRole(_role: UserRole): string {
 }
 
 export async function updateSession(request: NextRequest) {
+  // El host público (VUELOS_PUBLIC_HOST) sirve SOLO la landing: la raíz se
+  // reescribe a /vuelos-baratos y cualquier otra ruta vuelve ahí, así el
+  // dashboard no queda expuesto en un dominio sin login. En el host del HUB
+  // las mismas rutas siguen siendo públicas, pero el resto pide sesión.
+  const pathname = request.nextUrl.pathname
+  const isPublicPath = PUBLIC_PREFIXES.some(p => pathname === p || pathname.startsWith(p + '/'))
+  const publicHost = process.env.VUELOS_PUBLIC_HOST?.trim()
+  const host = request.headers.get('host')?.split(':')[0]
+  if (publicHost && host === publicHost) {
+    if (pathname === '/') return NextResponse.rewrite(new URL('/vuelos-baratos', request.url))
+    if (!isPublicPath && !pathname.startsWith('/api/vuelos-baratos') && !pathname.startsWith('/_next')) {
+      return NextResponse.redirect(new URL('/vuelos-baratos', request.url), 307)
+    }
+  }
+  if (isPublicPath) return NextResponse.next({ request })
+
   let supabaseResponse = NextResponse.next({
     request,
   })
