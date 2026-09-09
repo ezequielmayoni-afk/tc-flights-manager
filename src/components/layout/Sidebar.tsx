@@ -51,6 +51,7 @@ const cuposItems: NavItem[] = [
 const productosItems: NavItem[] = [
   { name: 'Paquetes', href: '/packages', icon: Briefcase, section: 'productos' },
   { name: 'Tendencias', href: '/producto/tendencias', icon: TrendingUp, section: 'producto' },
+  { name: 'Vuelos baratos', href: '/producto/vuelos-baratos', icon: Plane, section: 'producto' },
   { name: 'Ideas', href: '/producto/ideas', icon: Lightbulb, section: 'producto' },
   { name: 'Perfiles', href: '/producto/perfiles', icon: Compass, section: 'producto' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },

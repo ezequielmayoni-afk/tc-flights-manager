@@ -248,6 +248,30 @@ export async function updateRoute(db: Db, id: number, patch: RoutePatch): Promis
   return data as unknown as LandingRouteRow
 }
 
+export type LandingDestinationPatch = Partial<Pick<LandingDestinationRow, 'active' | 'seo_title' | 'seo_description'>>
+
+/**
+ * Publica/despublica un destino de la landing y edita su SEO.
+ *
+ * Devuelve null si el código no existe (en vez de lanzar, como `updateRoute`):
+ * así el API responde 404 sin una lectura previa, que acá no aporta nada
+ * porque el update ya dice si tocó una fila.
+ */
+export async function updateLandingDestination(
+  db: Db,
+  code: string,
+  patch: LandingDestinationPatch
+): Promise<LandingDestinationRow | null> {
+  const { data, error } = await db
+    .from('flight_landing_destinations')
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq('code', code)
+    .select(DESTINATION_COLUMNS)
+    .maybeSingle()
+  if (error) throw new Error(`No se pudo actualizar el destino ${code}: ${error.message}`)
+  return data ? toDestination(data as unknown as Record<string, unknown>) : null
+}
+
 /**
  * Cancela los `flights.sweep` que quedaron en cola de noches anteriores.
  *
