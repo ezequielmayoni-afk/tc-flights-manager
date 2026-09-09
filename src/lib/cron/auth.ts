@@ -5,6 +5,15 @@ export type CronAuthResult =
   | { ok: true; via: 'cron_secret' | 'api_key' }
   | { ok: false; response: NextResponse }
 
+/** Comparación en tiempo constante: no filtra por cuánto coincide el secreto. */
+function secretMatches(provided: string | null, expected: string): boolean {
+  if (!provided) return false
+  const a = Buffer.from(provided)
+  const b = Buffer.from(expected)
+  if (a.length !== b.length) return false
+  return timingSafeEqual(a, b)
+}
+
 /**
  * Autoriza una llamada de servicio (cron del VPS, otro job, el CRM).
  *
@@ -17,15 +26,6 @@ export type CronAuthResult =
  * Si ninguno de los dos secretos está configurado, rechaza: antes el cron se
  * bypasseaba cuando faltaba CRON_SECRET, y eso dejaba la ruta abierta.
  */
-/** Comparación en tiempo constante: no filtra por cuánto coincide el secreto. */
-function secretMatches(provided: string | null, expected: string): boolean {
-  if (!provided) return false
-  const a = Buffer.from(provided)
-  const b = Buffer.from(expected)
-  if (a.length !== b.length) return false
-  return timingSafeEqual(a, b)
-}
-
 export function authorizeCron(request: NextRequest): CronAuthResult {
   const cronSecret = process.env.CRON_SECRET
   const apiKey = process.env.HUB_API_KEY
