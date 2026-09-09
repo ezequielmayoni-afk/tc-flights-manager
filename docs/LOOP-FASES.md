@@ -13,7 +13,7 @@ regla de salidas múltiples agregada ese día).
 | 0 | Kernel de jobs, kill switches, crontab sin secretos | ✅ Hecha 2026-09-09 | — |
 | 1 | Tendencias: qué destinos busca el mercado | ✅ Hecha 2026-09-09 | 0 |
 | 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🔜 Siguiente | 0 |
-| 3 | Perfiles de destino, fechas con SerpAPI, cotización real, ideas de paquete | ⏳ | 1 |
+| 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | ⏳ | 1 |
 | 4 | Criterio marketing vs web y temáticas | ⏳ | 2, 3 |
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | ⏳ | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
@@ -32,7 +32,9 @@ Orden previsto: 0 → 1 → 2 → 3 → 4 → 5 → {6, 8, 12, 13, 14} → {7, 9
 ## Decisiones ya tomadas (no se vuelven a discutir)
 
 - El orquestador vive en HUB; media-os se absorbe y después se archiva.
-- SerpAPI (Google Flights) elige fechas; el precio real siempre lo da el cotizador-bot.
+- **Cambiado el 2026-09-09**: las fechas y el precio de referencia del aéreo los da `vuelos-siviajo` (matrix
+  sobre el buscador de siviajo.com + Sabre con PCC propio), no SerpAPI Google Flights. El precio real del
+  paquete sigue saliendo del cotizador-bot. SerpAPI queda sólo para Tendencias y Competencia.
 - "Guardar idea" en siviajo.com se automatiza por ingeniería inversa del JSF dentro del cotizador-bot.
 - Diseño sigue humano vía Drive; no hay generación de imágenes con IA.
 - El pedido a aéreos es un tablero en HUB + aviso en Slack. Sin mail.
@@ -105,13 +107,17 @@ agrupan solas al nacer de una idea.
 **Necesita de Ezequiel**: autorizar la prueba de `PUT {active:true, visible:true}` y de temáticas sobre
 un paquete de prueba; decidir el flag "ocultar en TC cuando el cupo se agota" (default apagado).
 
-## Fase 3 — Perfiles de destino, fechas con SerpAPI, cotización, ideas · ⏳
+## Fase 3 — Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización, ideas · ⏳
 
 Reemplaza "abrir Google Flights, probar fechas, decidir directo o escala, cotizar a mano" (30–40 min
 por paquete). Una idea nace con los usos y costumbres del destino (régimen obligatorio, noches,
-categoría, umbral directo/escala por segmento), el sistema elige la fecha y cotiza el paquete completo
-con el precio real del cotizador. Habilita "Crear idea" desde una alerta de Tendencias.
-**Necesita**: validar el seed de perfiles destino por destino; `COTIZADOR_API_KEY` en el VPS.
+categoría, umbral directo/escala por segmento), el sistema elige la fecha con el mapa de precios de
+`vuelos-siviajo` (tarifas vendibles, número de vuelo, clase y asientos vía Sabre) y cotiza el paquete
+completo con el precio real del cotizador. Habilita "Crear idea" desde una alerta de Tendencias.
+**Necesita**: desplegar `vuelos-siviajo` en el VPS (hoy sólo Docker local); confirmar que el contrato
+de Sabre admite el volumen (una idea ≈ 30 consultas de disponibilidad); decidir si queda una columna de
+comparación con Google Flights (Flybondi no está en Sabre); validar el seed de perfiles destino por
+destino; `COTIZADOR_API_KEY` en el VPS.
 
 ## Fase 4 — Criterio marketing vs web, temáticas · ⏳
 
@@ -135,7 +141,8 @@ usuario del bot en siviajo.com.
 
 ## Fase 7 — Cupos: tiradas, pedido a aéreos, carga del cupo · ⏳
 
-Reemplaza el Excel "SALIDAS 2027" y los mails. Tiradas con precio de mercado y de sistema, pedido con
+Reemplaza el Excel "SALIDAS 2027" y los mails. Tiradas con disponibilidad y precio por clase de Sabre
+(número de vuelo incluido) y precio de sistema del cotizador, pedido con
 estado y fecha, aéreos carga precios en HUB, comparación, confirmación y alta del cupo con costo por
 plaza. Mide cuánto tarda aéreos. Siempre con clic humano.
 **Necesita**: usuario/rol de aéreos en HUB; canal `#aereos` en Slack.
