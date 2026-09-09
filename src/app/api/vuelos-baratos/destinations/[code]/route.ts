@@ -4,6 +4,7 @@ import { checkSectionAccess } from '@/lib/auth'
 import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { invalidatePublicCache } from '@/lib/vuelos-baratos/cache'
 import { updateLandingDestination } from '@/lib/vuelos-baratos/queries'
 
 export const dynamic = 'force-dynamic'
@@ -54,6 +55,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const destination = await updateLandingDestination(db, code, parsed.data)
     // Sin fila tocada el código no existe: 404, no 500.
     if (!destination) throw API_ERRORS.NOT_FOUND(`El destino ${code}`)
+    // Publicar es lo que hace aparecer el destino en la landing: el memo
+    // público (10 min de TTL) tiene que enterarse ahora, no después.
+    invalidatePublicCache()
 
     await logEvent(
       db,

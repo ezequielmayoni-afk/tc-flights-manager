@@ -4,6 +4,7 @@ import { checkSectionAccess } from '@/lib/auth'
 import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { invalidatePublicCache } from '@/lib/vuelos-baratos/cache'
 import { getRoute, updateRoute } from '@/lib/vuelos-baratos/queries'
 
 export const dynamic = 'force-dynamic'
@@ -47,6 +48,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     // pelado que `errorResponse` no sabe traducir.
     if (!(await getRoute(db, id))) throw API_ERRORS.NOT_FOUND(`La ruta ${id}`)
     const route = await updateRoute(db, id, parsed.data)
+    // Prender o apagar una ruta cambia lo que muestra la landing: sin esto el
+    // cambio tarda hasta el TTL del memo público (10 min) en verse.
+    invalidatePublicCache()
 
     await logEvent(
       db,

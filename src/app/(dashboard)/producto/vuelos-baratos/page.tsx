@@ -10,7 +10,7 @@ import { bestOverall, bestPerPair, freshnessLabel, lastObservedAt } from '@/lib/
 import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
 import {
-  getPendingSweepJobs,
+  countPendingSweepJobs,
   getRecentProbesForRoutes,
   getSweepHealth,
   listLandingDestinations,
@@ -23,16 +23,23 @@ export const dynamic = 'force-dynamic'
 const HEALTH_HOURS = 24
 const PROVEEDOR_SONDAS = 'cotizador_probe'
 
+/** El precio se arma acá y no en el cliente: `toLocaleString` no da igual en los dos. */
+function money(value: number | null, currency: string | null): string {
+  if (value === null) return '—'
+  const monto = Math.round(value).toLocaleString('es-AR')
+  return currency && currency !== 'USD' ? `${currency} ${monto}` : `US$ ${monto}`
+}
+
 async function loadPage() {
   const db = createAdminClient()
   const now = new Date()
   const fromDate = todayIso(now)
 
-  const [destinations, routes, health, pendingJobs, budget, flags] = await Promise.all([
+  const [destinations, routes, health, jobs, budget, flags] = await Promise.all([
     listLandingDestinations(db),
     listRoutes(db),
     getSweepHealth(db, HEALTH_HOURS),
-    getPendingSweepJobs(db),
+    countPendingSweepJobs(db),
     getBudgetStatus(db, PROVEEDOR_SONDAS),
     loadFlags(db),
   ])
@@ -43,15 +50,6 @@ async function loadPage() {
     routes.map(r => r.id),
     { fromDate }
   )
-
-  // `flights.sweep` lleva el id de la ruta en el payload; `flights.sweep.plan`
-  // no es de ninguna ruta (arma el plan de todas), así que sólo cuenta arriba.
-  const jobsPorRuta = new Map<number, number>()
-  for (const job of pendingJobs) {
-    const routeId = Number((job.payload as { routeId?: unknown })?.routeId)
-    if (!Number.isInteger(routeId)) continue
-    jobsPorRuta.set(routeId, (jobsPorRuta.get(routeId) ?? 0) + 1)
-  }
 
   const base = publicBaseUrl()
   const routesByDestination = new Map<string, AdminRouteRow[]>()
@@ -67,6 +65,7 @@ async function loadPage() {
       originName: route.origin_name,
       active: route.active,
       probesPerMonth: route.probes_per_month,
+      monthsAhead: route.months_ahead,
       stayNights: route.stay_nights,
       freshness: observado ? freshnessLabel(observado, now) : null,
       lastProbe: salud?.lastObservedAt ? freshnessLabel(salud.lastObservedAt, now) : null,
@@ -74,9 +73,8 @@ async function loadPage() {
       empty: salud?.empty ?? 0,
       errors: salud?.errors ?? 0,
       timeouts: salud?.timeouts ?? 0,
-      minPrice: mejor?.pricePp ?? null,
-      currency: mejor?.currency ?? null,
-      pendingJobs: jobsPorRuta.get(route.id) ?? 0,
+      minPriceLabel: money(mejor?.pricePp ?? null, mejor?.currency ?? null),
+      pendingJobs: jobs.byRouteId.get(route.id) ?? 0,
     }
     const actuales = routesByDestination.get(route.destination_code)
     if (actuales) actuales.push(fila)
@@ -103,8 +101,9 @@ async function loadPage() {
     groups,
     budget,
     totales,
-    queued: pendingJobs.filter(j => j.status === 'queued').length,
-    running: pendingJobs.filter(j => j.status === 'running').length,
+    queued: jobs.queued,
+    running: jobs.running,
+    totalJobs: jobs.total,
     sweepOff: !isFlagEnabled(flags, FLAGS.flightsSweep),
     cotizadorOff: !isFlagEnabled(flags, FLAGS.cotizadorCalls),
   }
@@ -122,7 +121,7 @@ export default async function VuelosBaratosAdminPage() {
   const { authorized } = await checkSectionAccess('producto')
   if (!authorized) redirect('/dashboard')
 
-  const { groups, budget, totales, queued, running, sweepOff, cotizadorOff } = await loadPage()
+  const { groups, budget, totales, queued, running, totalJobs, sweepOff, cotizadorOff } = await loadPage()
   const publicados = groups.filter(g => g.active).length
   const rutasActivas = groups.reduce((acc, g) => acc + g.routes.filter(r => r.active).length, 0)
 
@@ -135,7 +134,7 @@ export default async function VuelosBaratosAdminPage() {
         </p>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3">
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3" title={`${totalJobs} jobs flights.* pendientes`}>
             <p className="text-xs uppercase tracking-wide text-gray-500">Jobs en cola / corriendo</p>
             <p className="text-2xl font-semibold tabular-nums text-gray-900">
               {queued} / {running}
@@ -167,7 +166,11 @@ export default async function VuelosBaratosAdminPage() {
               {budget.spentToday}
               {budget.dailyCap ? ` / ${budget.dailyCap}` : ''}
             </p>
-            <p className="text-xs text-gray-500">{budget.dailyCap ? `${budget.pct} % del tope diario` : 'sin tope diario configurado'}</p>
+            <p className="text-xs text-gray-500">
+              {budget.dailyCap || budget.monthlyCap
+                ? `${budget.pct} % del tope más ajustado (diario o mensual)`
+                : 'sin topes configurados'}
+            </p>
           </div>
         </div>
 

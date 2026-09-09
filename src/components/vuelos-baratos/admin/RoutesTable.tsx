@@ -16,6 +16,7 @@ export interface AdminRouteRow {
   originName: string
   active: boolean
   probesPerMonth: number
+  monthsAhead: number
   stayNights: number[]
   /** `freshnessLabel` de la observación con precio más nueva; null = nunca. */
   freshness: string | null
@@ -25,8 +26,8 @@ export interface AdminRouteRow {
   empty: number
   errors: number
   timeouts: number
-  minPrice: number | null
-  currency: string | null
+  /** Ya formateado en el server ("US$ 1.234" o "—"): el cliente no hace ICU. */
+  minPriceLabel: string
   /** Jobs `flights.sweep` de esta ruta en cola o corriendo. */
   pendingJobs: number
 }
@@ -47,12 +48,6 @@ const HAUL_LABEL: Record<AdminDestinationGroup['haul'], string> = {
   short: 'corta distancia',
   medium: 'media distancia',
   long: 'larga distancia',
-}
-
-function money(value: number | null, currency: string | null): string {
-  if (value === null) return '—'
-  const monto = Math.round(value).toLocaleString('es-AR')
-  return currency && currency !== 'USD' ? `${currency} ${monto}` : `US$ ${monto}`
 }
 
 /** OK / vacías / errores / timeouts, con color sólo en lo que duele. */
@@ -146,6 +141,7 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                           active={route.active}
                           label="Activa"
                           entity={`${route.originCode}→${group.code}`}
+                          confirmActivation={{ probesPerMonth: route.probesPerMonth, monthsAhead: route.monthsAhead }}
                         />
                       </td>
                       <td className="px-4 py-2">
@@ -165,7 +161,7 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                       <td className="px-4 py-2">
                         <Health route={route} />
                       </td>
-                      <td className="px-4 py-2 font-medium tabular-nums text-gray-900">{money(route.minPrice, route.currency)}</td>
+                      <td className="px-4 py-2 font-medium tabular-nums text-gray-900">{route.minPriceLabel}</td>
                       <td className="px-4 py-2 text-right">
                         <SweepNowButton slug={group.slug} origin={route.originCode} pendingJobs={route.pendingJobs} />
                       </td>

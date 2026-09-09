@@ -182,17 +182,52 @@ export async function insertProbe(db: Db, row: ProbeInsert): Promise<void> {
   if (error) throw new Error(`No se pudo guardar la sonda: ${error.message}`)
 }
 
-/** Jobs del barrido en cola o corriendo, para el tablero. */
-export async function getPendingSweepJobs(db: Db): Promise<JobRow[]> {
-  const { data, error } = await db
+export interface PendingSweepJobs {
+  /** Cuenta exacta del servidor: no depende de cuántas filas se hayan traído. */
+  total: number
+  queued: number
+  running: number
+  /** Jobs pendientes de cada ruta, para saber si "Barrer ahora" haría algo. */
+  byRouteId: Map<number, number>
+}
+
+/**
+ * Una noche del barrido son ~1500 jobs (rutas × meses × tandas). 5000 deja
+ * margen para varias noches encimadas sin traerse la cola entera.
+ */
+const MAX_PENDING_JOB_ROWS = 5000
+
+/**
+ * Jobs del barrido en cola o corriendo, contados por ruta.
+ *
+ * Se piden tres columnas y no la fila entera: el tablero sólo cuenta. `total`
+ * viene del `count` exacto de PostgREST, así que sigue siendo cierto aunque el
+ * tope de filas corte el detalle.
+ */
+export async function countPendingSweepJobs(db: Db): Promise<PendingSweepJobs> {
+  const { data, error, count } = await db
     .from('hub_jobs')
-    .select('*')
-    .in('kind', ['flights.sweep', 'flights.sweep.plan'])
+    .select('entity_id, kind, status', { count: 'exact' })
+    .like('kind', 'flights.%')
     .in('status', ['queued', 'running'])
-    .order('created_at', { ascending: false })
-    .limit(200)
+    .limit(MAX_PENDING_JOB_ROWS)
   if (error) throw new Error(`No se pudieron leer los jobs del barrido: ${error.message}`)
-  return (data ?? []) as JobRow[]
+
+  const filas = (data ?? []) as unknown as Array<Pick<JobRow, 'entity_id' | 'kind' | 'status'>>
+  const resumen: PendingSweepJobs = { total: count ?? filas.length, queued: 0, running: 0, byRouteId: new Map() }
+
+  for (const job of filas) {
+    if (job.status === 'running') resumen.running++
+    else resumen.queued++
+    // El plan (`flights.sweep.plan`) arma la noche de todas las rutas: no es
+    // de ninguna, así que sólo cuenta en el total.
+    if (job.kind !== 'flights.sweep' || !job.entity_id) continue
+    // Sin el guard de arriba `Number(null)` sería 0 y se contaría como ruta.
+    const routeId = Number(job.entity_id)
+    if (!Number.isInteger(routeId)) continue
+    resumen.byRouteId.set(routeId, (resumen.byRouteId.get(routeId) ?? 0) + 1)
+  }
+  return resumen
 }
 
 export interface RouteHealth {
