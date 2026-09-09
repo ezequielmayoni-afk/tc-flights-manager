@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getMetaAdsClient } from '@/lib/meta-ads/client'
+import { setAdsStatus } from '@/lib/meta-ads/pause'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
@@ -83,7 +84,7 @@ export async function PATCH(request: NextRequest) {
  * Toggle status for all ads of a package
  */
 export async function POST(request: NextRequest) {
-  const { authorized } = await checkSectionAccess('marketing')
+  const { authorized, user } = await checkSectionAccess('marketing')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
   const db = createAdminClient()
@@ -126,47 +127,23 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Update each ad in Meta
-    const metaClient = getMetaAdsClient()
-    let successCount = 0
-    let errorCount = 0
-
-    for (const ad of ads) {
-      try {
-        await metaClient.updateAdStatus(ad.meta_ad_id, status)
-        successCount++
-      } catch (error) {
-        console.error(`Error updating ad ${ad.meta_ad_id}:`, error)
-        errorCount++
-      }
-    }
-
-    // Update all in database
-    await db
-      .from('meta_ads')
-      .update({ status })
-      .eq('package_id', package_id)
-
-    // Update package ads_active_count and marketing_status
+    const result = await setAdsStatus(db, {
+      metaAdIds: ads.map(a => a.meta_ad_id),
+      status,
+      reason: 'manual desde la pantalla de marketing',
+      actor: user?.email ?? 'ui',
+    })
     const { count: activeCount } = await db
       .from('meta_ads')
       .select('*', { count: 'exact', head: true })
       .eq('package_id', package_id)
       .eq('status', 'ACTIVE')
 
-    await db
-      .from('packages')
-      .update({
-        ads_active_count: activeCount || 0,
-        marketing_status: (activeCount || 0) > 0 ? 'active' : 'paused',
-      })
-      .eq('id', package_id)
-
     return new Response(JSON.stringify({
       success: true,
       status,
-      updated: successCount,
-      errors: errorCount,
+      updated: result.updated.length,
+      errors: result.failed.length,
       total: ads.length,
       ads_active_count: activeCount || 0,
     }), {

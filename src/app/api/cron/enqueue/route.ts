@@ -21,21 +21,28 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
   void db
 
   switch (schedule) {
-    case 'hourly':
+    case 'hourly': {
+      // Fase 2: insights.sync encola marketing.guard al terminar · Fase 9: ads.autopilot
+      const utcHour = now.getUTCHours()
+      const sunday = now.getUTCDay() === 0
+      const datePreset = sunday && utcHour === 9 ? 'last_30d' : utcHour === 9 ? 'last_7d' : 'yesterday'
       return [
-        // Fase 2: insights.sync → marketing.guard → ads.autopilot
-        { kind: 'noop', payload: { ms: 0, schedule, at: hour }, dedupeKey: `noop:hourly:${hour}` },
+        { kind: 'insights.sync', payload: { datePreset, at: hour }, dedupeKey: `insights.sync:${hour}` },
       ]
-    case 'daily':
+    }
+    case 'daily': {
+      // Fase 4: marketing.evaluate · Fase 10: requote.alternatives · Fase 11: ig.media_sync
+      const digestAt = new Date(`${day}T10:00:00Z`) // 07:00 ART
       return [
-        // Fase 2: cupo.link_refresh, cupo.sold_out_sweep · Fase 4: marketing.evaluate
-        // Fase 10: requote.alternatives · Fase 11: ig.media_sync
-        { kind: 'noop', payload: { ms: 0, schedule, at: day }, dedupeKey: `noop:daily:${day}` },
+        { kind: 'cupo.link_refresh', payload: { at: day }, dedupeKey: `cupo.link_refresh:${day}` },
+        { kind: 'health.check', payload: { at: day }, dedupeKey: `health.check:${day}` },
+        { kind: 'health.digest', payload: { at: day }, dedupeKey: `health.digest:${day}`, runAfter: digestAt },
       ]
+    }
     case 'nightly':
       return [
         // Fase 8: crm.rollup (lane crm, ventana 05:00–09:00 UTC)
-        { kind: 'noop', payload: { ms: 0, schedule, at: day }, dedupeKey: `noop:nightly:${day}` },
+        { kind: 'tc.reconcile', payload: { at: day }, dedupeKey: `tc.reconcile:${day}` },
       ]
     case 'weekly': {
       // Fase 3: profile.audit · Fase 13: competencia.run

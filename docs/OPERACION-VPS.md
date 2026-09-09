@@ -40,9 +40,9 @@ secretos. Log: `/var/log/hub-cron.log` (los ticks vacíos no se loguean).
 |---|---|---|
 | cada minuto | `jobs-tick` | Un tick del runner de jobs. |
 | 06:00 | `refresh-packages` | Importa paquetes nuevos de TC y refresca precios. |
-| 06:15 | `enqueue?schedule=daily` | Encola los jobs diarios. |
-| 06:30 | `enqueue?schedule=nightly` | Encola el rollup del CRM (corre en la ventana 05–09 UTC del lane `crm`). |
-| cada hora | `enqueue?schedule=hourly` | Insights de Meta → guard → autopilot. |
+| 06:15 | `enqueue?schedule=daily` | `cupo.link_refresh`, `health.check`, `health.digest` (a las 10:00 UTC = 07:00 ART). |
+| 06:30 | `enqueue?schedule=nightly` | `tc.reconcile`; Fase 8: rollup del CRM. |
+| cada hora | `enqueue?schedule=hourly` | `insights.sync` (ayer; a las 09 UTC los últimos 7 días; domingos 30) → al terminar encola `marketing.guard`. |
 | 12:00 | `check-deadlines` | Vencimientos de 48 h (cotización manual, diseño). |
 | lunes 08:00 | `enqueue?schedule=weekly` | Tendencias, competencia, auditoría de perfiles. |
 
@@ -83,6 +83,24 @@ Corre sola los lunes a las 08:00 UTC (`enqueue?schedule=weekly` → jobs `trend.
 - Requiere `SERPAPI_API_KEY` en `/opt/hub/.env.local` (misma cuenta que usaba media-os).
 - Depurar: `SELECT week_label, status, trigger, duration_ms, error FROM trend_runs ORDER BY created_at DESC LIMIT 5;`
   y `SELECT * FROM demand_signals_weekly WHERE destination_code = '*' ORDER BY week_label DESC;`
+
+## Guard de marketing (Fase 2 del loop)
+
+Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `/automatizacion`). Decisiones en
+`ad_decisions`; pantalla en `/tareas` (aprobar, rechazar, deshacer). Reglas en `src/lib/marketing/guard/rules.ts`.
+
+- **Qué mira**: anuncios `ACTIVE` con `auto_managed = true` cuyo paquete está vencido, no visible, inactivo en TC o con
+  cupo agotado (vínculo `flight_package_links` confirmado o de confianza alta); precio distinto al de la creatividad
+  (`notification_settings.price_change_threshold_pct`, el único umbral); CTR o costo por conversación fuera de umbral.
+- **Salidas múltiples**: si el paquete tiene `departure_group_id` y otra salida del grupo tiene lugares, en vez de pausar
+  crea una redirección en `siv_redirects` (el bot del CRM responde con la salida nueva al recibir el SIV viejo) y pide
+  creatividad con la fecha nueva. Se agrupa desde la tabla de paquetes ("Agrupar salidas").
+- **Sombra** registra "haría X"; **semi** aplica lo determinista (vencido, no visible, inactivo, cupo agotado confirmado)
+  con aviso a Slack y deshacer; **auto** aplica también las pausas por precio. Los avisos de rendimiento nunca pausan.
+- Si `integration_status.meta` no está `ok`, sólo propone. `automation.meta_writes` apagado ⇒ `skipped`.
+- Escrituras en TC (`tc.write`: desactivar, activar, temáticas) van por job con verificación posterior; `activatePackage`
+  y `updatePackageThemes` **no están verificados contra TC**: la primera prueba la autoriza Ezequiel.
+- Depurar: `SELECT rule, action, status, reason FROM ad_decisions ORDER BY id DESC LIMIT 30;`
 
 ## Rotación de secretos
 

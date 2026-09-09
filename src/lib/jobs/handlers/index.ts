@@ -2,6 +2,15 @@ import type { HandlerDefinition } from '../types'
 import { noopHandler } from './noop'
 import { trendRunHandler } from './trend-run'
 import { demandSignalsHandler } from './demand-signals'
+import { insightsSyncHandler } from './insights-sync'
+import { marketingGuardHandler } from './marketing-guard'
+import { adsApplyDecisionHandler } from './ads-apply-decision'
+import { cupoLinkRefreshHandler } from './cupo-link-refresh'
+import { cupoSoldOutHandler } from './cupo-sold-out'
+import { tcWriteHandler } from './tc-write'
+import { tcReconcileHandler } from './tc-reconcile'
+import { healthCheckHandler } from './health-check'
+import { healthDigestHandler } from './health-digest'
 
 /**
  * Registro de handlers: un archivo por `kind`. Las fases del loop van sumando
@@ -12,6 +21,16 @@ const HANDLERS: HandlerDefinition[] = [
   // Fase 1 — Tendencias
   trendRunHandler,
   demandSignalsHandler,
+  // Fase 2 — Guard de marketing
+  insightsSyncHandler,
+  marketingGuardHandler,
+  adsApplyDecisionHandler,
+  cupoLinkRefreshHandler,
+  cupoSoldOutHandler,
+  tcWriteHandler,
+  tcReconcileHandler,
+  healthCheckHandler,
+  healthDigestHandler,
 ]
 
 const byKind = new Map(HANDLERS.map(h => [h.kind, h]))

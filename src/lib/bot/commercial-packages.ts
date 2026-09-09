@@ -378,13 +378,47 @@ export async function searchCommercialPackages(
   }
 }
 
-export async function getCommercialPackageByTcId(tcPackageId: number): Promise<CommercialPackageSearchResponse> {
+export interface SivRedirectInfo {
+  fromTcPackageId: number
+  toTcPackageId: number
+  reason: 'sold_out' | 'expired' | 'manual'
+  note: string | null
+}
+
+/**
+ * Sigue la cadena de redirecciones activas del SIV (salidas agotadas o
+ * vencidas → siguiente salida del grupo). Máximo 3 saltos.
+ */
+async function resolveSivRedirect(db: ReturnType<typeof createAdminClient>, tcPackageId: number): Promise<{ tcPackageId: number; redirect: SivRedirectInfo | null }> {
+  let current = tcPackageId
+  let redirect: SivRedirectInfo | null = null
+  for (let hop = 0; hop < 3; hop++) {
+    const { data } = await db
+      .from('siv_redirects')
+      .select('from_tc_package_id, to_tc_package_id, reason, note')
+      .eq('from_tc_package_id', current)
+      .eq('active', true)
+      .limit(1)
+      .maybeSingle()
+    const row = data as { from_tc_package_id: number; to_tc_package_id: number; reason: SivRedirectInfo['reason']; note: string | null } | null
+    if (!row || row.to_tc_package_id === current) break
+    redirect = { fromTcPackageId: tcPackageId, toTcPackageId: row.to_tc_package_id, reason: row.reason, note: row.note }
+    current = row.to_tc_package_id
+  }
+  return { tcPackageId: current, redirect }
+}
+
+export async function getCommercialPackageByTcId(tcPackageId: number): Promise<CommercialPackageSearchResponse & { redirect?: SivRedirectInfo }> {
   const db = createAdminClient()
+
+  // El anuncio sigue diciendo "SIV 12345" aunque esa salida se haya agotado:
+  // si hay una redirección activa, se responde con la salida que sí tiene lugar.
+  const resolved = await resolveSivRedirect(db, tcPackageId)
 
   const { data, error } = await db
     .from('packages')
     .select(COMMERCIAL_PACKAGE_SELECT)
-    .eq('tc_package_id', tcPackageId)
+    .eq('tc_package_id', resolved.tcPackageId)
     .eq('tc_active', true)
     .or('status.eq.in_marketing,status.eq.published,send_to_marketing.eq.true')
     .limit(1)
@@ -394,6 +428,13 @@ export async function getCommercialPackageByTcId(tcPackageId: number): Promise<C
   const rawPackages = (data || []) as RawPackageRow[]
   const context = await buildNormalizationContext(rawPackages)
   const packages = rawPackages.map((pkg) => normalizePackage(pkg, context))
+
+  if (resolved.redirect) {
+    const reasonText = resolved.redirect.reason === 'sold_out' ? 'se agotó' : resolved.redirect.reason === 'expired' ? 'venció' : 'no está disponible'
+    for (const pkg of packages) {
+      pkg.sellHooks.unshift(`La salida del anuncio (SIV ${resolved.redirect.fromTcPackageId}) ${reasonText}: ofrecer esta salida (SIV ${pkg.tcPackageId}, ${pkg.travelDates.departureDate ?? 'fecha a confirmar'})`)
+    }
+  }
 
   return {
     packages,
@@ -406,6 +447,7 @@ export async function getCommercialPackageByTcId(tcPackageId: number): Promise<C
     filters: {
       search: String(tcPackageId),
     },
+    ...(resolved.redirect ? { redirect: resolved.redirect } : {}),
     ...(packages.length === 0 ? { reason: 'package_not_found_or_not_sellable' } : {}),
   }
 }

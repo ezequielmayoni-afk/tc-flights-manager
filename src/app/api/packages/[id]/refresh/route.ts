@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getPriceChangeThresholdPctCached } from '@/lib/packages/thresholds'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import type { TCPackageDetailResponse } from '@/lib/travelcompositor/types'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -244,7 +245,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Calculate price variance
     const varianceAmount = newPrice - oldPrice
     const variancePct = oldPrice > 0 ? ((varianceAmount / oldPrice) * 100) : 0
-    const needsManualQuote = Math.abs(variancePct) >= 10
+    const needsManualQuote = Math.abs(variancePct) >= await getPriceChangeThresholdPctCached()
 
     // Prepare update data
     const updateData: Record<string, unknown> = {

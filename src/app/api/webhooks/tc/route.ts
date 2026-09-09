@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { enqueueJob } from '@/lib/jobs/queue'
 import { logSyncOperation } from '@/lib/logger'
 import { getBooking, deleteTransport, validateTransportPrice, tcClient } from '@/lib/travelcompositor/client'
 import { mapModalityToTC } from '@/lib/travelcompositor/mapper'
@@ -277,6 +278,14 @@ async function updateInventory(
             console.log(`[Inventory] Paired flight ${pairedFlight.id} deactivated in TC: ${pairedFlight.tc_transport_id}`)
           }
         }
+      }
+
+      // El guard decide qué pasa con los anuncios de los paquetes vinculados
+      // (redirigir a otra salida o pausar). Nunca inline: el webhook debe responder rápido.
+      try {
+        await enqueueJob(db, { kind: 'cupo.sold_out', payload: { flightId, tcTransportId }, priority: 8, dedupeKey: `cupo.sold_out:${flightId}`, entityType: 'flight', entityId: flightId, createdBy: 'webhook:tc' })
+      } catch (err) {
+        console.error('[Inventory] no se pudo encolar cupo.sold_out:', err instanceof Error ? err.message : err)
       }
 
       // Log the auto-deactivation

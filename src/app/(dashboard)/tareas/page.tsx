@@ -3,6 +3,7 @@ import { Header } from '@/components/layout/Header'
 import { AlertTriangle, Plane } from 'lucide-react'
 import { RequoteTable } from '@/components/packages/RequoteTable'
 import { CuposAgotadosSection } from '@/components/tareas/CuposAgotadosSection'
+import { AdDecisionsSection } from '@/components/tareas/AdDecisionsSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -73,6 +74,10 @@ export default async function TareasPage() {
 
       <div className="flex-1 p-6 space-y-8">
         {/* Cotización manual */}
+        <section>
+          <AdDecisionsSection />
+        </section>
+
         <section>
           <div className="flex items-center gap-2 mb-3">
             <AlertTriangle className="h-5 w-5 text-orange-500" />

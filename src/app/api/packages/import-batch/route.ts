@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getPriceChangeThresholdPctCached } from '@/lib/packages/thresholds'
 import { spawn } from 'child_process'
 import path from 'path'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
@@ -230,7 +231,7 @@ async function importSinglePackage(
 
       const varianceAmount = pricePerPax - oldPrice
       const variancePct = oldPrice > 0 ? ((varianceAmount / oldPrice) * 100) : 0
-      const needsManualQuote = Math.abs(variancePct) >= 10
+      const needsManualQuote = Math.abs(variancePct) >= await getPriceChangeThresholdPctCached()
 
       const updateData = {
         ...packageData,

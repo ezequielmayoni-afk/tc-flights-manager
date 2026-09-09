@@ -1,5 +1,6 @@
 import { deactivatePackage } from '@/lib/travelcompositor/client'
 import { logEvent } from '@/lib/logs'
+import { enqueueJob } from '@/lib/jobs/queue'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 type Db = ReturnType<typeof createAdminClient>
@@ -80,6 +81,17 @@ export async function expirePackageInTC(
       flight: context?.flightLabel ?? null,
     },
   }, actor)
+
+  // El guard pausa los anuncios del paquete (o redirige a otra salida del grupo);
+  // si TC falló, el job tc.write reintenta la baja con verificación.
+  try {
+    await enqueueJob(db, { kind: 'marketing.guard', payload: { packageIds: [pkg.id], trigger: status }, priority: 8, dedupeKey: `marketing.guard:pkg:${pkg.id}`, entityType: 'package', entityId: pkg.id, createdBy: actor?.email ?? 'expire' })
+    if (tcError) {
+      await enqueueJob(db, { kind: 'tc.write', payload: { op: 'deactivate', packageId: pkg.id, tcPackageId: pkg.tc_package_id, reason: `reintento: ${tcError}` }, dedupeKey: `tc.write:deactivate:${pkg.tc_package_id}`, entityType: 'package', entityId: pkg.id, createdBy: actor?.email ?? 'expire' })
+    }
+  } catch (err) {
+    console.error('[expire] no se pudieron encolar los jobs:', err instanceof Error ? err.message : err)
+  }
 
   return {
     ok: !dbError,

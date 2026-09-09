@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getPriceChangeThresholdPctCached } from '@/lib/packages/thresholds'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractCosts, importNewPackages } from '@/lib/packages/import'
@@ -41,7 +42,7 @@ async function refreshPackage(db: ReturnType<typeof createAdminClient>, pkg: {
     // Calculate price variance
     const varianceAmount = newPrice - oldPrice
     const variancePct = oldPrice > 0 ? ((varianceAmount / oldPrice) * 100) : 0
-    const needsManualQuote = Math.abs(variancePct) >= 5
+    const needsManualQuote = Math.abs(variancePct) >= await getPriceChangeThresholdPctCached()
 
     // Prepare update data
     const updateData: Record<string, unknown> = {

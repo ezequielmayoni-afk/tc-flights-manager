@@ -62,8 +62,7 @@ import {
   RotateCcw,
   Luggage,
   Briefcase,
-  FileText,
-} from 'lucide-react'
+  FileText, Layers } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import type { CupoInfoMap } from '@/types/cupo-info'
@@ -821,7 +820,7 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
     }
   }
 
-  const handleBulkAction = async (action: 'design' | 'marketing' | 'expired' | 'delete' | 'monitor' | 'unmonitor' | 'run_requote', extraData?: Record<string, unknown>) => {
+  const handleBulkAction = async (action: 'design' | 'marketing' | 'expired' | 'not-visible' | 'visible' | 'group_departures' | 'ungroup_departures' | 'delete' | 'monitor' | 'unmonitor' | 'run_requote', extraData?: Record<string, unknown>) => {
     if (selectedIds.size === 0) return
 
     // Handle run_requote separately
@@ -862,7 +861,11 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
       const actionLabels = {
         design: 'enviados a diseño',
         marketing: 'enviados a marketing',
-        expired: 'marcados como no visibles',
+        expired: 'marcados como vencidos',
+        'not-visible': 'marcados como no visibles',
+        visible: 'enviados a reactivar en TC',
+        group_departures: 'agrupados como salidas',
+        ungroup_departures: 'sacados del grupo',
         delete: 'eliminados',
         monitor: 'activados para monitoreo',
         unmonitor: 'desactivados de monitoreo',
@@ -1017,16 +1020,39 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => handleBulkAction('expired')}
+              onClick={() => handleBulkAction('not-visible')}
               disabled={bulkActionLoading !== null}
               className="gap-2 text-red-600 hover:text-red-700 hover:bg-red-50"
+              title="Lo desactiva en TC, apaga el monitoreo y el guard pausa sus anuncios"
             >
-              {bulkActionLoading === 'expired' ? (
+              {bulkActionLoading === 'not-visible' ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <EyeOff className="h-4 w-4" />
               )}
               Marcar No Visible
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkAction('visible')}
+              disabled={bulkActionLoading !== null}
+              className="gap-2"
+              title="Vuelve a activarlo en TC (job verificado)"
+            >
+              {bulkActionLoading === 'visible' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Eye className="h-4 w-4" />}
+              Volver a visible
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkAction('group_departures')}
+              disabled={bulkActionLoading !== null || selectedIds.size < 2}
+              className="gap-2"
+              title="Mismo producto con distintas fechas: cuando una salida se agota, el anuncio pasa a la siguiente"
+            >
+              {bulkActionLoading === 'group_departures' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+              Agrupar salidas
             </Button>
             <Button
               variant="destructive"

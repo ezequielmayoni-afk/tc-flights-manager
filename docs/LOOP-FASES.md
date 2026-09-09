@@ -3,8 +3,8 @@
 Documento de seguimiento. Se actualiza al cerrar cada fase. El plan completo, con el detalle
 técnico de cada una, está en `~/.claude/plans/perfecto-ahora-una-vez-abstract-meteor.md`.
 
-**Última actualización: 2026-09-09.** Fases 0 y 1 hechas y en producción. Sigue la Fase 2 (con la
-regla de salidas múltiples agregada ese día).
+**Última actualización: 2026-09-10.** Fases 0 y 1 hechas; Fase 2 desplegada en modo sombra; Fase 3 en
+construcción.
 
 ## De un vistazo
 
@@ -12,8 +12,8 @@ regla de salidas múltiples agregada ese día).
 |---|---|---|---|
 | 0 | Kernel de jobs, kill switches, crontab sin secretos | ✅ Hecha 2026-09-09 | — |
 | 1 | Tendencias: qué destinos busca el mercado | ✅ Hecha 2026-09-09 | 0 |
-| 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🔜 Siguiente | 0 |
-| 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | ⏳ | 1 |
+| 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🟡 En sombra desde 2026-09-10 | 0 |
+| 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | 🔜 En construcción | 1 |
 | 4 | Criterio marketing vs web y temáticas | ⏳ | 2, 3 |
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | ⏳ | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
@@ -83,7 +83,18 @@ Bayahibe: el mercado lo busca ~40 % de Punta Cana; queda rango 20–26, es forta
 (Apify/ScrapeCreators, 5–30 USD/mes, zona gris). Volúmenes absolutos: Google Ads Keyword Planner o
 DataForSEO. Ninguno está incluido.
 
-## Fase 2 — Guard de marketing, insights por cron, salud de integraciones · 🔜 Siguiente
+## Fase 2 — Guard de marketing, insights por cron, salud de integraciones · 🟡 Desplegada en sombra (2026-09-10)
+
+**Qué hay**: insights de Meta cada hora (estaban congelados desde junio); vínculos cupo↔paquete persistidos y
+refrescados a diario; el guard corre después de cada sincronización y registra en `/tareas` qué haría con cada
+anuncio; salud diaria del token y la cuenta de Meta, del cotizador y de vuelos; reconciliación nocturna contra TC;
+digest diario a Slack a las 7 de la mañana. Acciones nuevas en la tabla de paquetes: "Agrupar salidas" y "Volver a
+visible". El bot del CRM ya resuelve las redirecciones del SIV. El umbral de cambio de precio es uno solo, el de la
+pantalla de configuración (antes el cron usaba 5 % y los imports 10 %, fijos).
+
+**Modo**: sombra. Pasa a semi cuando haya 14 días sin falsos positivos con ≥ 3 casos reales (se decide en
+`/automatizacion`).
+
 
 **Qué va a resolver**: hoy los insights de Meta están congelados desde junio porque se sincronizan a
 mano, y ningún anuncio se apaga cuando el paquete vence, se oculta en TC o el cupo se agota.

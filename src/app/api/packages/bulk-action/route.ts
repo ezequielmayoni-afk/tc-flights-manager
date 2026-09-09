@@ -4,6 +4,8 @@ import { sendSlackMessage, buildCreativeRequestMessage, buildSentToMarketingMess
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCupoPackageIds } from '@/lib/packages/cupo'
 import { expirePackageInTC } from '@/lib/packages/expire'
+import { enqueueJob } from '@/lib/jobs/queue'
+import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 import { logEvents, type LogSource } from '@/lib/logs'
@@ -54,14 +56,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No packages selected' }, { status: 400 })
     }
 
-    if (!['design', 'marketing', 'expired', 'not-visible', 'delete', 'monitor', 'unmonitor', 'complete-requote', 'run_requote', 'accept-requote', 'design-complete', 'design-uncomplete', 'creative-uploaded', 'sync-ads-count'].includes(action)) {
+    if (!['design', 'marketing', 'expired', 'not-visible', 'visible', 'group_departures', 'ungroup_departures', 'delete', 'monitor', 'unmonitor', 'complete-requote', 'run_requote', 'accept-requote', 'design-complete', 'design-uncomplete', 'creative-uploaded', 'sync-ads-count'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
     // Get package details first (include current_price_per_pax for monitor action, date_range_end for marketing expiration)
     const { data: packages, error: fetchError } = await db
       .from('packages')
-      .select('id, tc_package_id, title, current_price_per_pax, date_range_end, monitor_enabled')
+      .select('id, tc_package_id, title, current_price_per_pax, date_range_end, monitor_enabled, departure_date, departure_group_id')
       .in('id', packageIds)
 
     if (fetchError) {
@@ -74,6 +76,28 @@ export async function POST(request: NextRequest) {
       : new Set<number>()
 
     const results: PackageResult[] = []
+
+    // Agrupar salidas: mismo producto, distintas fechas. Un solo grupo para toda la selección.
+    if (action === 'group_departures' || action === 'ungroup_departures') {
+      const list = [...(packages || [])].sort((a, b) => String(a.departure_date ?? '9999').localeCompare(String(b.departure_date ?? '9999')))
+      const existing = list.map(p => p.departure_group_id).find(Boolean) as string | undefined
+      const groupId = action === 'group_departures' ? (existing ?? `grp-${Date.now().toString(36)}`) : null
+      for (const [index, pkg] of list.entries()) {
+        const { error } = await db.from('packages').update({ departure_group_id: groupId, departure_index: groupId ? index + 1 : null }).eq('id', pkg.id)
+        results.push({ id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title, status: error ? 'error' : 'success', error: error?.message })
+      }
+      await enqueueJob(db, { kind: 'cupo.link_refresh', payload: { packageIds: list.map(p => p.id) }, priority: MANUAL_PRIORITY, dedupeKey: `cupo.link_refresh:group:${groupId ?? 'none'}:${Date.now()}`, createdBy: user?.email ?? 'ui' }).catch(() => null)
+      await logEvents(db, results.filter(r => r.status === 'success').map(r => ({
+        source: 'paquetes' as const,
+        action: `package.${action}`,
+        message: action === 'group_departures' ? `Agrupado como salidas (${groupId}) con ${list.length - 1} más` : 'Sacado del grupo de salidas',
+        entityType: 'package' as const,
+        entityId: r.id,
+        entityLabel: `${r.tc_package_id} · ${r.title}`,
+        details: { group_id: groupId, package_ids: list.map(p => p.id) },
+      })), user ? { id: user.id, email: user.email } : null)
+      return NextResponse.json({ success: true, updated: results.filter(r => r.status === 'success').length, errors: results.filter(r => r.status === 'error').length, results, groupId })
+    }
 
     // Process each package individually
     for (const pkg of packages || []) {
@@ -272,6 +296,14 @@ export async function POST(request: NextRequest) {
                   ? `Marcado vencido en hub, pero TC falló: ${expired.tcError}`
                   : undefined,
             })
+            continue
+          }
+
+          case 'visible': {
+            // Volver a poner en venta: PUT {active:true, visible:true} en TC, verificado por el job tc.write.
+            const job = await enqueueJob(db, { kind: 'tc.write', payload: { op: 'activate', packageId: pkg.id, tcPackageId: pkg.tc_package_id, reason: 'acción "Visible" desde la tabla' }, priority: MANUAL_PRIORITY, dedupeKey: `tc.write:activate:${pkg.tc_package_id}`, entityType: 'package', entityId: pkg.id, createdBy: user?.email ?? 'ui' })
+            await db.from('packages').update({ paused_reason: null }).eq('id', pkg.id)
+            results.push({ id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title, status: 'success', error: job.deduped ? 'ya había una activación en cola' : undefined })
             continue
           }
 

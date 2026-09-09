@@ -521,6 +521,52 @@ class TCClient {
     }
   }
 
+  /**
+   * Activa un paquete (lo vuelve a poner en venta). Inversa de deactivatePackage.
+   * NO VERIFICADO contra TC todavía: el swagger admite PUT {active, visible, ...};
+   * la primera prueba real la autoriza Ezequiel sobre un paquete de prueba.
+   */
+  async activatePackage(packageId: number): Promise<{ success: boolean; error?: string }> {
+    try {
+      console.log(`[TC] Activating package: ${packageId}`)
+      await this.request(`/package/${TC_MICROSITE_ID}/${packageId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ active: true, visible: true }),
+      })
+      return { success: true }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`[TC] Failed to activate package ${packageId}:`, errorMessage)
+      return { success: false, error: errorMessage }
+    }
+  }
+
+  /**
+   * Cambia las temáticas de un paquete sin pisar título ni descripción: lee el
+   * detalle y manda el cuerpo completo con las temáticas nuevas.
+   * NO VERIFICADO contra TC todavía (misma prueba que activatePackage).
+   */
+  async updatePackageThemes(packageId: number, themes: string[]): Promise<{ success: boolean; error?: string; before?: string[] }> {
+    try {
+      const detail = await this.getPackageDetail(packageId)
+      const before = detail.themes ?? []
+      const body: Record<string, unknown> = {
+        active: detail.active,
+        title: detail.title,
+        themes,
+      }
+      if (detail.largeTitle !== undefined) body.largeTitle = detail.largeTitle
+      if (detail.description !== undefined) body.description = detail.description
+      console.log(`[TC] Updating themes of package ${packageId}: ${before.join(',')} → ${themes.join(',')}`)
+      await this.request(`/package/${TC_MICROSITE_ID}/${packageId}`, { method: 'PUT', body: JSON.stringify(body) })
+      return { success: true, before }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`[TC] Failed to update themes of package ${packageId}:`, errorMessage)
+      return { success: false, error: errorMessage }
+    }
+  }
+
   // ============================================
   // SUPPLIER METHODS
   // ============================================
@@ -573,6 +619,8 @@ export const getAllPackagesExcludingUsers = (excludeUsers: string[], options?: {
 export const getPackageDetail = (packageId: number) => tcClient.getPackageDetail(packageId)
 export const getPackageInfo = (packageId: number) => tcClient.getPackageInfo(packageId)
 export const deactivatePackage = (packageId: number) => tcClient.deactivatePackage(packageId)
+export const activatePackage = (packageId: number) => tcClient.activatePackage(packageId)
+export const updatePackageThemes = (packageId: number, themes: string[]) => tcClient.updatePackageThemes(packageId, themes)
 
 // Supplier exports
 export const listSuppliers = () => tcClient.listSuppliers()

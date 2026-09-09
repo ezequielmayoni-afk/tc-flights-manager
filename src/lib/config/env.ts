@@ -41,6 +41,13 @@ type OptionalEnvVars = {
   SERPAPI_API_KEY?: string
   /** Propiedad de Search Console; default https://www.siviajo.com/ */
   GOOGLE_SEARCH_CONSOLE_SITE_URL?: string
+  /** Cotizador-bot (Fase 3): http://127.0.0.1:8090 en el VPS. */
+  COTIZADOR_URL?: string
+  COTIZADOR_API_KEY?: string
+  /** vuelos-siviajo (Fase 3): matrix de precios + Sabre. Sin valor, los jobs de fechas quedan omitidos. */
+  VUELOS_URL?: string
+  /** HUB_API_KEY: también lo usa el bot del CRM. */
+  HUB_API_KEY?: string
 }
 
 const REQUIRED_VARS: (keyof RequiredEnvVars)[] = [

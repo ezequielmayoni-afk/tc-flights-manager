@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getPriceChangeThresholdPctCached } from '@/lib/packages/thresholds'
 import { getAllPackagesExcludingUsers, getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import {
   EXCLUDED_USERS,
@@ -102,7 +103,7 @@ export async function POST(request: NextRequest) {
             // Calculate variance
             const varianceAmount = newPrice - oldPrice
             const variancePct = oldPrice > 0 ? ((varianceAmount / oldPrice) * 100) : 0
-            const needsManualQuote = Math.abs(variancePct) >= 10
+            const needsManualQuote = Math.abs(variancePct) >= await getPriceChangeThresholdPctCached()
 
             // Update package with new price, variance, and additional info
             const updateData: Record<string, unknown> = {
