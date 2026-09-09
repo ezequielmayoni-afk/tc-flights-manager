@@ -143,7 +143,11 @@ function pickOption(res: QuoteMultiResponse): QuoteOption | null {
 
 export function summarizeQuote(res: QuoteMultiResponse): QuoteSummary {
   const option = pickOption(res)
-  const flight = res.vuelo_compartido ?? option?.vuelo ?? null
+  // El cotizador manda el vuelo a nivel raíz (`vuelo`); `vuelo_compartido` es un booleano.
+  const flight = (res.vuelo && typeof res.vuelo === 'object' ? res.vuelo : null)
+    ?? (res.vuelo_compartido && typeof res.vuelo_compartido === 'object' ? res.vuelo_compartido : null)
+    ?? option?.vuelo
+    ?? null
   const stopsRaw = flight?.ida?.escalas
   const stops = typeof stopsRaw === 'number' && stopsRaw >= 0 ? stopsRaw : null
   const warnings = [...(res.avisos ?? []), ...(option?.avisos ?? []), ...(res.errores ?? [])]
@@ -171,8 +175,8 @@ export function summarizeQuote(res: QuoteMultiResponse): QuoteSummary {
     stars: option?.hotel?.estrellas ?? null,
     regimenConfirmed: option ? !option.regimen_no_confirmado : false,
     gama: option?.gama ?? null,
-    airline: flight?.aerolinea ?? null,
-    flightNumbers: [flight?.numero_vuelo_ida, flight?.numero_vuelo_vuelta].filter((x): x is string => Boolean(x)),
+    airline: flight?.aerolinea ?? flight?.ida?.aerolinea ?? null,
+    flightNumbers: [flight?.numero_vuelo_ida ?? flight?.ida?.numeros_vuelo?.join('/'), flight?.numero_vuelo_vuelta ?? flight?.vuelta?.numeros_vuelo?.join('/')].filter((x): x is string => Boolean(x)),
     stops,
     direct: stops === null ? null : stops === 0,
     durationMinutes: durationToMinutes(flight?.ida?.duracion),

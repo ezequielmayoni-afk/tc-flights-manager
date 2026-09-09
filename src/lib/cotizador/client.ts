@@ -52,6 +52,8 @@ export interface QuoteFlightLeg {
   aerolinea?: string
   numeros_vuelo?: string[]
   llega_dia_siguiente?: boolean
+  ruta_iata?: string
+  escalas_detalle?: unknown[]
 }
 
 export interface QuoteFlight {
@@ -99,7 +101,9 @@ export interface QuoteMultiResponse {
   viaje?: { destino?: string; noches_total?: number; fecha_ida?: string; fecha_vuelta?: string; es_caribe?: boolean }
   fechas?: { elegida?: string; vuelta?: string; dia?: string; motivo?: string; sondeadas?: number; con_vuelo?: number; alternativas?: QuoteDateAlternative[] }
   opciones?: QuoteOption[]
-  vuelo_compartido?: QuoteFlight
+  /** El vuelo va a nivel raíz; `vuelo_compartido` es un booleano (true = el mismo vuelo para todas las opciones). */
+  vuelo?: QuoteFlight
+  vuelo_compartido?: QuoteFlight | boolean
   analisis?: { spread_pct?: number; regla_20_cumple?: boolean; recomendacion_idx?: number; recomendacion_default?: string }
 }
 

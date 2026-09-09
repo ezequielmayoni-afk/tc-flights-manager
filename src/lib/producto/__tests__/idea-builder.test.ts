@@ -43,7 +43,8 @@ describe('summarizeQuote', () => {
         { gama: 'economica', precio_pp_final: 1270, precio_total_final: 2540, regimen_no_confirmado: true, hotel: { nombre: 'VIK', code: 'H-1', estrellas: 4, regimen: 'All Inclusive' } },
         { gama: 'moderada', precio_pp_final: 1520, precio_total_final: 3040, hotel: { nombre: 'Barceló', code: 'H-2', estrellas: 5, regimen: 'All Inclusive' } },
       ],
-      vuelo_compartido: { aerolinea: 'LATAM', numero_vuelo_ida: 'LA8012', numero_vuelo_vuelta: 'LA8013', ida: { duracion: '8h10m', escalas: 0 }, equipaje: { valija_facturada: false } },
+      vuelo_compartido: true,
+      vuelo: { numero_vuelo_ida: 'LA8012', numero_vuelo_vuelta: 'LA8013', ida: { duracion: '8h10m', escalas: 0, aerolinea: 'LATAM' }, equipaje: { valija_facturada: false } },
       analisis: { recomendacion_idx: 1 },
     })
     expect(s).toMatchObject({ ok: true, pricePp: 1520, hotelName: 'Barceló', stars: 5, regimen: 'all_inclusive', regimenConfirmed: true, airline: 'LATAM', stops: 0, direct: true, durationMinutes: 490, checkedBag: false, departureDate: '2027-03-06', dateReason: 'mejor relación precio/viaje' })
@@ -53,7 +54,7 @@ describe('summarizeQuote', () => {
     const s = summarizeQuote({ status: 'sin_disponibilidad', diagnostico: { mensaje: 'Sin vuelos' }, opciones: [] })
     expect(s.ok).toBe(false)
     expect(s.diagnostico).toBe('Sin vuelos')
-    const u = summarizeQuote({ status: 'ok', opciones: [{ precio_pp_final: 100, hotel: { regimen: 'Desayuno' } }], vuelo_compartido: { ida: { escalas: -1 } } })
+    const u = summarizeQuote({ status: 'ok', opciones: [{ precio_pp_final: 100, hotel: { regimen: 'Desayuno' } }], vuelo: { ida: { escalas: -1 } } })
     expect(u.stops).toBeNull()
     expect(u.direct).toBeNull()
     expect(u.regimen).toBe('desayuno')
