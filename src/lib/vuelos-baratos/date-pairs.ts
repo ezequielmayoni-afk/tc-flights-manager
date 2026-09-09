@@ -26,6 +26,14 @@ function partesFecha(date: string): { year: number; month: number; day: number }
   return { year, month, day }
 }
 
+/** ¿Es una fecha ISO que además existe en el calendario (no un 2026-02-31)? */
+export function isValidIsoDate(date: string | null | undefined): boolean {
+  if (typeof date !== 'string' || !ISO_DATE.test(date)) return false
+  const [year, month, day] = date.split('-').map(Number)
+  const d = new Date(Date.UTC(year, month - 1, day))
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day
+}
+
 function partesMes(month: string): { year: number; month: number } {
   if (!ISO_MONTH.test(month)) throw new Error(`Mes inválido (se espera YYYY-MM): ${month}`)
   const [year, mes] = month.split('-').map(Number)

@@ -1,4 +1,5 @@
 import { DEFAULT_ADULTS, siviajoBaseUrl } from './config'
+import { isValidIsoDate } from './date-pairs'
 
 /**
  * Deep links al buscador de siviajo.com.
@@ -21,11 +22,7 @@ export function padDate(date: string): string {
 /** Valida que la fecha exista de verdad (no un 2026-02-31). */
 function assertFechaReal(date: string): void {
   padDate(date)
-  const [year, month, day] = date.split('-').map(Number)
-  const d = new Date(Date.UTC(year, month - 1, day))
-  if (d.getUTCFullYear() !== year || d.getUTCMonth() !== month - 1 || d.getUTCDate() !== day) {
-    throw new Error(`Fecha inexistente: ${date}`)
-  }
+  if (!isValidIsoDate(date)) throw new Error(`Fecha inexistente: ${date}`)
 }
 
 /** '1~~0' sin menores; '2~~2~~5,9' con dos menores de 5 y 9 años. */

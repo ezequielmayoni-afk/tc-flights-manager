@@ -68,7 +68,7 @@ describe('generateDatePairs', () => {
     for (const p of pares) {
       expect(monthOf(p.depart)).toBe('2026-12')
       expect(base.stays).toContain(p.nights)
-      expect(isoDow(p.depart)).toBeGreaterThan(0)
+      expect(base.weekdays).toContain(isoDow(p.depart))
       expect(addDays(p.depart, p.nights)).toBe(p.return)
     }
     const claves = new Set(pares.map((p) => `${p.depart}|${p.return}`))

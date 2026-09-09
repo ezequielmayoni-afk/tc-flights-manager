@@ -38,6 +38,21 @@ describe('parse/serialize', () => {
     expect(serializeExplorerFilters({ sort: 'price', dir: 'asc', page: 2, month: '2026-12' })).toBe('m=2026-12&page=2')
   })
 
+  it('hace round-trip con una aerolínea con coma en el nombre', () => {
+    const f: ExplorerFilters = { ...COMPLETO, airlines: ['Air Europa, S.A.', 'LA'] }
+    const qs = serializeExplorerFilters(f)
+    expect(parseExplorerFilters(aRecord(qs))?.airlines).toEqual(['Air Europa, S.A.', 'LA'])
+    expect(parseExplorerFilters(aRecord(qs))).toEqual(f)
+  })
+
+  it('ignora los rangos de fecha que no existen en el calendario', () => {
+    const vacio = { sort: 'price', dir: 'asc', page: 1 }
+    expect(parseExplorerFilters({ dep: '2026-13-45..' })).toEqual(vacio)
+    expect(parseExplorerFilters({ dep: '2026-02-29..2026-03-05' })).toEqual(vacio)
+    expect(parseExplorerFilters({ ret: '..2026-04-31' })).toEqual(vacio)
+    expect(parseExplorerFilters({ dep: '2028-02-29..' })).toMatchObject({ departFrom: '2028-02-29' })
+  })
+
   it('acepta rangos abiertos', () => {
     expect(parseExplorerFilters({ stay: '7-' })).toMatchObject({ stayMin: 7 })
     expect(parseExplorerFilters({ stay: '-14' })).toMatchObject({ stayMax: 14 })

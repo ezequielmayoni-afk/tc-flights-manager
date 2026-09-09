@@ -81,6 +81,7 @@ describe('withUtm', () => {
 
   it('agrega utm_content y codifica los valores', () => {
     const url = withUtm('https://www.siviajo.com/home?a=1', { campaign: 'vuelos baratos', content: 'tabla/fila 3', medium: 'landing-dest' })
+    expect(url).toContain('&utm_source=vuelos')
     expect(url).toContain('&utm_medium=landing-dest')
     expect(url).toContain('&utm_campaign=vuelos%20baratos')
     expect(url).toContain('&utm_content=tabla%2Ffila%203')

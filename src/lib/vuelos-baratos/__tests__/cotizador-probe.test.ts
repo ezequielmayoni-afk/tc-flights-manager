@@ -163,11 +163,15 @@ describe('probeFlights', () => {
   it('un 401 tampoco se reintenta', async () => {
     stubFetch(async () => respuesta({ detail: 'API key inválida' }, 401))
     expect(await probeFlights(db, INPUT)).toMatchObject({ status: 'error', retryable: false, httpStatus: 401 })
+    expect(mocks.recordExternalCall).toHaveBeenCalledTimes(1)
+    expect(mocks.recordExternalCall.mock.calls[0][1]).toMatchObject({ provider: COTIZADOR_PROBE_PROVIDER, status: 'error' })
   })
 
   it('un 502 se reintenta', async () => {
     stubFetch(async () => respuesta({ detail: 'bad gateway' }, 502))
     expect(await probeFlights(db, INPUT)).toMatchObject({ status: 'error', retryable: true, httpStatus: 502 })
+    expect(mocks.recordExternalCall).toHaveBeenCalledTimes(1)
+    expect(mocks.recordExternalCall.mock.calls[0][1]).toMatchObject({ provider: COTIZADOR_PROBE_PROVIDER, status: 'error' })
   })
 
   it('el timeout del fetch no lanza', async () => {

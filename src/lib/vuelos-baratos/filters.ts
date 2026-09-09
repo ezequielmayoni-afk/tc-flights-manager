@@ -1,3 +1,4 @@
+import { isValidIsoDate } from './date-pairs'
 import type { ExplorerFilters, SortKey } from './types'
 
 /**
@@ -43,7 +44,31 @@ function rangoFecha(raw: string | undefined): { from?: string; to?: string } {
   if (!raw) return {}
   const m = RANGO_FECHA.exec(raw)
   if (!m || (m[1] === undefined && m[2] === undefined)) return {}
+  // El formato no alcanza: un 2026-13-45 matchea la regex pero no existe.
+  if ((m[1] !== undefined && !isValidIsoDate(m[1])) || (m[2] !== undefined && !isValidIsoDate(m[2]))) return {}
   return { from: m[1], to: m[2] }
+}
+
+/**
+ * Las comas separan los elementos de una lista, así que las que forman parte
+ * de un valor ('Air Europa, S.A.') van escapadas a mano: el `%2C` del URL
+ * encoding se pierde cuando Next decodifica la query.
+ */
+function escapaItem(value: string): string {
+  return value.replace(/%/g, '%25').replace(/,/g, '%2C')
+}
+
+function desescapaItem(value: string): string {
+  return value.replace(/%2C/g, ',').replace(/%25/g, '%')
+}
+
+function parseLista(raw: string | undefined): string[] | undefined {
+  if (!raw) return undefined
+  const items = raw
+    .split(',')
+    .map((v) => desescapaItem(v.trim()))
+    .filter(Boolean)
+  return items.length > 0 ? items : undefined
 }
 
 function dias(raw: string | undefined): number[] | undefined {
@@ -63,10 +88,7 @@ export function parseExplorerFilters(sp: Record<string, string | string[] | unde
   const salida = rangoFecha(first(sp.dep))
   const vuelta = rangoFecha(first(sp.ret))
   const precio = rangoNumero(first(sp.price))
-  const aerolineas = first(sp.air)
-    ?.split(',')
-    .map((a) => a.trim())
-    .filter(Boolean)
+  const aerolineas = parseLista(first(sp.air))
   const sortRaw = first(sp.sort)
   const dirRaw = first(sp.dir)
   const page = Number(first(sp.page))
@@ -85,16 +107,24 @@ export function parseExplorerFilters(sp: Record<string, string | string[] | unde
     returnDow: dias(first(sp.rdow)),
     priceMin: precio.min,
     priceMax: precio.max,
-    airlines: aerolineas && aerolineas.length > 0 ? aerolineas : undefined,
+    airlines: aerolineas,
     sort: sortRaw && (SORT_KEYS as string[]).includes(sortRaw) ? (sortRaw as SortKey) : 'price',
     dir: dirRaw === 'desc' ? 'desc' : 'asc',
     page: Number.isInteger(page) && page >= 1 ? page : 1,
   }
 }
 
-/** La coma queda literal: es legal en una query y hace la URL legible. */
 function enc(value: string): string {
-  return encodeURIComponent(value).replace(/%2C/g, ',')
+  return encodeURIComponent(value)
+}
+
+/**
+ * Lista separada por comas. La coma separadora queda literal (es legal en una
+ * query y hace la URL legible); la que va dentro de un valor viaja como `%2C`
+ * escapado a mano, que sobrevive al decode de la query.
+ */
+function encLista(values: Array<string | number>): string {
+  return encodeURIComponent(values.map((v) => escapaItem(String(v))).join(',')).replace(/%2C/g, ',')
 }
 
 /** Query string sin `?`, con las claves siempre en el mismo orden. */
@@ -110,10 +140,10 @@ export function serializeExplorerFilters(f: ExplorerFilters): string {
   if (f.stayMin !== undefined || f.stayMax !== undefined) add('stay', `${f.stayMin ?? ''}-${f.stayMax ?? ''}`)
   if (f.departFrom || f.departTo) add('dep', `${f.departFrom ?? ''}..${f.departTo ?? ''}`)
   if (f.returnFrom || f.returnTo) add('ret', `${f.returnFrom ?? ''}..${f.returnTo ?? ''}`)
-  if (f.departDow?.length) add('dow', f.departDow.join(','))
-  if (f.returnDow?.length) add('rdow', f.returnDow.join(','))
+  if (f.departDow?.length) partes.push(`dow=${encLista(f.departDow)}`)
+  if (f.returnDow?.length) partes.push(`rdow=${encLista(f.returnDow)}`)
   if (f.priceMin !== undefined || f.priceMax !== undefined) add('price', `${f.priceMin ?? ''}-${f.priceMax ?? ''}`)
-  if (f.airlines?.length) add('air', f.airlines.join(','))
+  if (f.airlines?.length) partes.push(`air=${encLista(f.airlines)}`)
   if (f.sort !== 'price') add('sort', f.sort)
   if (f.dir !== 'asc') add('dir', f.dir)
   if (f.page > 1) add('page', String(f.page))
