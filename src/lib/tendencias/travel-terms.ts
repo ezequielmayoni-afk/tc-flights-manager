@@ -15,10 +15,15 @@ export function isTravelQuery(query: string): boolean {
   return TRAVEL_TERMS.some(t => q.includes(t))
 }
 
-/** Términos genéricos que sólo cuentan si la consulta habla de viajes. */
-export const AMBIGUOUS_SEEDS = new Set(['viajes', 'vacaciones'])
-
-/** ¿Una consulta relacionada de este término cuenta como demanda de viaje? */
-export function countsAsTravelDemand(seed: string, query: string): boolean {
-  return AMBIGUOUS_SEEDS.has(seed) ? isTravelQuery(query) : true
+/**
+ * ¿Una consulta relacionada cuenta como demanda de viaje al destino que
+ * nombra? Sí cuando habla de viajes ("paquetes a florianopolis 2026") o
+ * cuando es el destino a secas ("villa traful", "punta cana 2027"). No cuando
+ * el destino aparece dentro de otra cosa ("nuestra señora de la asuncion").
+ */
+export function countsAsTravelDemand(query: string, slug: string | null): boolean {
+  if (!slug) return false
+  if (isTravelQuery(query)) return true
+  const bare = query.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\b20\d\d\b/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  return bare === slug || bare.replace(/^(la|el|las|los)-/, '') === slug.replace(/^(la|el|las|los)-/, '')
 }

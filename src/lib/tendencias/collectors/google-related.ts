@@ -91,8 +91,8 @@ export async function collectGoogleRelated(serpapi: SerpApiClient, known: KnownD
       queriesUsed++
       lists.push({
         seed,
-        rising: rising.slice(0, 15).map(r => ({ ...r, slug: countsAsTravelDemand(seed, r.query) ? matchKnownDestination(r.query, known) : null })),
-        top: top.slice(0, 25).map(t => ({ ...t, slug: countsAsTravelDemand(seed, t.query) ? matchKnownDestination(t.query, known) : null })),
+        rising: rising.slice(0, 15).map(r => { const slug = matchKnownDestination(r.query, known); return { ...r, slug: countsAsTravelDemand(r.query, slug) ? slug : null } }),
+        top: top.slice(0, 25).map(t => { const slug = matchKnownDestination(t.query, known); return { ...t, slug: countsAsTravelDemand(t.query, slug) ? slug : null } }),
       })
       await new Promise(r => setTimeout(r, DELAY_MS))
     } catch (err) {
