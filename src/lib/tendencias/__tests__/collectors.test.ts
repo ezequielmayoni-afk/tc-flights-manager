@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { longWeekends } from '../collectors/feriados'
 import { summarizeSeries } from '../collectors/bcra'
 import { canonicalizeSlug, extractDestination, finalizeDiscoveries, isCrowded, positionWeight, registerSuggestion, type Discovered } from '../collectors/autocomplete'
-import { crossNormalize } from '../collectors/serpapi-trends'
+import { crossNormalize, pickAnchor } from '../collectors/serpapi-trends'
 import { buildKnown, matchKnownDestination, stripOrigin } from '../collectors/known'
 import { countsAsTravelDemand, isTravelQuery } from '../travel-terms'
 import { parseRisingValue, scoreRelatedLists } from '../collectors/google-related'
@@ -213,5 +213,22 @@ describe('crossNormalize', () => {
       [{ slug: 'brasil', name: 'Brasil', score: 0 }, { slug: 'aruba', name: 'Aruba', score: 30 }],
     ], 'brasil')
     expect(n.get('aruba')).toMatchObject({ score: 30, comparable: false, factor: 1 })
+  })
+})
+
+describe('pickAnchor', () => {
+  it('elige un ancla mediana, no el gigante', () => {
+    const group = [
+      { slug: 'brasil', name: 'Brasil', score: 50 },
+      { slug: 'punta-cana', name: 'Punta Cana', score: 14 },
+      { slug: 'rio', name: 'Rio', score: 14 },
+      { slug: 'bariloche', name: 'Bariloche', score: 30 },
+      { slug: 'disney', name: 'Disney', score: 5 },
+    ]
+    expect(pickAnchor(group)?.slug).toBe('punta-cana')
+  })
+  it('si no hay uno mediano, toma el segundo; sin datos, ninguno', () => {
+    expect(pickAnchor([{ slug: 'a', name: 'A', score: 100 }, { slug: 'b', name: 'B', score: 90 }])?.slug).toBe('b')
+    expect(pickAnchor([{ slug: 'a', name: 'A', score: 0 }])).toBeNull()
   })
 })

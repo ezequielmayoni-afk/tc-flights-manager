@@ -7,10 +7,10 @@ import type { CollectorResult, DestinationSignal } from '../types'
  *
  * Para cada plantilla ("paquetes {d}", "viaje {d}", "vuelos {d}") se comparan
  * los destinos candidatos en grupos de 5, una llamada por grupo. Google
- * devuelve valores relativos al grupo (el más buscado vale 100), así que el
- * más fuerte del primer grupo viaja como ancla en los demás y cada grupo se
- * reescala contra él (crossNormalize). El score del destino es el promedio
- * de las tres plantillas. Después, consultas relacionadas para los más
+ * devuelve valores relativos al grupo (el más buscado vale 100), así que un
+ * destino ancla del primer grupo viaja en los demás y cada grupo se reescala
+ * contra él (crossNormalize). El score del destino es el promedio de sus dos
+ * mejores plantillas. Después, consultas relacionadas para los más
  * buscados (intención de compra).
  */
 
@@ -97,6 +97,20 @@ export function crossNormalize(batches: ComparisonScore[][], anchorSlug: string)
   return out
 }
 
+/**
+ * Elige el ancla para los grupos siguientes. No conviene el más buscado:
+ * contra "paquetes brasil" (50) todo lo demás vale 0–5 y Google redondea a
+ * cero (Cancún salió 0 en un grupo y 4 en otro). Con un ancla mediana (el
+ * más alto que no pase del 40 % del máximo) los chicos tienen resolución y
+ * el factor los lleva igual a la escala del primer grupo. Puro.
+ */
+export function pickAnchor(firstGroup: ComparisonScore[]): ComparisonScore | null {
+  const sorted = [...firstGroup].filter(s => s.score > 0).sort((a, b) => b.score - a.score)
+  if (sorted.length === 0) return null
+  const max = sorted[0].score
+  return sorted.find(s => s.score <= max * 0.4) ?? sorted[1] ?? sorted[0]
+}
+
 /** Compara los candidatos con una plantilla en grupos anclados. */
 async function compareWithTemplate(serpapi: SerpApiClient, template: string, candidates: Named[], groups: number): Promise<{ scores: Map<string, NormalizedScore>; anchor: Named | null; calls: number }> {
   const queue = [...candidates]
@@ -107,8 +121,8 @@ async function compareWithTemplate(serpapi: SerpApiClient, template: string, can
   const firstScores = await compareDestinations(serpapi, template, first)
   calls++
   batches.push(firstScores)
-  const best = [...firstScores].sort((a, b) => b.score - a.score)[0]
-  const anchor: Named | null = best && best.score > 0 ? { slug: best.slug, name: best.name } : first[0] ?? null
+  const picked = pickAnchor(firstScores)
+  const anchor: Named | null = picked ? { slug: picked.slug, name: picked.name } : first[0] ?? null
   await new Promise(r => setTimeout(r, DELAY_MS))
 
   for (let b = 1; b < groups && anchor; b++) {
@@ -144,10 +158,11 @@ export async function collectGoogleTrends(serpapi: SerpApiClient, candidates: Na
     error = (err as Error).message
   }
 
-  // Promedio sobre las plantillas que se completaron (si el presupuesto cortó a mitad, se usa lo que hay).
+  // Promedio de las dos mejores plantillas: "vuelos bayahibe" no existe (se vuela a Punta Cana)
+  // y no por eso Bayahibe se busca un tercio menos. Si el presupuesto cortó a mitad, se usa lo que hay.
   const composite = new Map<string, number>()
   for (const d of candidates) {
-    const values = [...perTemplate.values()].map(t => t.scores.get(d.slug)?.score ?? 0)
+    const values = [...perTemplate.values()].map(t => t.scores.get(d.slug)?.score ?? 0).sort((a, b) => b - a).slice(0, 2)
     if (values.length === 0) continue
     composite.set(d.slug, Math.round(values.reduce((s, v) => s + v, 0) / values.length))
   }
