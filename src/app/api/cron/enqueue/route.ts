@@ -45,11 +45,12 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         { kind: 'tc.reconcile', payload: { at: day }, dedupeKey: `tc.reconcile:${day}` },
       ]
     case 'weekly': {
-      // Fase 3: profile.audit · Fase 13: competencia.run
+      // Fase 13: competencia.run
       const week = isoWeekLabel(now)
       return [
         { kind: 'trend.run', payload: { trigger: 'cron', week }, dedupeKey: 'trend.run', maxAttempts: 2 },
         { kind: 'demand.signals', payload: { week }, dedupeKey: 'demand.signals' },
+        { kind: 'profile.audit', payload: { week }, dedupeKey: `profile.audit:${week}` },
       ]
     }
   }
