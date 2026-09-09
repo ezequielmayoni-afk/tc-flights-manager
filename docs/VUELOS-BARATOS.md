@@ -45,14 +45,15 @@ agregados de esa tabla, nunca cotizan en vivo.
 | Job | Lane | Prioridad | Qué hace |
 |---|---|---|---|
 | `flights.sweep.plan` | `default` | — | Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleSweepJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes. No sondea nada. |
-| `flights.sweep` | `cotizador` | 4 | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
+| `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
 
 - `flights.sweep.plan` se dispara una vez por noche a las **01:00 UTC** (22:00 ART), desde
   `enqueue?schedule=hourly` (`SWEEP_ENQUEUE_HOUR_UTC` en `config.ts`) — el mismo cron horario que ya
   encola `insights.sync`, no hay un cron nuevo. Ver `src/app/api/cron/enqueue/route.ts`.
-- `flights.sweep` corre en el lane `cotizador` (un worker, ventana 01:00–10:00 UTC), con **prioridad 4**:
-  más baja que las ideas de producto (prioridad 5, Fase 3) — las cotizaciones reales de la Fase 3 ganan
-  la noche frente al barrido de la landing.
+- `flights.sweep` corre en el lane `cotizador` (un worker, ventana 01:00–10:00 UTC), con **prioridad 3,
+  +1 los primeros 4 meses** (`SWEEP_PRIORITY` en `config.ts`): incluso con el empujón queda en 4, así que
+  **las ideas (5) ganan** — las cotizaciones reales de la Fase 3 se llevan la noche antes que el barrido
+  de la landing.
 - Cada `flights.sweep` hace hasta **10 sondas** (`MAX_PROBES_PER_JOB`): el tick del cron corta a los ~8
   minutos, así que una tanda más grande no llegaría a terminar.
 - **Dedupe**: la clave de encolado combina ruta + mes + día, así un mismo disparo (o un reintento del
@@ -76,9 +77,12 @@ Depurar: `SELECT id, kind, status, attempts, last_error FROM hub_jobs WHERE kind
 El cliente HTTP vive en `src/lib/cotizador/client.ts` (`probeFlights`). Contra el cotizador emisivo
 (`127.0.0.1:8090`, `X-API-Key`), **sin el límite de 3 llamadas/minuto** de `/quote-multi` (es un endpoint
 aparte, pensado para volumen). Body: `origen`/`destino` como `Destination::<código TC>`, `fecha_ida`,
-`fecha_vta`, `adultos`, `menores`, `top_n`, `only_direct`. Nunca tira un HTTP de error por un pedido malo
-— siempre 200 con `status` (`ok` | `sin_resultados` | `timeout` | error) y el job decide qué hacer.
-Timeout del lado de HUB: 60 s. Sonda real medida BUE→MIA: ~15 s.
+`fecha_vta`, `adultos`, `menores`, `top_n`, `only_direct`. El camino normal es **200 con `status`**
+(`ok` | `sin_resultados` | `timeout` | `error_upstream`) y el job decide qué hacer; pero sí devuelve HTTP
+de error cuando corresponde: **422** por códigos o fechas inválidas y **502** si el upstream falla.
+`probeFlights` los mapea a `status: 'error'` con `httpStatus` y `retryable` — `false` para 422 y 401
+(reintentar no los arregla), `true` para el resto. Timeout del lado de HUB: 60 s. Sonda real medida
+BUE→MIA: ~15 s.
 
 También expone `POST /flights/resolve` (`resolveDestination`) para traducir un texto libre ("Miami",
 "FLN") al código de destino TC — sirve para dar de alta rutas nuevas sin adivinar códigos a mano.
@@ -129,7 +133,10 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
    noche) — pide confirmar porque suma sondas al presupuesto diario.
 3. **Sondas/mes**: editable por ruta (`probes_per_month`), es el dial fino del freno look-to-book.
 4. **"Barrer ahora"**: encola un `flights.sweep` manual (prioridad de UI, no espera a la ventana nocturna)
-   para probar una ruta recién activada sin esperar 24 h.
+   para probar una ruta recién activada sin esperar 24 h. Comparte la clave de dedupe con el plan
+   nocturno (ruta + mes + día), así que **después de las 01:00 UTC dedupea contra los jobs de esa noche**:
+   devuelve los que ya estaban encolados (`deduped: true`) en vez de duplicar sondas — la ventana no se
+   saltea, esos jobs ya van a correr igual.
 
 ## Cómo escalar con cuidado
 
