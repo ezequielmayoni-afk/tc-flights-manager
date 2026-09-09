@@ -11,14 +11,14 @@ export const ROLE_PERMISSIONS = {
     description: 'Acceso total al sistema',
     canAccessAdmin: true,
     readOnly: false,
-    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas'],
+    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion'],
   },
   marketing: {
     label: 'Marketing',
     description: 'Acceso admin (todo el sistema)',
     canAccessAdmin: true,
     readOnly: false,
-    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas'],
+    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion'],
   },
   producto: {
     label: 'Producto',

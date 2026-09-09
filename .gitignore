@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 _backups/
+
+# Copias de otros repos que viven en este directorio pero no son parte de HUB
+crm-backend-current/
+crm-frontend-commercial/
+SEO_HOTEL/node_modules/

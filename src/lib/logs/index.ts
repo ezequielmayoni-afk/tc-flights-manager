@@ -18,6 +18,7 @@ export type LogSource =
   | 'tc-sync'
   | 'meta'
   | 'notificaciones'
+  | 'automation'
 
 export interface LogEventInput {
   source: LogSource

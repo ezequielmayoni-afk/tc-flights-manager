@@ -3,9 +3,11 @@ import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractCosts, importNewPackages } from '@/lib/packages/import'
 import { logEvent } from '@/lib/logs'
+import { authorizeCron } from '@/lib/cron/auth'
 
-// Vercel cron jobs have a 60s timeout on hobby, 300s on pro
-export const maxDuration = 300
+// HUB corre en el VPS bajo PM2 (Next standalone): no hay maxDuration de
+// plataforma. Los topes de abajo son constantes elegidas a mano y se pueden
+// subir si el catálogo crece.
 
 // Cuántos paquetes ya existentes se refrescan por corrida y cuántos nuevos se
 // importan como máximo, para no pasarnos del límite de la función.
@@ -141,22 +143,8 @@ function sleep(ms: number): Promise<void> {
  * Runs daily at 6:00 AM UTC (3:00 AM Argentina time)
  */
 export async function GET(request: NextRequest) {
-  // Verify cron secret to prevent unauthorized access
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  // FIX: Si CRON_SECRET no está configurado, rechazar (antes se bypasseaba)
-  if (!cronSecret) {
-    console.error('[Cron] CRON_SECRET no configurado')
-    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
-  }
-
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    console.warn('[Cron] Intento de acceso no autorizado', {
-      ip: request.headers.get('x-forwarded-for') || 'unknown',
-    })
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = authorizeCron(request)
+  if (!auth.ok) return auth.response
 
   const db = createAdminClient()
   const startTime = Date.now()

@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2017",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -19,7 +23,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
   "include": [
@@ -30,5 +36,17 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "scripts", "f1-landing", "p1-scraper", "SEO_HOTEL", "cotizador-bot"]
+  "exclude": [
+    ".playwright-mcp",
+    "SEO_HOTEL",
+    "_mockups",
+    "cotizador-bot",
+    "cotizador-nacional",
+    "crm-backend-current",
+    "crm-frontend-commercial",
+    "f1-landing",
+    "node_modules",
+    "p1-scraper",
+    "scripts"
+  ]
 }

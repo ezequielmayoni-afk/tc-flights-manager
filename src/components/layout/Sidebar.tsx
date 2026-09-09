@@ -23,6 +23,7 @@ import {
   BarChart3,
   Users,
   Video,
+  Cog,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -41,6 +42,7 @@ const cuposItems: NavItem[] = [
   { name: 'Vuelos', href: '/flights', icon: Plane, section: 'cupos' },
   { name: 'Reservas', href: '/reservations', icon: Ticket, section: 'cupos' },
   { name: 'Logs', href: '/logs', icon: FileText, section: 'cupos' },
+  { name: 'Automatización', href: '/automatizacion', icon: Cog, section: 'automatizacion' },
 ]
 
 const productosItems: NavItem[] = [
@@ -54,8 +56,8 @@ const productosItems: NavItem[] = [
 
 // Role permissions - must match middleware
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas'],
+  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion'],
+  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion'],
   producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas'],
   diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial'],

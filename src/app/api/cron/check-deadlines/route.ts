@@ -5,8 +5,7 @@ import {
   checkAndSendDesignDeadlineNotifications,
 } from '@/lib/notifications/deadlines'
 import { logEvent } from '@/lib/logs'
-
-export const maxDuration = 60
+import { authorizeCron } from '@/lib/cron/auth'
 
 /**
  * GET /api/cron/check-deadlines
@@ -20,20 +19,8 @@ export const maxDuration = 60
  * avisos se perderían sin que nadie se entere.
  */
 export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
-  const cronSecret = process.env.CRON_SECRET
-
-  if (!cronSecret) {
-    console.error('[Cron deadlines] CRON_SECRET no configurado')
-    return NextResponse.json({ error: 'Server misconfigured' }, { status: 500 })
-  }
-
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    console.warn('[Cron deadlines] Intento de acceso no autorizado', {
-      ip: request.headers.get('x-forwarded-for') || 'unknown',
-    })
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = authorizeCron(request)
+  if (!auth.ok) return auth.response
 
   const startTime = Date.now()
   const db = createAdminClient()
