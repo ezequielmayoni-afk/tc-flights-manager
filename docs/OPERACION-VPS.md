@@ -71,8 +71,9 @@ Corre sola los lunes a las 08:00 UTC (`enqueue?schedule=weekly` → jobs `trend.
   consultas); (2) consultas relacionadas de "paquetes", "viajes", "vuelos", "vacaciones", "all inclusive",
   "escapadas", "crucero" en Trends AR (7 llamadas) dan volumen relativo e "en alza"; (3) Google Trends compara 41 destinos
   (los 17 más fuertes del descubrimiento + los que tienen paquetes en el catálogo, primero los de más paquetes) con
-  "paquetes X", "viaje X" y "vuelos X" en grupos anclados (30 llamadas) + relacionadas de los 4 primeros (4); YouTube corrobora (gratis, ~60
-  consultas); (4) "tendencias ahora" de Argentina (1 llamada). **42 llamadas a SerpAPI por corrida** (tope diario 200, mensual 2.500). Cruce con `packages` + `package_destinations` (alias ES↔EN en
+  "paquetes X", "viaje X" y "vuelos X" en grupos con un ancla mediana del primer grupo (30 llamadas; el score es el
+  promedio de las dos mejores plantillas) + relacionadas de los 4 primeros (4); YouTube corrobora (gratis, ~60
+  consultas); (4) "tendencias ahora" de Argentina (1 llamada). **42 llamadas a SerpAPI por corrida** (tope diario 250, mensual 2.500 en `provider_budgets`). Cruce con `packages` + `package_destinations` (alias ES↔EN en
   `src/lib/tendencias/config.ts`) → opportunity | gap | saturated | declining → alertas. Escribe `trend_runs`
   (con `buzz`: lo que se busca y de lo que se habla), `trend_destinations` (con `signals` por fuente), `trend_alerts`.
   Tarda ~3 min. El momentum sólo se calcula contra una corrida de menos de 21 días.
