@@ -226,18 +226,18 @@ export const SOURCE_WEIGHTS: Record<string, number> = {
 }
 
 /**
- * Grupos de comparación por plantilla: 5 + 4 × 7 = 33 destinos comparados.
+ * Grupos de comparación por plantilla: 5 + 4 × 9 = 41 destinos comparados.
  * Entran los más fuertes del descubrimiento y, siempre, los destinos que
  * tienen paquetes en el catálogo: sin comparar en Trends la fuente de más
  * peso les daba 0 y Bayahibe quedaba en el puesto 28 con más búsquedas que Cancún.
  */
-export const TRENDS_COMPARISON_GROUPS = 8
+export const TRENDS_COMPARISON_GROUPS = 10
 export const MAX_TRENDS_CANDIDATES = 5 + 4 * (TRENDS_COMPARISON_GROUPS - 1)
 /** Cuántos de los cupos se reservan para lo más buscado del descubrimiento; el resto es catálogo. */
 export const TOP_DISCOVERED_FOR_VALIDATION = 17
 /** Destinos para los que se piden consultas relacionadas propias. */
 export const TRENDS_RELATED_TOP = 4
-/** Llamadas a SerpAPI por corrida: 3 × 8 comparaciones + 4 relacionadas + 7 genéricas + 1 tendencias ahora = 36. */
+/** Llamadas a SerpAPI por corrida: 3 × 10 comparaciones + 4 relacionadas + 7 genéricas + 1 tendencias ahora = 42. */
 export const SERPAPI_CALLS_PER_RUN = TRENDS_TEMPLATES.length * TRENDS_COMPARISON_GROUPS + TRENDS_RELATED_TOP + GENERIC_TREND_SEEDS.length + 1
 
 /** Umbrales de momentum (% de cambio contra la corrida anterior). */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { catalogSlugMatches, matchCatalogEntries, seedSlugsWithPackages } from '../catalog-matcher'
+import { catalogSlugMatches, matchCatalogEntries, seedPackageCounts } from '../catalog-matcher'
 import type { CatalogEntry, TrendDestination } from '../types'
 
 describe('catalogSlugMatches', () => {
@@ -64,16 +64,18 @@ describe('matchCatalogEntries', () => {
   })
 })
 
-describe('seedSlugsWithPackages', () => {
-  it('devuelve las semillas que tienen paquetes, resolviendo alias', () => {
-    const slugs = seedSlugsWithPackages([
+describe('seedPackageCounts', () => {
+  it('cuenta paquetes por semilla, resolviendo alias', () => {
+    const counts = seedPackageCounts([
       { packageId: 1, tcPackageId: 1, title: '', destinationNames: ['Bayahibe'], pricePerPax: 1 },
+      { packageId: 3, tcPackageId: 3, title: '', destinationNames: ['Bayahibe', 'Punta Cana'], pricePerPax: 1 },
       { packageId: 2, tcPackageId: 2, title: '', destinationNames: ['Rome', 'Florence'], pricePerPax: 1 },
     ])
-    expect(slugs.has('bayahibe')).toBe(true)
-    expect(slugs.has('roma')).toBe(true)
-    expect(slugs.has('italia')).toBe(true)
-    expect(slugs.has('caribe')).toBe(true)
-    expect(slugs.has('cancun')).toBe(false)
+    expect(counts.get('bayahibe')).toBe(2)
+    expect(counts.get('punta-cana')).toBe(1)
+    expect(counts.get('roma')).toBe(1)
+    expect(counts.get('italia')).toBe(1)
+    expect(counts.get('caribe')).toBe(2)
+    expect(counts.has('cancun')).toBe(false)
   })
 })

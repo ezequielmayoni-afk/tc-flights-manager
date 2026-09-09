@@ -70,14 +70,15 @@ export async function loadCatalog(db: Db): Promise<CatalogEntry[]> {
   })
 }
 
-/** Slugs semilla con al menos un paquete activo. Puro. */
-export function seedSlugsWithPackages(entries: CatalogEntry[]): Set<string> {
-  const slugs = new Set<string>()
-  const catalogSlugs = entries.flatMap(e => e.destinationNames.map(slugify)).filter(Boolean)
+/** Slug semilla → cantidad de paquetes activos que lo matchean. Puro. */
+export function seedPackageCounts(entries: CatalogEntry[]): Map<string, number> {
+  const counts = new Map<string, number>()
+  const catalog = entries.map(e => e.destinationNames.map(slugify).filter(Boolean))
   for (const seed of getAllDestinations()) {
-    if (catalogSlugs.some(c => catalogSlugMatches(seed.slug, c))) slugs.add(seed.slug)
+    const n = catalog.filter(slugs => slugs.some(c => catalogSlugMatches(seed.slug, c))).length
+    if (n > 0) counts.set(seed.slug, n)
   }
-  return slugs
+  return counts
 }
 
 export async function matchCatalog(db: Db, destinations: TrendDestination[], entries?: CatalogEntry[]): Promise<{ destinations: TrendDestination[]; catalogSize: number }> {

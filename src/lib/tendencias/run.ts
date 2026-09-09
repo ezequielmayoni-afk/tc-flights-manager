@@ -1,6 +1,6 @@
 import { collectAll } from './collectors'
 import { computeScores } from './scoring'
-import { loadCatalog, matchCatalog, seedSlugsWithPackages } from './catalog-matcher'
+import { loadCatalog, matchCatalog, seedPackageCounts } from './catalog-matcher'
 import { classifyDestinations } from './classifier'
 import { detectAlerts, detectRisingQueryAlerts } from './alert-detector'
 import { isoWeekLabel, PREV_RUN_MAX_AGE_DAYS } from './config'
@@ -37,8 +37,8 @@ export async function runTendencias(options: TrendRunOptions): Promise<TrendRunR
   try {
     // El catálogo se lee antes: los destinos con paquetes siempre se comparan en Trends.
     const catalog = await loadCatalog(db)
-    const catalogSlugs = seedSlugsWithPackages(catalog)
-    const { results, sourcesCollected, serpApiCalls, buzz } = await collectAll({ ...options, catalogSlugs })
+    const catalogCounts = seedPackageCounts(catalog)
+    const { results, sourcesCollected, serpApiCalls, buzz } = await collectAll({ ...options, catalogCounts })
 
     const prev = await getPreviousScores(db, weekLabel)
     await log(prev.reason)

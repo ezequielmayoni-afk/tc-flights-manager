@@ -54,9 +54,11 @@ export async function collectAll(ctx: TendenciasContext): Promise<CollectAllResu
   }
   const ranked = [...candidateScore.entries()].sort((a, b) => b[1] - a[1]).map(([slug]) => slug)
   const chosen: string[] = ranked.slice(0, TOP_DISCOVERED_FOR_VALIDATION)
-  const fromCatalog = [...(ctx.catalogSlugs ?? [])]
-    .filter(slug => !chosen.includes(slug))
-    .sort((a, b) => (candidateScore.get(b) ?? 0) - (candidateScore.get(a) ?? 0))
+  // Catálogo: primero los destinos con más paquetes (es lo que se vende), después por búsqueda.
+  const fromCatalog = [...(ctx.catalogCounts ?? new Map<string, number>()).entries()]
+    .filter(([slug]) => !chosen.includes(slug))
+    .sort((a, b) => b[1] - a[1] || (candidateScore.get(b[0]) ?? 0) - (candidateScore.get(a[0]) ?? 0))
+    .map(([slug]) => slug)
   for (const slug of fromCatalog) {
     if (chosen.length >= MAX_TRENDS_CANDIDATES) break
     chosen.push(slug)

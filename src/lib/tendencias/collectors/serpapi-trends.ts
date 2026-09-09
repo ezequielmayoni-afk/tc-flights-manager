@@ -144,12 +144,12 @@ export async function collectGoogleTrends(serpapi: SerpApiClient, candidates: Na
     error = (err as Error).message
   }
 
-  // Promedio de plantillas por destino (una plantilla sin dato cuenta 0).
+  // Promedio sobre las plantillas que se completaron (si el presupuesto cortó a mitad, se usa lo que hay).
   const composite = new Map<string, number>()
   for (const d of candidates) {
     const values = [...perTemplate.values()].map(t => t.scores.get(d.slug)?.score ?? 0)
     if (values.length === 0) continue
-    composite.set(d.slug, Math.round(values.reduce((s, v) => s + v, 0) / TRENDS_TEMPLATES.length))
+    composite.set(d.slug, Math.round(values.reduce((s, v) => s + v, 0) / values.length))
   }
 
   const related = new Map<string, Array<{ query: string; value: string }>>()

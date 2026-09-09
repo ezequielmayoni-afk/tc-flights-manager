@@ -107,8 +107,8 @@ export interface TendenciasContext {
   serpapi: SerpApiClient
   log: (message: string, details?: Record<string, unknown>, level?: 'info' | 'warning' | 'error') => Promise<void>
   heartbeat?: () => Promise<void>
-  /** Slugs semilla que tienen paquetes en el catálogo: siempre se comparan en Trends. */
-  catalogSlugs?: Set<string>
+  /** Slug semilla → cantidad de paquetes en el catálogo: se comparan en Trends, los de más paquetes primero. */
+  catalogCounts?: Map<string, number>
 }
 
 export interface TrendRunOptions extends TendenciasContext {

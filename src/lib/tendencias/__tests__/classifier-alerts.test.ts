@@ -27,6 +27,16 @@ describe('classifyDestinations', () => {
     expect(d.classification).toBe('declining')
   })
 
+  it('con muchos destinos, un hueco necesita score real (≥ 25) aunque esté en el cuartil superior', () => {
+    // Cola larga: el cuartil superior arranca en 19, pero un hueco necesita ≥ 25.
+    const scores = [100, 40, 30, 24, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 10, 10, 10, 10, 10]
+    const many = scores.map(trendScore => dest({ trendScore, hasPackages: false, momentum: 'new' }))
+    classifyDestinations(many)
+    expect(many.find(d => d.trendScore === 30)?.classification).toBe('gap')
+    expect(many.find(d => d.trendScore === 24)?.classification).toBe('declining')
+    expect(many.find(d => d.trendScore === 19)?.classification).toBe('declining')
+  })
+
   it('un destino en alza con score medio también es accionable', () => {
     const [rising, stable] = classifyDestinations([
       dest({ trendScore: 20, hasPackages: true, momentum: 'rising' }),
