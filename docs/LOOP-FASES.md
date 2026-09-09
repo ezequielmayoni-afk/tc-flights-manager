@@ -3,8 +3,8 @@
 Documento de seguimiento. Se actualiza al cerrar cada fase. El plan completo, con el detalle
 técnico de cada una, está en `~/.claude/plans/perfecto-ahora-una-vez-abstract-meteor.md`.
 
-**Última actualización: 2026-09-10.** Fases 0 y 1 hechas; Fase 2 desplegada en modo sombra; Fase 3 en
-construcción.
+**Última actualización: 2026-09-10.** Fases 0 y 1 hechas; Fase 2 desplegada en modo sombra; Fase 3 desplegada,
+en validación.
 
 ## De un vistazo
 
@@ -13,7 +13,7 @@ construcción.
 | 0 | Kernel de jobs, kill switches, crontab sin secretos | ✅ Hecha 2026-09-09 | — |
 | 1 | Tendencias: qué destinos busca el mercado | ✅ Hecha 2026-09-09 | 0 |
 | 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🟡 En sombra desde 2026-09-10 | 0 |
-| 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | 🔜 En construcción | 1 |
+| 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | 🟡 Desplegada 2026-09-10, validando | 1 |
 | 4 | Criterio marketing vs web y temáticas | ⏳ | 2, 3 |
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | ⏳ | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
@@ -118,7 +118,18 @@ agrupan solas al nacer de una idea.
 **Necesita de Ezequiel**: autorizar la prueba de `PUT {active:true, visible:true}` y de temáticas sobre
 un paquete de prueba; decidir el flag "ocultar en TC cuando el cupo se agota" (default apagado).
 
-## Fase 3 — Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización, ideas · ⏳
+## Fase 3 — Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización, ideas · 🟡 Desplegada (2026-09-10)
+
+**Qué hay**: `/producto/perfiles` con 45 destinos cargados con las reglas del consultor (editables en línea);
+`/producto/ideas` para crear una idea con los defaults del destino, verla sondear y cotizar sola con el precio real
+de siviajo.com, aprobarla o rechazarla, y pegar el ID cuando la guardás a mano. La regla directo/escala corre con
+dos cotizaciones como máximo. "Crear idea" desde una alerta de Tendencias. Auditoría semanal de los paquetes
+activos contra su perfil.
+
+**Lo que falta para "listo"**: que valides 10 ideas contra Google Flights y siviajo.com (misma fecha, misma
+decisión directo/escala, mismo hotel); desplegar vuelos-siviajo en el VPS para tener el calendario del mes (sin
+él, el cotizador elige la fecha con sus 5 sondas); revisar el seed de perfiles destino por destino.
+
 
 Reemplaza "abrir Google Flights, probar fechas, decidir directo o escala, cotizar a mano" (30–40 min
 por paquete). Una idea nace con los usos y costumbres del destino (régimen obligatorio, noches,

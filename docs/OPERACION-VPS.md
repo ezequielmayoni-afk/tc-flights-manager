@@ -44,7 +44,7 @@ secretos. Log: `/var/log/hub-cron.log` (los ticks vacíos no se loguean).
 | 06:30 | `enqueue?schedule=nightly` | `tc.reconcile`; Fase 8: rollup del CRM. |
 | cada hora | `enqueue?schedule=hourly` | `insights.sync` (ayer; a las 09 UTC los últimos 7 días; domingos 30) → al terminar encola `marketing.guard`. |
 | 12:00 | `check-deadlines` | Vencimientos de 48 h (cotización manual, diseño). |
-| lunes 08:00 | `enqueue?schedule=weekly` | Tendencias, competencia, auditoría de perfiles. |
+| lunes 08:00 | `enqueue?schedule=weekly` | `trend.run`, `demand.signals`, `profile.audit`; Fase 13: competencia. |
 
 ## Runner de jobs
 
@@ -101,6 +101,22 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 - Escrituras en TC (`tc.write`: desactivar, activar, temáticas) van por job con verificación posterior; `activatePackage`
   y `updatePackageThemes` **no están verificados contra TC**: la primera prueba la autoriza Ezequiel.
 - Depurar: `SELECT rule, action, status, reason FROM ad_decisions ORDER BY id DESC LIMIT 30;`
+
+## Producto: perfiles e ideas (Fase 3 del loop)
+
+- `destination_profiles`: usos y costumbres por destino (régimen obligatorio, noches, categoría, temporada, ventana
+  de compra, umbral directo/escala). Pantalla `/producto/perfiles`. `profile.audit` corre los lunes y asigna
+  `destination_profile_code`, `family`, `is_cupo` y `profile_violations` a los paquetes activos.
+- Ideas (`package_ideas`): `/producto/ideas`. `idea.probe` (lane `vuelos`, sólo si `VUELOS_URL` está configurada:
+  matrix de vuelos-siviajo para el mes) → `idea.quote` (lane `cotizador`, ventana nocturna salvo manual): valida
+  contra el perfil, cotiza con `POST /quote-multi` (fecha flexible por mes) y, si salió con escala y el destino tiene
+  umbral, cotiza sólo directo en la misma fecha; la regla directo/escala decide. Máximo dos cotizaciones por idea.
+  Cada llamada queda en `quote_runs`; las fechas alternativas en `flight_price_probes`.
+- Estados: draft → probing → quoting → priced | needs_review | failed → approved (siempre humano) → saved (hasta la
+  Fase 6, a mano: "pegar ID") → verified → imported.
+- Env: `COTIZADOR_URL` (127.0.0.1:8090), `COTIZADOR_API_KEY`, opcional `COTIZADOR_NACIONAL_URL` (8091) y
+  `COTIZADOR_NACIONAL_API_KEY`; `VUELOS_URL` cuando vuelos-siviajo esté en el VPS.
+- Depurar: `SELECT id, status, destination_name, month, quoted_price_pp, chosen_departure_date, error FROM package_ideas ORDER BY id DESC LIMIT 20;`
 
 ## Rotación de secretos
 
