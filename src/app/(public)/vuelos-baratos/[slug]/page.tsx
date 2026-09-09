@@ -5,11 +5,12 @@ import { Breadcrumb } from '@/components/vuelos-baratos/Breadcrumb'
 import { Disclosure } from '@/components/vuelos-baratos/Disclosure'
 import { FaqSection, type FaqItem } from '@/components/vuelos-baratos/FaqSection'
 import { FaresTable } from '@/components/vuelos-baratos/FaresTable'
-import { FilterSidebarSlot } from '@/components/vuelos-baratos/FilterSidebarSlot'
+import { FilterSidebar } from '@/components/vuelos-baratos/FilterSidebar'
 import { JsonLd } from '@/components/vuelos-baratos/JsonLd'
 import { MonthChips } from '@/components/vuelos-baratos/MonthChips'
 import { OriginSelect } from '@/components/vuelos-baratos/OriginSelect'
 import { Pagination } from '@/components/vuelos-baratos/Pagination'
+import { SearchBox } from '@/components/vuelos-baratos/SearchBox'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
 import { BOTON_PRIMARIO, CARD, formatUsd } from '@/components/vuelos-baratos/ui'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -273,6 +274,10 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
       </p>
 
       <div className="mt-5">
+        <SearchBox originCode={origen.code} destination={destination} siviajoBase={siviajoBaseUrl()} />
+      </div>
+
+      <div className="mt-5">
         <OriginSelect origins={ORIGINS} active={origen.code} path={path} filters={filters} />
       </div>
 
@@ -305,7 +310,7 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
 
           <div className="mt-6 flex flex-col gap-6 lg:flex-row">
             <div className="lg:w-[280px] lg:shrink-0">
-              <FilterSidebarSlot filters={filters} priceLimits={limits} airlines={airlines} basePath={basePath} />
+              <FilterSidebar filters={filters} priceLimits={limits} airlines={airlines} basePath={basePath} />
             </div>
             <div className="min-w-0 flex-1">
               <FaresTable

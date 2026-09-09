@@ -4,7 +4,7 @@ import { Disclosure } from '@/components/vuelos-baratos/Disclosure'
 import { JsonLd } from '@/components/vuelos-baratos/JsonLd'
 import { OriginTabs } from '@/components/vuelos-baratos/OriginTabs'
 import { PublicHero } from '@/components/vuelos-baratos/PublicHero'
-import { SearchBoxSlot } from '@/components/vuelos-baratos/SearchBoxSlot'
+import { SearchBox } from '@/components/vuelos-baratos/SearchBox'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
 import { BOTON_PRIMARIO, formatUsd } from '@/components/vuelos-baratos/ui'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -128,7 +128,7 @@ export default async function VuelosBaratosHome({ searchParams }: PageProps) {
         title={`Vuelos baratos desde ${origen.name}`}
         subtitle="Los mejores precios que encontramos en siviajo.com en las últimas 48 horas. Por persona, ida y vuelta, tarifa más baja sin valija despachada."
       >
-        <SearchBoxSlot originCode={origen.code} />
+        <SearchBox originCode={origen.code} siviajoBase={siviajoBaseUrl()} />
       </PublicHero>
 
       <OriginTabs origins={ORIGINS} active={origen.code} />

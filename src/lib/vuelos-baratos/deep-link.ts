@@ -39,11 +39,20 @@ export interface SiviajoFlightUrlInput {
   returnDate?: string | null
   adults?: number
   childrenAges?: number[]
+  /**
+   * Base del motor, para armar el link desde el navegador.
+   *
+   * `siviajoBaseUrl()` lee `SIVIAJO_BASE_URL`, que NO tiene prefijo
+   * `NEXT_PUBLIC_`: en el cliente esa variable no existe y un override del
+   * `.env` se ignoraría en silencio. El buscador la recibe como prop del
+   * server component y la pasa por acá.
+   */
+  baseUrl?: string
 }
 
 /** La URL de búsqueda directa de vuelos en siviajo.com. */
 export function buildSiviajoFlightUrl(input: SiviajoFlightUrlInput): string {
-  const { originCode, destCode, departDate, returnDate, adults = DEFAULT_ADULTS, childrenAges = [] } = input
+  const { originCode, destCode, departDate, returnDate, adults = DEFAULT_ADULTS, childrenAges = [], baseUrl } = input
   if (!CODE_RE.test(originCode)) throw new Error(`Código de origen inválido: ${originCode}`)
   if (!CODE_RE.test(destCode)) throw new Error(`Código de destino inválido: ${destCode}`)
   assertFechaReal(departDate)
@@ -56,8 +65,10 @@ export function buildSiviajoFlightUrl(input: SiviajoFlightUrlInput): string {
   const vuelta = returnDate ? `&arrivalDate=${padDate(returnDate)}` : ''
   const distribution = buildDistribution(adults, childrenAges)
 
+  const base = (baseUrl ?? '').trim().replace(/\/+$/, '') || siviajoBaseUrl()
+
   return (
-    `${siviajoBaseUrl()}/home?latestSearch=true&tripType=ONLY_FLIGHT&directSubmit=true` +
+    `${base}/home?latestSearch=true&tripType=ONLY_FLIGHT&directSubmit=true` +
     `&departureDate=${ida}${vuelta}` +
     `&distribution=${distribution}` +
     `&departure=Destination::${originCode}&destination=Destination::${destCode}` +

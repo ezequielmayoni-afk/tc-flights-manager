@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { parseDate } from '@/lib/dates'
+import { airlineLogo } from '@/lib/vuelos-baratos/airlines'
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
 import { filtersWith } from '@/lib/vuelos-baratos/filters'
 import type { BestPair, ExplorerFilters, SortKey } from '@/lib/vuelos-baratos/types'
@@ -62,6 +63,37 @@ function deepLink(pair: BestPair, originCode: string, destCode: string, slug: st
   } catch {
     return null
   }
+}
+
+/**
+ * Logo + nombre de la aerolínea.
+ *
+ * `airlineLogo` casi siempre resuelve por nombre: el bot no manda el prefijo
+ * del número de vuelo, así que `airline_code` suele venir en NULL. Es un `img`
+ * plano y no `next/image` porque los logos son de CDNs de terceros y no vale
+ * la pena optimizarlos (24 px, `loading="lazy"`).
+ */
+function Aerolinea({ pair, textoVacio }: { pair: BestPair; textoVacio: string }) {
+  const logo = airlineLogo(pair.airlineCode, pair.airline)
+  if (!logo.name) return <>{textoVacio}</>
+
+  return (
+    <span className="flex items-center gap-2">
+      {logo.src ? (
+        // Logos de CDNs de terceros a 24 px: no vale la pena `next/image`.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logo.src}
+          alt={logo.name}
+          width={24}
+          height={24}
+          loading="lazy"
+          className="size-6 shrink-0 rounded-sm object-contain"
+        />
+      ) : null}
+      <span className="min-w-0">{logo.name}</span>
+    </span>
+  )
 }
 
 function Equipaje({ pair }: { pair: BestPair }) {
@@ -155,7 +187,9 @@ export function FaresTable({ pairs, total, filters, basePath, originCode, destCo
                     <td className="whitespace-nowrap px-2 py-3 text-[#495057]">{estadia(pair.nights)}</td>
                     <td className="whitespace-nowrap px-2 py-3 text-[#495057]">{duracion(pair.durationOutMin)}</td>
                     <td className="whitespace-nowrap px-2 py-3 text-[#495057]">{escalas(pair.stopsOut)}</td>
-                    <td className="px-2 py-3 text-[#495057]">{pair.airline ?? '—'}</td>
+                    <td className="px-2 py-3 text-[#495057]">
+                      <Aerolinea pair={pair} textoVacio="—" />
+                    </td>
                     <td className="whitespace-nowrap px-2 py-3">
                       <span className="block text-sm font-bold tabular-nums text-[#1A237E]">{formatUsd(pair.pricePp)}</span>
                       <span className="block text-[10px] text-[#6C757D]">por persona</span>
@@ -194,7 +228,9 @@ export function FaresTable({ pairs, total, filters, basePath, originCode, destCo
                     <p className="mt-1 text-xs text-[#6C757D]">
                       {estadia(pair.nights)} · {escalas(pair.stopsOut)} · {duracion(pair.durationOutMin)}
                     </p>
-                    <p className="text-xs text-[#6C757D]">{pair.airline ?? 'Aerolínea sin dato'}</p>
+                    <p className="mt-1 text-xs text-[#6C757D]">
+                      <Aerolinea pair={pair} textoVacio="Aerolínea sin dato" />
+                    </p>
                   </div>
                   <div className="shrink-0 text-right">
                     <span className="block text-lg font-bold tabular-nums text-[#1A237E]">{formatUsd(pair.pricePp)}</span>

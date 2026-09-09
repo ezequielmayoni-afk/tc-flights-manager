@@ -21,6 +21,23 @@ export const BOTON_PRIMARIO_SM =
 export const CARD = 'rounded-[8px] border border-[#E3E3E3] bg-white'
 
 /**
+ * Campo de texto/número de la landing.
+ *
+ * No se usa el `Input` de `components/ui` a propósito: trae `shadow-xs` y los
+ * tokens del dashboard, y acá los colores van literales y sin sombras.
+ */
+export const INPUT =
+  'h-9 w-full min-w-0 rounded-[8px] border border-[#E3E3E3] bg-white px-3 text-sm text-[#393939] outline-none transition placeholder:text-[#B2B2B2] focus:border-[#1A237E]'
+
+/** Chip chico (rangos rápidos, días de la semana, aerolíneas de más). */
+export const CHIP = 'rounded-[4px] border px-2.5 py-1 text-xs font-semibold transition'
+export const CHIP_ACTIVO = 'border-[#1A237E] bg-[#1A237E] text-white'
+export const CHIP_INACTIVO = 'border-[#E3E3E3] text-[#495057] hover:border-[#1A237E]'
+
+/** El rojo de los mensajes de validación (sobrio, no el `destructive` del dashboard). */
+export const ROJO_ERROR = '#B42318'
+
+/**
  * Agrega los filtros a la URL base.
  *
  * `basePath` puede venir con query (la página le mete `?from=CRD` cuando el
