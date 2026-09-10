@@ -3,8 +3,9 @@ import type { EnqueueInput, JobContext } from '@/lib/jobs/types'
 import { invalidatePublicCache } from './cache'
 import { DEFAULT_ADULTS, MAX_PROBES_PER_JOB, MIN_LEAD_DAYS, OBSERVATION_WINDOW_HOURS, PROBE_CONCURRENCY, PROBE_RETRY_DELAY_MS, SWEEP_PRIORITY } from './config'
 import { generateDatePairs, monthsAhead } from './date-pairs'
+import { pickPairsToConfirm } from './estimate'
 import type { ProbeInsert } from './queries'
-import type { DatePair, LandingDestinationRow, LandingRouteRow, SweepSummary } from './types'
+import type { DatePair, EstimateRow, LandingDestinationRow, LandingRouteRow, SweepSummary } from './types'
 
 /**
  * El barrido nocturno de vuelos.siviajo.com.
@@ -69,10 +70,24 @@ export interface BuildSweepJobsInput {
    * (el handler deja correr las inactivas con prioridad manual).
    */
   includeInactive?: boolean
+  /**
+   * Estimaciones vigentes de Sabre por ruta. Donde las hay, el barrido confirma
+   * las fechas más baratas en vez de sus pares fijos.
+   */
+  estimatesByRoute?: Map<number, EstimateRow[]>
 }
+
+const claveDePar = (p: DatePair): string => `${p.depart}|${p.return}`
 
 /**
  * Un `flights.sweep` por ruta activa × mes × tanda.
+ *
+ * "Sabre elige, siviajo confirma": si esa ruta y ese mes tienen estimaciones
+ * vigentes, se sondean los `confirm_per_month` pares más baratos según Sabre
+ * (completando con pares fijos si el estimador devolvió menos) en vez de los
+ * `probes_per_month` de siempre. Sin estimaciones —Sabre apagado, caído o una
+ * ruta con `scan_per_month` en 0— se cae al plan fijo de `planSweep`, que es
+ * lo que hacía antes.
  *
  * Los primeros 4 meses van con un punto más de prioridad: son los que la
  * landing muestra primero y los que más se buscan. La clave de dedupe lleva
@@ -89,9 +104,19 @@ export function buildSweepJobs(input: BuildSweepJobsInput): EnqueueInput[] {
     if (!destination) continue
     if (!destination.active && !input.includeInactive) continue
 
+    const estimates = input.estimatesByRoute?.get(route.id) ?? []
     const meses = monthsAhead(input.today, input.monthsOverride ?? route.months_ahead)
     meses.forEach((month, monthIndex) => {
-      const pairs = planSweep(route, month, { today: input.today, day: input.day })
+      const picks = pickPairsToConfirm({
+        estimates,
+        month,
+        confirmPerMonth: route.confirm_per_month,
+        today: input.today,
+        minLeadDays: MIN_LEAD_DAYS,
+      })
+      const source: 'estimate' | 'fixed' = picks.length > 0 ? 'estimate' : 'fixed'
+      const pairs = source === 'fixed' ? planSweep(route, month, { today: input.today, day: input.day }) : completar(picks, route, month, input)
+
       chunkPairs(pairs).forEach((chunk, index) => {
         jobs.push({
           kind: 'flights.sweep',
@@ -103,6 +128,9 @@ export function buildSweepJobs(input: BuildSweepJobsInput): EnqueueInput[] {
             month,
             chunk: index,
             pairs: chunk,
+            // Para diagnóstico: si un mes vuelve a 'fixed' es que esa noche no
+            // hubo estimaciones vigentes de Sabre.
+            source,
             trigger: input.trigger,
           },
           dedupeKey: `flights.sweep:${route.origin_tc_code}:${destination.slug}:${month}:${index}:${input.day}`,
@@ -117,6 +145,25 @@ export function buildSweepJobs(input: BuildSweepJobsInput): EnqueueInput[] {
   }
 
   return jobs
+}
+
+/**
+ * Si el estimador devolvió menos pares que `confirm_per_month` (un mes con
+ * pocas fechas candidatas, búsquedas vacías), se completa con los pares fijos
+ * del mes hasta llegar al cupo, sin repetir combinaciones.
+ */
+function completar(picks: DatePair[], route: LandingRouteRow, month: string, input: BuildSweepJobsInput): DatePair[] {
+  if (picks.length >= route.confirm_per_month) return picks
+
+  const pairs = [...picks]
+  const vistos = new Set(pairs.map(claveDePar))
+  for (const par of planSweep(route, month, { today: input.today, day: input.day })) {
+    if (pairs.length >= route.confirm_per_month) break
+    if (vistos.has(claveDePar(par))) continue
+    vistos.add(claveDePar(par))
+    pairs.push(par)
+  }
+  return pairs
 }
 
 /** 'AR 1304' → 'AR'. Sin número de vuelo no se inventa nada. */

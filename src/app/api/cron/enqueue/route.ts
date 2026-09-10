@@ -5,7 +5,7 @@ import { enqueueJob } from '@/lib/jobs/queue'
 import type { Db, EnqueueInput } from '@/lib/jobs/types'
 import { logEvent } from '@/lib/logs'
 import { isoWeekLabel } from '@/lib/tendencias/config'
-import { SWEEP_ENQUEUE_HOUR_UTC } from '@/lib/vuelos-baratos/config'
+import { ESTIMATE_ENQUEUE_HOUR_UTC, SWEEP_ENQUEUE_HOUR_UTC } from '@/lib/vuelos-baratos/config'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,6 +30,11 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
       const inputs: EnqueueInput[] = [
         { kind: 'insights.sync', payload: { datePreset, at: hour }, dedupeKey: `insights.sync:${hour}` },
       ]
+      // Estimador de Sabre: una hora antes del barrido, para que éste ya tenga
+      // las estimaciones cuando decide qué fechas confirmar.
+      if (utcHour === ESTIMATE_ENQUEUE_HOUR_UTC) {
+        inputs.push({ kind: 'flights.estimate.plan', payload: { day }, dedupeKey: `flights.estimate.plan:${day}` })
+      }
       // Barrido de vuelos.siviajo.com: una sola vez por noche, al abrir la
       // ventana del lane `cotizador`.
       if (utcHour === SWEEP_ENQUEUE_HOUR_UTC) {

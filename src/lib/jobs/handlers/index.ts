@@ -16,6 +16,8 @@ import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
 import { flightsSweepPlanHandler } from './flights-sweep-plan'
 import { flightsSweepHandler } from './flights-sweep'
+import { flightsEstimatePlanHandler } from './flights-estimate-plan'
+import { flightsEstimateHandler } from './flights-estimate'
 
 /**
  * Registro de handlers: un archivo por `kind`. Las fases del loop van sumando
@@ -43,6 +45,8 @@ const HANDLERS: HandlerDefinition[] = [
   // Vuelos baratos (vuelos.siviajo.com)
   flightsSweepPlanHandler,
   flightsSweepHandler,
+  flightsEstimatePlanHandler,
+  flightsEstimateHandler,
 ]
 
 const byKind = new Map(HANDLERS.map(h => [h.kind, h]))

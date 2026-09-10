@@ -1,8 +1,9 @@
 'use client'
 
 import { ActiveToggle } from './ActiveToggle'
-import { ProbesPerMonthInput } from './ProbesPerMonthInput'
+import { EstimateNowButton } from './EstimateNowButton'
 import { ResolveCodeButton } from './ResolveCodeButton'
+import { RouteNumberInput } from './RouteNumberInput'
 import { SweepNowButton } from './SweepNowButton'
 
 /**
@@ -16,12 +17,18 @@ export interface AdminRouteRow {
   originName: string
   active: boolean
   probesPerMonth: number
+  /** Pares por mes que estima Sabre (BFM); 0 = ruta sin estimador. */
+  scanPerMonth: number
+  /** De los estimados, cuántos por mes confirma el barrido con una sonda. */
+  confirmPerMonth: number
   monthsAhead: number
   stayNights: number[]
   /** `freshnessLabel` de la observación con precio más nueva; null = nunca. */
   freshness: string | null
   /** Última sonda de cualquier estado en 24 h: distingue "sin datos" de "sin correr". */
   lastProbe: string | null
+  /** `freshnessLabel` de la última estimación de Sabre; null = nunca. */
+  estimateFreshness: string | null
   ok: number
   empty: number
   errors: number
@@ -116,8 +123,17 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                   <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
                     <th className="px-4 py-2 font-medium">Origen</th>
                     <th className="px-4 py-2 font-medium">Activa</th>
-                    <th className="px-4 py-2 font-medium">Sondas/mes</th>
+                    <th className="px-4 py-2 font-medium" title="Pares de fechas que estima Sabre por mes (0 = sin estimador)">
+                      Sabre/mes
+                    </th>
+                    <th className="px-4 py-2 font-medium" title="De los estimados, cuántos confirma el barrido en siviajo.com">
+                      Confirmar/mes
+                    </th>
+                    <th className="px-4 py-2 font-medium" title="Sondas por mes cuando la ruta no tiene estimaciones vigentes">
+                      Sondas/mes
+                    </th>
                     <th className="px-4 py-2 font-medium">Estadías</th>
+                    <th className="px-4 py-2 font-medium">Última estimación</th>
                     <th className="px-4 py-2 font-medium">Última observación</th>
                     <th className="px-4 py-2 font-medium" title="Sondas de las últimas 24 h por estado">
                       OK / vacías / errores / timeouts 24 h
@@ -145,9 +161,46 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                         />
                       </td>
                       <td className="px-4 py-2">
-                        <ProbesPerMonthInput routeId={route.id} value={route.probesPerMonth} entity={`${route.originCode}→${group.code}`} />
+                        <RouteNumberInput
+                          routeId={route.id}
+                          field="scan_per_month"
+                          value={route.scanPerMonth}
+                          min={0}
+                          max={62}
+                          label="Estimaciones de Sabre por mes"
+                          entity={`${route.originCode}→${group.code}`}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <RouteNumberInput
+                          routeId={route.id}
+                          field="confirm_per_month"
+                          value={route.confirmPerMonth}
+                          min={1}
+                          max={31}
+                          label="Confirmaciones por mes"
+                          entity={`${route.originCode}→${group.code}`}
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <RouteNumberInput
+                          routeId={route.id}
+                          field="probes_per_month"
+                          value={route.probesPerMonth}
+                          min={1}
+                          max={31}
+                          label="Sondas por mes"
+                          entity={`${route.originCode}→${group.code}`}
+                        />
                       </td>
                       <td className="px-4 py-2 tabular-nums text-gray-600">{route.stayNights.join('/')}</td>
+                      <td className="px-4 py-2">
+                        {route.estimateFreshness ? (
+                          <span className="text-gray-700">{route.estimateFreshness}</span>
+                        ) : (
+                          <span className="text-gray-400">nunca</span>
+                        )}
+                      </td>
                       <td className="px-4 py-2">
                         {route.freshness ? (
                           <span className="text-gray-700">{route.freshness}</span>
@@ -162,8 +215,11 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                         <Health route={route} />
                       </td>
                       <td className="px-4 py-2 font-medium tabular-nums text-gray-900">{route.minPriceLabel}</td>
-                      <td className="px-4 py-2 text-right">
-                        <SweepNowButton slug={group.slug} origin={route.originCode} pendingJobs={route.pendingJobs} />
+                      <td className="px-4 py-2">
+                        <div className="flex items-center justify-end gap-2">
+                          <EstimateNowButton slug={group.slug} origin={route.originCode} scanPerMonth={route.scanPerMonth} />
+                          <SweepNowButton slug={group.slug} origin={route.originCode} pendingJobs={route.pendingJobs} />
+                        </div>
                       </td>
                     </tr>
                   ))}

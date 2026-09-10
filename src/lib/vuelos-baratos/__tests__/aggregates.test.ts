@@ -259,10 +259,10 @@ describe('summarizeDestinations', () => {
     { code: 'MAD', slug: 'madrid', name: 'Madrid', tc_code: 'MAD', iata_display: 'MAD', haul: 'long', seo_title: null, seo_description: null, hero_image_url: null, faq: [], active: false, sort_order: 20 },
   ]
   const rutas: LandingRouteRow[] = [
-    { id: 1, destination_code: 'MIA', origin_tc_code: 'BUE', origin_name: 'Buenos Aires', stay_nights: [7], weekdays: [2], probes_per_month: 8, months_ahead: 12, active: true },
-    { id: 2, destination_code: 'RIO', origin_tc_code: 'BUE', origin_name: 'Buenos Aires', stay_nights: [4], weekdays: [2], probes_per_month: 8, months_ahead: 12, active: true },
-    { id: 3, destination_code: 'MAD', origin_tc_code: 'BUE', origin_name: 'Buenos Aires', stay_nights: [7], weekdays: [2], probes_per_month: 8, months_ahead: 12, active: true },
-    { id: 4, destination_code: 'MIA', origin_tc_code: 'CRD', origin_name: 'Córdoba', stay_nights: [7], weekdays: [2], probes_per_month: 4, months_ahead: 12, active: false },
+    { id: 1, destination_code: 'MIA', origin_tc_code: 'BUE', origin_name: 'Buenos Aires', stay_nights: [7], weekdays: [2], probes_per_month: 8, scan_per_month: 8, confirm_per_month: 3, months_ahead: 12, active: true },
+    { id: 2, destination_code: 'RIO', origin_tc_code: 'BUE', origin_name: 'Buenos Aires', stay_nights: [4], weekdays: [2], probes_per_month: 8, scan_per_month: 8, confirm_per_month: 3, months_ahead: 12, active: true },
+    { id: 3, destination_code: 'MAD', origin_tc_code: 'BUE', origin_name: 'Buenos Aires', stay_nights: [7], weekdays: [2], probes_per_month: 8, scan_per_month: 8, confirm_per_month: 3, months_ahead: 12, active: true },
+    { id: 4, destination_code: 'MIA', origin_tc_code: 'CRD', origin_name: 'Córdoba', stay_nights: [7], weekdays: [2], probes_per_month: 4, scan_per_month: 4, confirm_per_month: 3, months_ahead: 12, active: false },
   ]
 
   it('resume por ruta activa e incluye las rutas sin datos', () => {

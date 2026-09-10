@@ -34,6 +34,10 @@ export interface LandingRouteRow {
   /** ISO: 1 = lunes … 7 = domingo. */
   weekdays: number[]
   probes_per_month: number
+  /** Pares por mes que estima Sabre (BFM) cada noche; 0 = ruta sin estimador. */
+  scan_per_month: number
+  /** De los estimados, cuántos por mes confirma siviajo.com con una sonda. */
+  confirm_per_month: number
   months_ahead: number
   active: boolean
 }
@@ -67,6 +71,37 @@ export interface ProbeRow {
   source: string
   job_id: number | null
   probed_at: string
+}
+
+/**
+ * Fila de `flight_fare_estimates`: lo que Sabre estimó para un par de fechas.
+ *
+ * NUNCA es un precio publicable (sale del PCC propio, sin el markup ni las
+ * reglas del motor): sólo ordena qué fechas vale la pena confirmar y, en la
+ * landing, se muestra como "≈ US$ X".
+ */
+export interface EstimateRow {
+  id: number
+  route_id: number
+  depart_date: string
+  return_date: string
+  price_pp: number
+  currency: string
+  airline_code: string | null
+  stops_out: number | null
+  stops_back: number | null
+  duration_out_minutes: number | null
+  duration_back_minutes: number | null
+  observed_at: string
+}
+
+/** Fila a insertar en `flight_fare_estimates` (el id lo pone la base). */
+export type EstimateInsert = Omit<EstimateRow, 'id'> & {
+  /** Los ≤5 itinerarios que devolvió el BFM, resumidos. */
+  itineraries?: unknown[]
+  source?: string
+  job_id?: number | null
+  elapsed_ms?: number | null
 }
 
 export interface DatePair {
@@ -134,6 +169,23 @@ export interface ExplorerFilters {
   sort: SortKey
   dir: 'asc' | 'desc'
   page: number
+}
+
+export interface EstimateSummary {
+  pairs: number
+  ok: number
+  empty: number
+  errors: number
+  minPrice: number | null
+  durationMs: number
+  budgetStopped: boolean
+  /** Búsquedas BFM que se le pidieron a Sabre (una por par intentado). */
+  sabreCalls: number
+  /**
+   * Error que corta el job entero y no se reintenta: credenciales rechazadas o
+   * un origen sin IATA mapeado. Seguir pidiendo pares no lo arregla.
+   */
+  fatalError: string | null
 }
 
 export interface SweepSummary {

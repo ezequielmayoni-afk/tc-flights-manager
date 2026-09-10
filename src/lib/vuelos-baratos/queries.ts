@@ -1,7 +1,7 @@
 import { cancelJob } from '@/lib/jobs/queue'
 import type { Db, JobRow } from '@/lib/jobs/types'
-import { OBSERVATION_WINDOW_HOURS } from './config'
-import type { LandingDestinationRow, LandingRouteRow, ProbeRow } from './types'
+import { ESTIMATE_WINDOW_HOURS, OBSERVATION_WINDOW_HOURS } from './config'
+import type { EstimateInsert, EstimateRow, LandingDestinationRow, LandingRouteRow, ProbeRow } from './types'
 
 /**
  * Lecturas y escrituras de vuelos.siviajo.com.
@@ -16,11 +16,16 @@ import type { LandingDestinationRow, LandingRouteRow, ProbeRow } from './types'
 const DESTINATION_COLUMNS =
   'code, slug, tc_code, iata_display, haul, seo_title, seo_description, hero_image_url, faq, active, sort_order, destination_profiles(name)'
 
-const ROUTE_COLUMNS = 'id, destination_code, origin_tc_code, origin_name, stay_nights, weekdays, probes_per_month, months_ahead, active'
+const ROUTE_COLUMNS =
+  'id, destination_code, origin_tc_code, origin_name, stay_nights, weekdays, probes_per_month, scan_per_month, confirm_per_month, months_ahead, active'
 
 /** Lo que necesitan los agregados de la landing; `options` sólo bajo pedido. */
 const PROBE_COLUMNS =
   'id, route_id, departure_date, return_date, nights, price_per_pax, currency, airline, airline_code, stops, stops_back, duration_minutes, duration_back_minutes, fare_family, checked_bag, carry_on, status, probed_at'
+
+/** Lo que necesitan el planner del barrido y los chips; `itineraries` sólo en el detalle. */
+const ESTIMATE_COLUMNS =
+  'id, route_id, depart_date, return_date, price_pp, currency, airline_code, stops_out, stops_back, duration_out_minutes, duration_back_minutes, observed_at'
 
 /** Un barrido completo de una ruta son ~100 filas por mes: 2000 cubre el año. */
 const MAX_PROBE_ROWS = 2000
@@ -28,6 +33,10 @@ const MAX_PROBE_ROWS = 2000
 const MAX_PROBE_ROWS_MULTI = 5000
 /** Salud: son 3 columnas por sonda, un día entero del barrido entra de sobra. */
 const MAX_HEALTH_ROWS = 20_000
+/** Estimaciones: `scan_per_month` × meses × rutas ≈ 500 por noche. */
+const MAX_ESTIMATE_ROWS = 5000
+/** Estimaciones a upsertear por lote (el job trae ≤16, el manual bastante más). */
+const ESTIMATE_BATCH = 100
 
 /** Fila a insertar en `flight_price_probes` (el id y las fechas los pone la base). */
 export type ProbeInsert = Omit<ProbeRow, 'id' | 'probed_at'> & {
@@ -73,6 +82,11 @@ function toProbeRow(raw: Record<string, unknown>): ProbeRow {
     ...(raw as unknown as ProbeRow),
     price_per_pax: price === null || price === undefined ? null : Number(price),
   }
+}
+
+/** `price_pp` es NUMERIC: PostgREST lo puede devolver como string. */
+function toEstimateRow(raw: Record<string, unknown>): EstimateRow {
+  return { ...(raw as unknown as EstimateRow), price_pp: Number(raw.price_pp) }
 }
 
 export async function listLandingDestinations(db: Db, opts: { activeOnly?: boolean } = {}): Promise<LandingDestinationRow[]> {
@@ -304,7 +318,9 @@ export async function getSweepHealth(db: Db, sinceHours = 24): Promise<Map<numbe
   return salud
 }
 
-export type RoutePatch = Partial<Pick<LandingRouteRow, 'active' | 'probes_per_month' | 'stay_nights' | 'weekdays' | 'months_ahead'>>
+export type RoutePatch = Partial<
+  Pick<LandingRouteRow, 'active' | 'probes_per_month' | 'scan_per_month' | 'confirm_per_month' | 'stay_nights' | 'weekdays' | 'months_ahead'>
+>
 
 export async function updateRoute(db: Db, id: number, patch: RoutePatch): Promise<LandingRouteRow> {
   const { data, error } = await db
@@ -344,27 +360,127 @@ export async function updateLandingDestination(
 }
 
 /**
- * Cancela los `flights.sweep` que quedaron en cola de noches anteriores.
+ * Cancela los jobs de `kind` que quedaron en cola de noches anteriores.
  *
- * El barrido de anoche que no llegó a correr ya no sirve (los precios
- * cambiaron y el plan de hoy vuelve a encolar esos pares): dejarlos en cola
- * sólo tapa la cola del lane `cotizador`, que corre de a uno.
+ * El barrido (o la estimación) de anoche que no llegó a correr ya no sirve:
+ * los precios cambiaron y el plan de hoy vuelve a encolar esos pares. Dejarlos
+ * en cola sólo tapa un lane que corre de a uno (`cotizador`, `sabre`).
  */
-export async function cancelStaleSweepJobs(db: Db, day: string): Promise<number> {
+export async function cancelStaleFlightJobs(db: Db, kind: 'flights.sweep' | 'flights.estimate', day: string): Promise<number> {
   const { data, error } = await db
     .from('hub_jobs')
     .select('id, dedupe_key')
-    .eq('kind', 'flights.sweep')
+    .eq('kind', kind)
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
     .limit(1000)
   // Sin esto, una lectura fallida se veía igual que "no había nada viejo".
-  if (error) throw new Error(`No se pudieron leer los barridos en cola: ${error.message}`)
+  if (error) throw new Error(`No se pudieron leer los ${kind} en cola: ${error.message}`)
   const viejos = ((data ?? []) as Array<{ id: number; dedupe_key: string | null }>).filter(j => !j.dedupe_key?.endsWith(`:${day}`))
 
   let cancelados = 0
   for (const job of viejos) {
-    if (await cancelJob(db, job.id, 'flights.sweep.plan')) cancelados++
+    if (await cancelJob(db, job.id, `${kind}.plan`)) cancelados++
   }
   return cancelados
+}
+
+// ---------------------------------------------------------------------------
+// Estimaciones de Sabre (`flight_fare_estimates`)
+// ---------------------------------------------------------------------------
+
+export interface EstimatesOptions {
+  /** Ventana de frescura; por defecto la que sirve para planificar (30 h). */
+  sinceHours?: number
+  /** No traer salidas ya pasadas. */
+  fromDate: string
+}
+
+/**
+ * Guarda las estimaciones de una tanda.
+ *
+ * Upsert por (ruta, ida, vuelta, fuente): la estimación de esta noche pisa la
+ * de anoche, así la tabla queda acotada a los pares que se estiman y no crece
+ * como una serie histórica.
+ */
+export async function upsertEstimates(db: Db, rows: EstimateInsert[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += ESTIMATE_BATCH) {
+    const lote = rows.slice(i, i + ESTIMATE_BATCH)
+    const { error } = await db.from('flight_fare_estimates').upsert(lote, { onConflict: 'route_id,depart_date,return_date,source' })
+    if (error) throw new Error(`No se pudieron guardar las estimaciones: ${error.message}`)
+  }
+}
+
+/** Estimaciones vigentes de varias rutas (las lee el planner del barrido). */
+export async function getEstimatesForRoutes(db: Db, routeIds: number[], opts: EstimatesOptions): Promise<Map<number, EstimateRow[]>> {
+  const porRuta = new Map<number, EstimateRow[]>()
+  if (routeIds.length === 0) return porRuta
+
+  const { data, error } = await db
+    .from('flight_fare_estimates')
+    .select(ESTIMATE_COLUMNS)
+    .in('route_id', routeIds)
+    .gte('observed_at', sinceIso(opts.sinceHours ?? ESTIMATE_WINDOW_HOURS))
+    .gte('depart_date', opts.fromDate)
+    // Por ruta primero: con el tope global, ordenar sólo por precio dejaría
+    // sin filas a las rutas caras.
+    .order('route_id', { ascending: true })
+    .order('price_pp', { ascending: true })
+    .limit(MAX_ESTIMATE_ROWS)
+  if (error) throw new Error(`No se pudieron leer las estimaciones: ${error.message}`)
+
+  for (const raw of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+    const row = toEstimateRow(raw)
+    const actuales = porRuta.get(row.route_id)
+    if (actuales) actuales.push(row)
+    else porRuta.set(row.route_id, [row])
+  }
+  return porRuta
+}
+
+/** Lo mismo para una sola ruta (los chips de la landing). */
+export async function getEstimatesForRoute(db: Db, routeId: number, opts: EstimatesOptions): Promise<EstimateRow[]> {
+  const { data, error } = await db
+    .from('flight_fare_estimates')
+    .select(ESTIMATE_COLUMNS)
+    .eq('route_id', routeId)
+    .gte('observed_at', sinceIso(opts.sinceHours ?? ESTIMATE_WINDOW_HOURS))
+    .gte('depart_date', opts.fromDate)
+    .order('price_pp', { ascending: true })
+    .limit(MAX_ESTIMATE_ROWS)
+  if (error) throw new Error(`No se pudieron leer las estimaciones de la ruta ${routeId}: ${error.message}`)
+  return ((data ?? []) as unknown as Array<Record<string, unknown>>).map(toEstimateRow)
+}
+
+/**
+ * Cuándo se estimó cada ruta por última vez (columna "Última estimación" del
+ * admin). Sin ventana: importa saber que una ruta hace tres días que no se
+ * estima.
+ */
+export async function getLastEstimateAtByRoute(db: Db): Promise<Map<number, string>> {
+  const { data, error } = await db
+    .from('flight_fare_estimates')
+    .select('route_id, observed_at')
+    .order('observed_at', { ascending: false })
+    .limit(MAX_ESTIMATE_ROWS)
+  if (error) throw new Error(`No se pudieron leer las fechas de las estimaciones: ${error.message}`)
+
+  const porRuta = new Map<number, string>()
+  for (const raw of (data ?? []) as unknown as Array<{ route_id: number | null; observed_at: string }>) {
+    const routeId = Number(raw.route_id)
+    if (!Number.isInteger(routeId) || !raw.observed_at) continue
+    const actual = porRuta.get(routeId)
+    if (actual === undefined || raw.observed_at > actual) porRuta.set(routeId, raw.observed_at)
+  }
+  return porRuta
+}
+
+/** Cuántas estimaciones se guardaron en las últimas `hours` horas. */
+export async function countEstimatesSince(db: Db, hours = 24): Promise<number> {
+  const { count, error } = await db
+    .from('flight_fare_estimates')
+    .select('id', { count: 'exact', head: true })
+    .gte('observed_at', sinceIso(hours))
+  if (error) throw new Error(`No se pudieron contar las estimaciones: ${error.message}`)
+  return count ?? 0
 }

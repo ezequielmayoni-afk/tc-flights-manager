@@ -30,6 +30,7 @@ import {
 import { ttlMemo } from '@/lib/vuelos-baratos/cache'
 import {
   DEFAULT_ORIGIN,
+  OBSERVATION_WINDOW_HOURS,
   ORIGINS,
   PAGE_SIZE,
   PUBLIC_CACHE_TTL_MS,
@@ -41,8 +42,16 @@ import {
 } from '@/lib/vuelos-baratos/config'
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
 import { monthsAhead, todayIso } from '@/lib/vuelos-baratos/date-pairs'
+import { minEstimateByMonth } from '@/lib/vuelos-baratos/estimate'
 import { hasActiveFilters, parseExplorerFilters } from '@/lib/vuelos-baratos/filters'
-import { getRecentProbes, getRecentProbesForRoutes, getRouteByCodes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
+import {
+  getEstimatesForRoute,
+  getRecentProbes,
+  getRecentProbesForRoutes,
+  getRouteByCodes,
+  listLandingDestinations,
+  listRoutes,
+} from '@/lib/vuelos-baratos/queries'
 import type { BestPair, DestinationSummary, LandingDestinationRow, LandingRouteRow, MonthSummary } from '@/lib/vuelos-baratos/types'
 
 /**
@@ -69,6 +78,8 @@ interface DestinoData {
   destination: LandingDestinationRow
   route: LandingRouteRow | null
   pairs: BestPair[]
+  /** Mínimo estimado por Sabre de cada mes: sólo para los chips sin sonda. */
+  estimatedByMonth: Map<string, number>
 }
 
 function first(value: string | string[] | undefined): string | undefined {
@@ -103,11 +114,14 @@ async function loadDestino(slug: string, originCode: string): Promise<DestinoDat
   return ttlMemo(`dest:${slug}:${originCode}`, PUBLIC_CACHE_TTL_MS, async () => {
     const db = createAdminClient()
     const route = await getRouteByCodes(db, destination.code, originCode)
-    if (!route) return { destination, route: null, pairs: [] }
+    if (!route) return { destination, route: null, pairs: [], estimatedByMonth: new Map() }
 
     const fromDate = todayIso(new Date())
     const rows = await getRecentProbes(db, route.id, { fromDate })
-    return { destination, route, pairs: bestPerPair(rows, { fromDate }) }
+    // Las estimaciones de Sabre valen lo mismo que una observación (48 h) y
+    // sólo se usan para los chips de meses todavía sin sonda.
+    const estimates = await getEstimatesForRoute(db, route.id, { sinceHours: OBSERVATION_WINDOW_HOURS, fromDate })
+    return { destination, route, pairs: bestPerPair(rows, { fromDate }), estimatedByMonth: minEstimateByMonth(estimates) }
   })
 }
 
@@ -187,9 +201,12 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
   const data = await loadDestino(slug, origen.code)
   if (!data) notFound()
 
-  const { destination, route, pairs } = data
+  const { destination, route, pairs, estimatedByMonth } = data
   const now = new Date()
   const months = bestPerMonth(pairs, monthsAhead(now, MESES_A_MOSTRAR))
+  // El estimado sólo completa los meses sin precio confirmado: el H1, la tabla
+  // y el JSON-LD siguen mirando `months`, que sale sólo de las sondas.
+  const chips = months.map(mes => ({ ...mes, estimated: estimatedByMonth.get(mes.month) ?? null }))
   const overall = bestOverall(pairs)
   const observedAt = lastObservedAt(pairs)
   const limits = priceLimits(pairs)
@@ -329,7 +346,7 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
       ) : (
         <>
           <div className="mt-6">
-            <MonthChips months={months} active={filters.month} filters={filters} basePath={basePath} />
+            <MonthChips months={chips} active={filters.month} filters={filters} basePath={basePath} />
           </div>
 
           <div className="mt-6 flex flex-col gap-6 lg:flex-row">

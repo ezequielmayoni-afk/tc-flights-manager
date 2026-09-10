@@ -7,7 +7,7 @@ export type Db = ReturnType<typeof createAdminClient>
  * el cotizador tiene un solo worker, SerpAPI cobra por búsqueda, el CRM pide
  * horario de baja carga. La concurrencia y las ventanas viven en lanes.ts.
  */
-export type Lane = 'default' | 'meta' | 'serpapi' | 'cotizador' | 'crm' | 'tc' | 'gsc' | 'vuelos'
+export type Lane = 'default' | 'meta' | 'serpapi' | 'cotizador' | 'crm' | 'tc' | 'gsc' | 'vuelos' | 'sabre'
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled' | 'skipped'
 

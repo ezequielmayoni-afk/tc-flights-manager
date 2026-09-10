@@ -60,6 +60,14 @@ export function addDays(date: string, n: number): string {
   return isoDeUtc(Date.UTC(year, month - 1, day + n))
 }
 
+/** Noches entre dos fechas ISO (negativo si la vuelta es anterior a la ida). */
+export function daysBetween(from: string, to: string): number {
+  const a = partesFecha(from)
+  const b = partesFecha(to)
+  const ms = Date.UTC(b.year, b.month - 1, b.day) - Date.UTC(a.year, a.month - 1, a.day)
+  return Math.round(ms / 86_400_000)
+}
+
 /** ISO 8601: 1 = lunes … 7 = domingo. */
 export function isoDow(date: string): number {
   const { year, month, day } = partesFecha(date)

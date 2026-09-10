@@ -12,6 +12,7 @@ export const FLAGS = {
   gscWrites: 'automation.gsc_writes',
   vuelosCalls: 'automation.vuelos_calls',
   flightsSweep: 'automation.flights_sweep',
+  sabreCalls: 'automation.sabre_calls',
 } as const
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS]

@@ -19,6 +19,10 @@ const patchSchema = z
   .object({
     active: z.boolean(),
     probes_per_month: z.number().int().min(1).max(31),
+    /** Pares que estima Sabre por mes; 0 apaga el estimador de esa ruta. */
+    scan_per_month: z.number().int().min(0).max(62),
+    /** De los estimados, cuántos confirma el barrido con una sonda real. */
+    confirm_per_month: z.number().int().min(1).max(31),
     stay_nights: z.array(z.number().int().min(1).max(30)).min(1).max(6),
     weekdays: z.array(z.number().int().min(1).max(7)).max(7),
     months_ahead: z.number().int().min(1).max(18),

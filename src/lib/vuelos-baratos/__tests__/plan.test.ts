@@ -3,7 +3,7 @@ import type { ProbeResult } from '@/lib/cotizador/client'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { SWEEP_PRIORITY } from '../config'
 import { buildSweepJobs, chunkPairs, probeResultToInsert } from '../sweep'
-import type { DatePair, LandingDestinationRow, LandingRouteRow } from '../types'
+import type { DatePair, EstimateRow, LandingDestinationRow, LandingRouteRow } from '../types'
 
 /**
  * El plan del barrido: qué jobs se encolan cada noche y cómo se traduce la
@@ -43,6 +43,8 @@ function ruta(over: Partial<LandingRouteRow> = {}): LandingRouteRow {
     stay_nights: [7, 10, 14],
     weekdays: [2, 5],
     probes_per_month: 8,
+    scan_per_month: 8,
+    confirm_per_month: 3,
     months_ahead: 12,
     active: true,
     ...over,
@@ -130,6 +132,76 @@ describe('buildSweepJobs', () => {
 
     expect(jobs).toHaveLength(1)
     expect(jobs[0].payload!.routeId).toBe(7)
+  })
+})
+
+describe('buildSweepJobs con estimaciones de Sabre', () => {
+  function estimacion(depart: string, back: string, price: number): EstimateRow {
+    return {
+      id: 1,
+      route_id: 7,
+      depart_date: depart,
+      return_date: back,
+      price_pp: price,
+      currency: 'USD',
+      airline_code: 'AA',
+      stops_out: 0,
+      stops_back: 1,
+      duration_out_minutes: null,
+      duration_back_minutes: null,
+      observed_at: '2026-09-09T00:30:00.000Z',
+    }
+  }
+
+  const base = { routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 2, trigger: 'cron' as const }
+
+  it('confirma los pares más baratos del mes estimado y deja el resto en fechas fijas', () => {
+    const estimates = [
+      estimacion('2026-10-06', '2026-10-13', 900),
+      estimacion('2026-10-09', '2026-10-19', 610),
+      estimacion('2026-10-13', '2026-10-20', 700),
+      estimacion('2026-10-20', '2026-10-30', 1100),
+    ]
+    const jobs = buildSweepJobs({ ...base, estimatesByRoute: new Map([[7, estimates]]) })
+    const porMes = new Map(jobs.map((j) => [String(j.payload!.month), j]))
+
+    const octubre = porMes.get('2026-10')!
+    expect(octubre.payload!.source).toBe('estimate')
+    // confirm_per_month = 3: los tres más baratos que estimó Sabre.
+    expect(octubre.payload!.pairs).toEqual([
+      { depart: '2026-10-09', return: '2026-10-19', nights: 10 },
+      { depart: '2026-10-13', return: '2026-10-20', nights: 7 },
+      { depart: '2026-10-06', return: '2026-10-13', nights: 7 },
+    ])
+
+    // Septiembre no tiene estimaciones: sigue con los pares fijos de siempre.
+    const septiembre = porMes.get('2026-09')!
+    expect(septiembre.payload!.source).toBe('fixed')
+    expect((septiembre.payload!.pairs as DatePair[]).length).toBe(ruta().probes_per_month)
+  })
+
+  it('si Sabre estimó menos pares que el cupo, completa con fechas fijas sin repetir', () => {
+    const jobs = buildSweepJobs({ ...base, estimatesByRoute: new Map([[7, [estimacion('2026-10-09', '2026-10-19', 610)]]]) })
+    const octubre = jobs.find((j) => j.payload!.month === '2026-10')!
+    const pairs = octubre.payload!.pairs as DatePair[]
+
+    expect(octubre.payload!.source).toBe('estimate')
+    expect(pairs).toHaveLength(3)
+    expect(pairs[0]).toEqual({ depart: '2026-10-09', return: '2026-10-19', nights: 10 })
+    expect(new Set(pairs.map((p) => `${p.depart}|${p.return}`)).size).toBe(3)
+  })
+
+  it('sin estimaciones vigentes el barrido queda igual que antes', () => {
+    const conMapaVacio = buildSweepJobs({ ...base, estimatesByRoute: new Map() })
+    expect(conMapaVacio).toEqual(buildSweepJobs(base))
+    expect(conMapaVacio.every((j) => j.payload!.source === 'fixed')).toBe(true)
+  })
+
+  it('una estimación demasiado cerca en el tiempo no se confirma', () => {
+    // 2026-09-10 sale antes de hoy + MIN_LEAD_DAYS (12 de septiembre).
+    const jobs = buildSweepJobs({ ...base, estimatesByRoute: new Map([[7, [estimacion('2026-09-10', '2026-09-17', 300)]]]) })
+    const septiembre = jobs.find((j) => j.payload!.month === '2026-09')!
+    expect(septiembre.payload!.source).toBe('fixed')
   })
 })
 

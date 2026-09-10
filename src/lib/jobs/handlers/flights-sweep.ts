@@ -1,36 +1,10 @@
 import { COTIZADOR_PROBE_PROVIDER, isCotizadorConfigured, probeFlights } from '@/lib/cotizador/client'
-import { isValidIsoDate } from '@/lib/vuelos-baratos/date-pairs'
-import { getLandingDestinationBySlug, getRoute, insertProbe, listLandingDestinations } from '@/lib/vuelos-baratos/queries'
+import { findDestination, parsePairs } from '@/lib/vuelos-baratos/job-payload'
+import { getRoute, insertProbe } from '@/lib/vuelos-baratos/queries'
 import { runSweep } from '@/lib/vuelos-baratos/sweep'
-import type { DatePair, LandingDestinationRow, LandingRouteRow } from '@/lib/vuelos-baratos/types'
 import { FLAGS } from '../flags'
 import { MANUAL_PRIORITY } from '../lanes'
-import type { Db, HandlerDefinition } from '../types'
-
-/** Los pares vienen del payload del job: puede haberlos escrito una mano. */
-function parsePairs(value: unknown): DatePair[] | null {
-  if (!Array.isArray(value) || value.length === 0) return null
-  const pairs: DatePair[] = []
-  for (const raw of value) {
-    if (!raw || typeof raw !== 'object') return null
-    const { depart, return: vuelta, nights } = raw as { depart?: unknown; return?: unknown; nights?: unknown }
-    if (typeof depart !== 'string' || !isValidIsoDate(depart)) return null
-    if (typeof vuelta !== 'string' || !isValidIsoDate(vuelta)) return null
-    if (typeof nights !== 'number' || !Number.isFinite(nights) || nights <= 0) return null
-    pairs.push({ depart, return: vuelta, nights })
-  }
-  return pairs
-}
-
-/** El slug del payload es un atajo; la verdad es `route.destination_code`. */
-async function findDestination(db: Db, route: LandingRouteRow, slug: unknown): Promise<LandingDestinationRow | null> {
-  if (typeof slug === 'string' && slug) {
-    const porSlug = await getLandingDestinationBySlug(db, slug)
-    if (porSlug && porSlug.code === route.destination_code) return porSlug
-  }
-  const todos = await listLandingDestinations(db)
-  return todos.find(d => d.code === route.destination_code) ?? null
-}
+import type { HandlerDefinition } from '../types'
 
 /**
  * Una tanda de sondas del barrido de vuelos.siviajo.com.

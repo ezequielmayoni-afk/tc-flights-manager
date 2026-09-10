@@ -19,6 +19,8 @@ const ROUTE: LandingRouteRow = {
   stay_nights: [7, 10, 14],
   weekdays: [2, 5],
   probes_per_month: 8,
+  scan_per_month: 8,
+  confirm_per_month: 3,
   months_ahead: 12,
   active: true,
 }

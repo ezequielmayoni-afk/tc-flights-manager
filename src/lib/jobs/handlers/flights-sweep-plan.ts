@@ -1,5 +1,5 @@
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
-import { cancelStaleSweepJobs, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
+import { cancelStaleFlightJobs, getEstimatesForRoutes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
 import { buildSweepJobs } from '@/lib/vuelos-baratos/sweep'
 import { FLAGS } from '../flags'
 import { enqueueJob } from '../queue'
@@ -12,6 +12,10 @@ import type { HandlerDefinition } from '../types'
  * × mes × tanda de 10 pares) y la deja lista para el lane `cotizador`, que
  * corre de a uno hasta las 10:00 UTC. Antes cancela lo que quedó en cola de
  * noches anteriores: esos precios ya no sirven y taparían la cola.
+ *
+ * Corre una hora después de `flights.estimate.plan`: donde Sabre alcanzó a
+ * estimar, la noche confirma esas fechas (`monthsFromEstimates`); donde no,
+ * usa los pares fijos de siempre (`monthsFixed`).
  */
 export const flightsSweepPlanHandler: HandlerDefinition = {
   kind: 'flights.sweep.plan',
@@ -21,7 +25,7 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
   handler: async ({ db, job, log }) => {
     const today = new Date()
     const day = String(job.payload.day ?? todayIso(today))
-    const cancelledStale = await cancelStaleSweepJobs(db, day)
+    const cancelledStale = await cancelStaleFlightJobs(db, 'flights.sweep', day)
 
     const routes = await listRoutes(db, { activeOnly: true })
     if (routes.length === 0) {
@@ -30,7 +34,20 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
     }
 
     const destinations = await listLandingDestinations(db, { activeOnly: true })
-    const inputs = buildSweepJobs({ routes, destinations, today, day, trigger: 'cron' })
+    const estimatesByRoute = await getEstimatesForRoutes(
+      db,
+      routes.map(r => r.id),
+      { fromDate: todayIso(today) }
+    )
+    const inputs = buildSweepJobs({ routes, destinations, today, day, trigger: 'cron', estimatesByRoute })
+
+    // Un mes puede tener varias tandas: se cuenta el mes, no el job.
+    const meses = new Map<string, 'estimate' | 'fixed'>()
+    for (const input of inputs) {
+      meses.set(`${input.payload!.routeId}:${input.payload!.month}`, input.payload!.source as 'estimate' | 'fixed')
+    }
+    const monthsFromEstimates = [...meses.values()].filter(s => s === 'estimate').length
+    const monthsFixed = meses.size - monthsFromEstimates
 
     let deduped = 0
     for (const input of inputs) {
@@ -40,10 +57,11 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
 
     await log(
       `Vuelos baratos: ${inputs.length - deduped} sondeos encolados para ${routes.length} rutas` +
+        ` (${monthsFromEstimates} meses con estimación de Sabre, ${monthsFixed} con fechas fijas)` +
         `${deduped ? `, ${deduped} ya estaban en cola` : ''}${cancelledStale ? `, ${cancelledStale} de noches anteriores cancelados` : ''}`,
-      { day, routes: routes.length, jobs: inputs.length, deduped, cancelledStale }
+      { day, routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed }
     )
 
-    return { ok: true, result: { routes: routes.length, jobs: inputs.length, deduped, cancelledStale } }
+    return { ok: true, result: { routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed } }
   },
 }
