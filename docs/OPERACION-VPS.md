@@ -155,6 +155,16 @@ con el procedimiento de cutover del DNS: `docs/VUELOS-BARATOS.md`.
 - Token de Meta, `SERPAPI_API_KEY`, credenciales del RDS del CRM y las `SABRE_*`: sólo en
   `/opt/hub/.env.local`.
 
+- **Usuario de Travel Compositor y de siviajo.com: `HUBSIVIAJO` para todo** (decisión de Ezequiel, 2026-09-10).
+  Lo usan HUB (`TC_USERNAME`/`TC_PASSWORD` en `/opt/hub/.env.local`), el cotizador emisivo (`/opt/cotizador-bot/.env`)
+  y el bot de recotización (`/root/tc-requote-bot/.env`, también como `SIVIAJO_USERNAME` para el login web). Antes HUB y
+  el cotizador usaban otro usuario; quedaron respaldos `.env*.bak-20260910-*` al lado de cada archivo. Después de tocar
+  esos archivos: `pm2 restart hub --update-env` y `pm2 restart cotizador-bot --update-env`. Verificación rápida:
+  `POST /authentication/authenticate` con `micrositeId: siviajo` tiene que devolver `token`. El login web de
+  HUBSIVIAJO en siviajo.com pide verificación por email (código de 6 dígitos) desde el 2026-09 aunque la sesión
+  venga del VPS; hasta que se desactive, el bot de recotización no entra aunque su log diga "Login successful"
+  (sólo chequea que la URL no diga "login").
+
 ## Bases
 
 - Supabase `phzqsjxouqttpcnqxxuq` (compartida con media-os). Migraciones en `supabase/migrations/`, se aplican
