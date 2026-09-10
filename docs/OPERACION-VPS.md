@@ -124,9 +124,9 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 
 Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`
 a las 01:00 UTC vía `enqueue?schedule=hourly` → `flights.sweep`, lane `cotizador`, prioridad 4), kill
-switch `automation.flights_sweep`, presupuesto `cotizador_probe` (2500/día). Una hora antes corre el
-estimador de Sabre (`flights.estimate.plan` a las 00:00 UTC → `flights.estimate`, lane `sabre`, uno por
-vez, sin ventana horaria), que elige qué fechas confirma el barrido: kill switch `automation.sabre_calls`,
+switch `automation.flights_sweep`, presupuesto `cotizador_probe` (2500/día). Dos horas antes corre el
+estimador de Sabre (`flights.estimate.plan` a las 23:00 UTC → `flights.estimate`, lane `sabre`, uno por
+vez, sin ventana horaria; son ~20 jobs a razón de uno por tick, ~40 min de tanda), que elige qué fechas confirma el barrido: kill switch `automation.sabre_calls`,
 presupuesto `sabre` (1500 búsquedas/día). Env nuevas en `/opt/hub/.env.local`:
 `NEXT_PUBLIC_VUELOS_BASE_URL`, `VUELOS_PUBLIC_HOST`, `SIVIAJO_BASE_URL`, `NEXT_PUBLIC_GTM_ID` y las cinco
 del estimador — `SABRE_USERNAME`, `SABRE_PASSWORD`, `SABRE_PCC`, `SABRE_CLIENT_ID`, `SABRE_CLIENT_SECRET`

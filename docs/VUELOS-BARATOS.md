@@ -14,8 +14,9 @@ usa siviajo.com) con pares de fechas realistas y guarda cada observación en `fl
 agregados de esa tabla, nunca cotizan en vivo.
 
 Desde el estimador (ver [Estimador Sabre](#estimador-sabre)) el barrido no elige las fechas a ciegas:
-**Sabre elige, siviajo confirma**. Una hora antes, Sabre estima el mes entero y el barrido gasta sus
-sondas en los pares más baratos. El precio que se publica sigue saliendo **siempre** de una sonda real.
+**Sabre elige, siviajo confirma**. Un par de horas antes, Sabre estima `scan_per_month` pares por mes y
+el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que se publica sigue saliendo
+**siempre** de una sonda real.
 
 - **Ventana de vigencia**: una observación sirve para mostrar precio hasta 48 h después
   (`OBSERVATION_WINDOW_HOURS` en `src/lib/vuelos-baratos/config.ts`). Pasado ese tiempo, esa fecha
@@ -55,7 +56,7 @@ sondas en los pares más baratos. El precio que se publica sigue saliendo **siem
 
 | Job | Lane | Prioridad | Qué hace |
 |---|---|---|---|
-| `flights.estimate.plan` | `default` | — | 00:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × grupo de 2 meses. No llama a Sabre. |
+| `flights.estimate.plan` | `default` | — | 23:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × grupo de 3 meses. No llama a Sabre. |
 | `flights.estimate` | `sabre` | 5 | Abre **una** sesión SOAP y pide un BFM por par de fechas (`scan_per_month` por mes); guarda las estimaciones (`runEstimate`). |
 | `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre. No sondea nada. |
 | `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
@@ -108,10 +109,11 @@ También expone `POST /flights/resolve` (`resolveDestination`) para traducir un 
 
 ## Estimador Sabre
 
-**Qué hace**: cada noche a las **00:00 UTC**, una hora antes del barrido, `flights.estimate.plan` encola
-un `flights.estimate` por ruta activa × grupo de 2 meses. Cada job abre **una** sesión SOAP contra Sabre
-y le pide un `BargainFinderMax` por par de fechas (`scan_per_month` pares por mes, con las mismas
-estadías y días de salida que usa el barrido). Cada respuesta se guarda en `flight_fare_estimates`.
+**Qué hace**: cada noche a las **23:00 UTC** (20:00 ART), `flights.estimate.plan` encola un
+`flights.estimate` por ruta activa × grupo de 3 meses. Cada job abre **una** sesión SOAP contra Sabre y
+le pide un `BargainFinderMax` por par de fechas (`scan_per_month` pares por mes — no el mes entero—, con
+las mismas estadías y días de salida que usa el barrido). Cada respuesta se guarda en
+`flight_fare_estimates`.
 A la **01:00 UTC**, `flights.sweep.plan` lee las estimaciones vigentes (`ESTIMATE_WINDOW_HOURS`, 30 h) y,
 por ruta y mes, encola sondas para los **`confirm_per_month` pares más baratos** que estimó Sabre. El
 `result` del plan dice cuántos meses salieron de estimaciones (`monthsFromEstimates`) y cuántos de fechas
@@ -127,6 +129,12 @@ fijas (`monthsFixed`), y cada job lleva `source: 'estimate' | 'fixed'` en el pay
   lane (`sabre`, concurrencia 1, sin ventana horaria).
 - Las sesiones son un recurso escaso (el PCC tiene cupo) y expiran a los 15 minutos: `createSabreShopper`
   abre una sola por job, la renueva sola y la cierra al terminar.
+- **La tanda tarda**: el runner toma **un job por lane y por tick** (un minuto) y sostiene el lock del
+  lane mientras corre, así que los jobs no se encavalgan: 5 rutas × 12 meses ÷ 3 meses por job = **20
+  jobs ≈ 40 min**. Por eso el plan sale a las 23:00 y no a las 00:00: dos horas de margen antes del
+  barrido. Si se suman rutas hay que rehacer esta cuenta (o los últimos meses caen a fechas fijas, que no
+  rompe nada pero gasta más sondas). El lease del lane es de **20 min** (`leaseSeconds: 1200`): el
+  heartbeat va por par, pero un BFM puede tardar hasta 60 s.
 - BFM **no manda `ElapsedTime`**: `duration_out_minutes` / `duration_back_minutes` quedan en `null`. No se
   calculan por diferencia de horarios (son horas locales de husos distintos).
 
@@ -137,8 +145,11 @@ sus fechas fijas sin repetir combinaciones.
 
 **Costos por ruta y noche**: `scan_per_month × meses` transacciones BFM en el PCC propio (`6U9L`) +
 `confirm_per_month × meses` sondas del cotizador. Con las 5 rutas activas y los defaults (8 / 3, 12
-meses): **≈ 480 BFM + 180 sondas por noche** — contra las 480 sondas de antes, o sea **la misma cobertura
-con un 62 % menos de tráfico contra el motor de reservas**.
+meses): **≈ 480 BFM + 180 sondas por noche**, contra las 480 sondas de antes. Es un canje explícito:
+**se publican 3 fechas por mes en vez de 8** (menos filas en la grilla) y a cambio el tráfico contra el
+motor de reservas baja ~62 %, y las 3 que quedan son las más baratas del mes en vez de fechas fijas. Si
+una ruta necesita la grilla llena, se sube `confirm_per_month` (o se le deja `scan_per_month` en 0 y
+vuelve al barrido de siempre).
 
 **Códigos**: Sabre trabaja con IATA, no con los códigos de destino de Travel Compositor. Los orígenes se
 mapean en `ORIGINS` (`src/lib/vuelos-baratos/config.ts`): BUE→`BUE`, CRD→`COR`, RO6→`ROS`, MEZ→`MDZ`. El
@@ -149,8 +160,16 @@ la estimación vieja en `/producto/vuelos-baratos`. Se arregla cargando `iata_di
 
 **Si Sabre falla, no pasa nada grave**: sin estimaciones vigentes (flag apagado, credenciales caídas,
 presupuesto agotado, ruta con `scan_per_month = 0`) el barrido vuelve al plan fijo de siempre
-(`probes_per_month` pares por mes). Un error de credenciales corta el job entero sin reintento (seguir
-pidiendo no lo arregla); una caída de red o del host de Sabre sí se reintenta.
+(`probes_per_month` pares por mes). Los frenos del job:
+
+- **Credenciales rechazadas** (el mensaje empieza con "Sabre no abrió la sesión"): corta en el primer par
+  y no se reintenta. Ojo que un fault de la búsqueda puede decir "NOT AUTHORIZED TO USE THIS FARE" y eso
+  **no** es el PCC: es esa tarifa, y la tanda sigue.
+- **3 errores seguidos**: abandona la tanda (`MAX_CONSECUTIVE_ERRORS`). Es la ruta (un código que Sabre no
+  acepta) o el host caído; seguir sería juntar el mismo error 20 veces gastando presupuesto. El job pide
+  reintento sólo si el último error era reintentable (host caído sí, código inválido no). Un error suelto
+  entre búsquedas buenas no corta nada: la racha se reinicia con cada `ok` o `empty`.
+- **Presupuesto agotado**: termina `skipped` con lo estimado hasta ahí ya guardado.
 
 **En la landing**: un mes sin sonda vigente pero con estimación muestra `≈ US$ X` en gris, con el título
 "Estimado con Sabre, se confirma en siviajo.com". El H1, la tabla de fechas y el JSON-LD usan **sólo**
@@ -209,7 +228,8 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
    plan de respaldo para cuando no hay estimaciones. Los tres son el dial fino del freno look-to-book.
 4. **"Estimar ahora"**: encola un `flights.estimate` manual de 2 meses (el lane `sabre` no tiene ventana
    horaria, así que corre en el próximo tick). Cada par es una búsqueda que se cobra: por eso son 2 meses
-   y no los 12 de la ruta. Comparte la clave de dedupe con el plan nocturno.
+   y no los 12 de la ruta. Comparte la clave de dedupe con el plan nocturno (ruta + meses + día), así que
+   después de las 23:00 UTC devuelve los jobs de esa noche en vez de duplicar búsquedas.
 5. **"Barrer ahora"**: encola un `flights.sweep` manual (prioridad de UI, no espera a la ventana nocturna)
    para probar una ruta recién activada sin esperar 24 h. Comparte la clave de dedupe con el plan
    nocturno (ruta + mes + día), así que **después de las 01:00 UTC dedupea contra los jobs de esa noche**:
