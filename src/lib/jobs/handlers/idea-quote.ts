@@ -84,14 +84,20 @@ export const ideaQuoteHandler: HandlerDefinition = {
       const b = await runQuote(db, idea, buildQuoteRequest(idea, profile, { directOnly: true, fixedDate: a.summary.departureDate }), instance, job.id)
       await heartbeat()
       const cellA = summaryToFareCell(a.summary)
-      const cellB = b.summary?.ok ? summaryToFareCell(b.summary) : null
-      const decision = decideStopover(profile, { nights: idea.nights, hasKids: idea.children > 0, originInterior: !['BUE', 'EZE', 'AEP'].includes((idea.origin || 'BUE').toUpperCase()) }, cellB, cellA)
-      stopoverNote = decision.reason
-      if (decision.choice === 'direct' && b.summary?.ok) chosen = b
+      // Si pidiendo "sólo directo" el cotizador igual devuelve escala, no hay directo en esa ruta.
+      const cellB = b.summary?.ok && b.summary.direct === true ? summaryToFareCell(b.summary) : null
+      if (b.summary?.ok && b.summary.direct !== true) {
+        stopoverNote = 'No hay vuelo directo en esta ruta: se toma la mejor opción con escala'
+      } else {
+        const decision = decideStopover(profile, { nights: idea.nights, hasKids: idea.children > 0, originInterior: !['BUE', 'EZE', 'AEP'].includes((idea.origin || 'BUE').toUpperCase()) }, cellB, cellA)
+        stopoverNote = decision.reason
+        if (decision.choice === 'direct' && cellB) chosen = b
+      }
     }
 
     const s = chosen.summary!
     const soft = [...validation.soft]
+    if (profile.review_pending) soft.push(`El perfil de ${profile.name} se creó desde Tendencias y está pendiente de revisión`)
     if (!s.regimenConfirmed) soft.push('El sitio no confirmó el régimen de la opción elegida')
     if (s.direct === null) soft.push('No se pudo confirmar si el vuelo es directo')
     if (profile.regimen_required && s.regimen && s.regimen !== profile.regimen_required) soft.push(`El hotel cotizado es ${s.board}; el perfil pide ${profile.regimen_required.replace('_', ' ')}`)
