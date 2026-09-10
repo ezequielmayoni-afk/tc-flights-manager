@@ -33,17 +33,25 @@ export interface PackageSearchUrlInput {
   returnDate?: string | null
   adults: number
   childrenAges?: number[]
+  /**
+   * `true` (default) dispara la búsqueda al abrir; `false` deja el formulario
+   * cargado para que la persona toque "Buscar". La segunda es la salida cuando
+   * la sesión de siviajo.com (agente logueado) rebota el envío automático.
+   */
+  autoSubmit?: boolean
 }
 
 /**
  * Búsqueda de vuelo + hotel en siviajo.com prellenada, para corregir a mano
  * lo que cotizó una idea. Mismo formato que usa el cotizador-bot
- * (search/flighthotel.py) y la landing de vuelos baratos.
+ * (search/flighthotel.py) y la landing de vuelos baratos, sin `latestSearch`:
+ * ese flag le pide al sitio que retome la última búsqueda de la sesión y no
+ * hace falta cuando los parámetros van en la URL.
  */
 export function siviajoPackageSearchUrl(input: PackageSearchUrlInput): string {
   const kids = input.childrenAges ?? []
   const distribution = `${Math.max(1, input.adults)}~~${kids.length}${kids.length ? `~~${kids.join(',')}` : ''}`
-  const parts = [`${SIVIAJO}/home?latestSearch=true&tripType=FLIGHT_HOTEL&directSubmit=true`]
+  const parts = [`${SIVIAJO}/home?tripType=FLIGHT_HOTEL${input.autoSubmit === false ? '' : '&directSubmit=true'}`]
   if (input.departDate && /^\d{4}-\d{2}-\d{2}$/.test(input.departDate)) parts.push(`&departureDate=${padDate(input.departDate)}`)
   if (input.returnDate && /^\d{4}-\d{2}-\d{2}$/.test(input.returnDate)) parts.push(`&arrivalDate=${padDate(input.returnDate)}`)
   parts.push(`&distribution=${distribution}`)

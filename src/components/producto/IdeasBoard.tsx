@@ -234,11 +234,16 @@ export function IdeasBoard({ profiles }: { profiles: ProfileOption[] }) {
                         {q?.alternatives?.length ? <ul className="space-y-0.5">{q.alternatives.slice(0, 5).map(a => <li key={a.date}>{fmtDate(a.date)} · USD {Math.round(a.pricePerPax)}{a.direct ? ' directo' : ''}</li>)}</ul> : <p>—</p>}
                         {(() => {
                           const prof = profiles.find(p => p.code === i.destination_code)
-                          const url = siviajoPackageSearchUrl({ origin: i.origin, destinationTcCode: prof?.tc_destination_code ?? null, departDate: i.chosen_departure_date ?? i.departure_date, returnDate: i.return_date, adults: i.adults, childrenAges: i.children_ages ?? [] })
+                          const searchInput = { origin: i.origin, destinationTcCode: prof?.tc_destination_code ?? null, departDate: i.chosen_departure_date ?? i.departure_date, returnDate: i.return_date, adults: i.adults, childrenAges: i.children_ages ?? [] }
+                          const url = siviajoPackageSearchUrl(searchInput)
+                          const formUrl = siviajoPackageSearchUrl({ ...searchInput, autoSubmit: false })
                           return (
                             <div className="mt-2 flex flex-wrap gap-2">
-                              <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]" title={prof?.tc_destination_code ? 'Abre el buscador de siviajo.com con esta búsqueda cargada' : 'El perfil no tiene código de destino de TC: el buscador abre con fechas y pasajeros, elegí el destino a mano'}>
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]" title={prof?.tc_destination_code ? 'Abre siviajo.com y dispara esta búsqueda' : 'El perfil no tiene código de destino de TC: el buscador abre con fechas y pasajeros, elegí el destino a mano'}>
                                 Abrir búsqueda en siviajo.com
+                              </a>
+                              <a href={formUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100" title="Abre siviajo.com con el formulario cargado, sin buscar: tocás Buscar vos. Usalo si el otro botón te devuelve al home (pasa con la sesión de agente)">
+                                Sólo cargar el formulario
                               </a>
                               {q?.hotelUrl && <a href={q.hotelUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100">Ver hotel cotizado</a>}
                               {!prof?.tc_destination_code && (

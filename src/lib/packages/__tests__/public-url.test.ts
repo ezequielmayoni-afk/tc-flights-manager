@@ -13,7 +13,7 @@ describe('publicPackageUrl', () => {
 describe('siviajoPackageSearchUrl', () => {
   it('arma la búsqueda vuelo + hotel con fechas dd/mm/aaaa y destino de TC', () => {
     const url = siviajoPackageSearchUrl({ origin: 'BUE', destinationTcCode: 'PUJ', departDate: '2027-03-09', returnDate: '2027-03-16', adults: 2 })
-    expect(url).toBe('https://www.siviajo.com/home?latestSearch=true&tripType=FLIGHT_HOTEL&directSubmit=true&departureDate=09/03/2027&arrivalDate=16/03/2027&distribution=2~~0&departure=Destination::BUE&destination=Destination::PUJ&roundTripFlight=true')
+    expect(url).toBe('https://www.siviajo.com/home?tripType=FLIGHT_HOTEL&directSubmit=true&departureDate=09/03/2027&arrivalDate=16/03/2027&distribution=2~~0&departure=Destination::BUE&destination=Destination::PUJ&roundTripFlight=true')
   })
   it('lleva las edades de los menores y traduce el origen IATA al código de TC', () => {
     const url = siviajoPackageSearchUrl({ origin: 'COR', destinationTcCode: 'cun', departDate: '2027-01-05', returnDate: '2027-01-12', adults: 2, childrenAges: [4, 9] })
@@ -26,6 +26,11 @@ describe('siviajoPackageSearchUrl', () => {
     expect(url).not.toContain('destination=')
     expect(url).not.toContain('departureDate=')
     expect(url).toContain('departure=Destination::BUE')
+  })
+  it('sin envío automático deja el formulario cargado (sin directSubmit ni latestSearch)', () => {
+    const url = siviajoPackageSearchUrl({ origin: 'BUE', destinationTcCode: 'SAI-123', departDate: '2027-03-17', returnDate: '2027-03-24', adults: 2, autoSubmit: false })
+    expect(url).toBe('https://www.siviajo.com/home?tripType=FLIGHT_HOTEL&departureDate=17/03/2027&arrivalDate=24/03/2027&distribution=2~~0&departure=Destination::BUE&destination=Destination::SAI-123&roundTripFlight=true')
+    expect(url).not.toContain('latestSearch')
   })
   it('originTcCode deja pasar códigos que no conoce', () => {
     expect(originTcCode('eze')).toBe('BUE')
