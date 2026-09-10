@@ -13,7 +13,7 @@ import type { HandlerDefinition } from '../types'
  * corre de a uno hasta las 10:00 UTC. Antes cancela lo que quedó en cola de
  * noches anteriores: esos precios ya no sirven y taparían la cola.
  *
- * Corre una hora después de `flights.estimate.plan`: donde Sabre alcanzó a
+ * Corre dos horas después de `flights.estimate.plan`: donde Sabre alcanzó a
  * estimar, la noche confirma esas fechas (`monthsFromEstimates`); donde no,
  * usa los pares fijos de siempre (`monthsFixed`).
  */

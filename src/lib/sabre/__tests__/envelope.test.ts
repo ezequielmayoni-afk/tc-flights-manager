@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { buildBfmEnvelope, buildSessionCreateEnvelope, isSabreConfigured, sabreConfig } from '@/lib/sabre/client'
 import type { SabreSession } from '@/lib/sabre/client'
@@ -6,7 +6,13 @@ import type { SabreSession } from '@/lib/sabre/client'
 const SESSION: SabreSession = { token: 'Shared/IDL:IceSess!ICESMS!FAKE', conversationId: 'hub-test-1', createdAt: Date.now() }
 const INPUT = { originIata: 'EZE', destIata: 'MIA', departDate: '2026-12-02', returnDate: '2026-12-06' }
 
+const SABRE_KEYS = ['SABRE_USERNAME', 'SABRE_PASSWORD', 'SABRE_PCC', 'SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'SABRE_DOMAIN', 'SABRE_SOAP_URL'] as const
+// El entorno real puede tener credenciales cargadas: se guardan y se reponen
+// para que estos tests no se las pisen a nadie (mismo criterio que client.test.ts).
+const entornoPrevio = new Map<string, string | undefined>()
+
 beforeEach(() => {
+  for (const key of SABRE_KEYS) entornoPrevio.set(key, process.env[key])
   process.env.SABRE_USERNAME = 'usuario'
   process.env.SABRE_PASSWORD = 'clave&secreta<x>'
   process.env.SABRE_PCC = '6U9L'
@@ -14,6 +20,14 @@ beforeEach(() => {
   process.env.SABRE_CLIENT_SECRET = 'secreto-falso'
   delete process.env.SABRE_DOMAIN
   delete process.env.SABRE_SOAP_URL
+})
+
+afterEach(() => {
+  for (const key of SABRE_KEYS) {
+    const previo = entornoPrevio.get(key)
+    if (previo === undefined) delete process.env[key]
+    else process.env[key] = previo
+  }
 })
 
 describe('isSabreConfigured', () => {

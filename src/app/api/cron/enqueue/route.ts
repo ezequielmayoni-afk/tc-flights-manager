@@ -30,8 +30,11 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
       const inputs: EnqueueInput[] = [
         { kind: 'insights.sync', payload: { datePreset, at: hour }, dedupeKey: `insights.sync:${hour}` },
       ]
-      // Estimador de Sabre: una hora antes del barrido, para que éste ya tenga
-      // las estimaciones cuando decide qué fechas confirmar.
+      // Estimador de Sabre: dos horas antes del barrido (la tanda avanza a un
+      // job por tick), para que éste ya tenga las estimaciones cuando decide
+      // qué fechas confirmar. El `day` es el UTC del momento de encolar, que la
+      // última noche del mes es el día anterior al del barrido: ver el
+      // comentario de ESTIMATE_ENQUEUE_HOUR_UTC.
       if (utcHour === ESTIMATE_ENQUEUE_HOUR_UTC) {
         inputs.push({ kind: 'flights.estimate.plan', payload: { day }, dedupeKey: `flights.estimate.plan:${day}` })
       }

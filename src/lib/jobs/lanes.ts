@@ -35,9 +35,11 @@ export const LANES: Record<Lane, LaneConfig> = {
   vuelos: { concurrency: 1, window: { fromHourUtc: 1, toHourUtc: 10 }, leaseSeconds: 900 },
   // Estimador de vuelos.siviajo.com: la sesión SOAP de Sabre no admite pedidos
   // en paralelo (y el PCC tiene cupo de sesiones abiertas), así que va de a
-  // uno. Sin ventana horaria: el plan se encola a las 00:00 UTC, una hora
+  // uno. Sin ventana horaria: el plan se encola a las 23:00 UTC, dos horas
   // antes del barrido, pero "Estimar ahora" tiene que poder correr de día.
-  sabre: { concurrency: 1, leaseSeconds: 900 },
+  // 20 min de lease: el heartbeat va por par, pero un BFM puede tardar hasta
+  // 60 s y el lease tiene que cubrir el par más lento con margen.
+  sabre: { concurrency: 1, leaseSeconds: 1200 },
 }
 
 export const ALL_LANES = Object.keys(LANES) as Lane[]

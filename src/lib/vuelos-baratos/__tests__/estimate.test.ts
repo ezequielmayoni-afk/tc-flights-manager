@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SabreAuthError, SabreBudgetExhausted, type BfmInput, type BfmItinerary, type BfmResult } from '@/lib/sabre/client'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { ESTIMATE_MONTHS_PER_JOB, ORIGINS, SABRE_MAX_ITINERARIES, originIata } from '../config'
-import { buildEstimateJobs, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate } from '../estimate'
+import { buildEstimateJobs, destinationIata, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate } from '../estimate'
 import type { DatePair, EstimateInsert, EstimateRow, LandingDestinationRow, LandingRouteRow } from '../types'
 
 /**
@@ -113,6 +113,16 @@ describe('originIata', () => {
   })
 })
 
+describe('destinationIata', () => {
+  it('prefiere el IATA cargado y cae al código TC si está vacío', () => {
+    expect(destinationIata(destino({ iata_display: 'GIG', tc_code: 'RIO' }))).toBe('GIG')
+    expect(destinationIata(destino({ iata_display: null, tc_code: 'mad' }))).toBe('MAD')
+    // Un campo en blanco es "sin cargar", no un código: si se le mandara a
+    // Sabre, rechazaría el pedido entero.
+    expect(destinationIata(destino({ iata_display: '   ', tc_code: 'CUN' }))).toBe('CUN')
+  })
+})
+
 describe('planEstimate', () => {
   it('usa scan_per_month como tope de pares del mes', () => {
     const pares = planEstimate(ruta({ scan_per_month: 4 }), '2026-12', { today: HOY, day: DIA })
@@ -129,26 +139,26 @@ describe('planEstimate', () => {
 
 describe('buildEstimateJobs', () => {
   it('agrupa los meses de a dos, con la clave de dedupe exacta', () => {
-    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 4, trigger: 'cron' })
+    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 6, trigger: 'cron' })
 
-    expect(ESTIMATE_MONTHS_PER_JOB).toBe(2)
+    expect(ESTIMATE_MONTHS_PER_JOB).toBe(3)
     expect(jobs).toHaveLength(2)
     expect(jobs[0].kind).toBe('flights.estimate')
-    expect(jobs[0].dedupeKey).toBe('flights.estimate:BUE:miami:2026-09+2026-10:2026-09-09')
-    expect(jobs[1].dedupeKey).toBe('flights.estimate:BUE:miami:2026-11+2026-12:2026-09-09')
+    expect(jobs[0].dedupeKey).toBe('flights.estimate:BUE:miami:2026-09+2026-10+2026-11:2026-09-09')
+    expect(jobs[1].dedupeKey).toBe('flights.estimate:BUE:miami:2026-12+2027-01+2027-02:2026-09-09')
     expect(jobs[0].entityType).toBe('flight_route')
     expect(jobs[0].entityId).toBe(7)
     expect(jobs[0].maxAttempts).toBe(2)
     expect(jobs[0].createdBy).toBe('flights.estimate.plan')
-    expect(jobs[0].payload).toMatchObject({ routeId: 7, destinationCode: 'MIA', originCode: 'BUE', slug: 'miami', months: ['2026-09', '2026-10'], trigger: 'cron' })
+    expect(jobs[0].payload).toMatchObject({ routeId: 7, destinationCode: 'MIA', originCode: 'BUE', slug: 'miami', months: ['2026-09', '2026-10', '2026-11'], trigger: 'cron' })
     // Las estimaciones tienen que terminar antes de que arranque el barrido.
     expect(jobs.every((j) => (j.priority ?? 0) >= 5)).toBe(true)
     expect((jobs[0].payload!.pairs as DatePair[]).length).toBeGreaterThan(0)
   })
 
   it('un mes suelto al final va en su propio job', () => {
-    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 3, trigger: 'cron' })
-    expect(jobs.map((j) => j.payload!.months)).toEqual([['2026-09', '2026-10'], ['2026-11']])
+    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 4, trigger: 'cron' })
+    expect(jobs.map((j) => j.payload!.months)).toEqual([['2026-09', '2026-10', '2026-11'], ['2026-12']])
   })
 
   it('saltea rutas con scan_per_month 0, inactivas o sin destino publicado', () => {
@@ -183,7 +193,7 @@ describe('runEstimate', () => {
 
     const summary = await runEstimate(d, entrada)
 
-    expect(summary).toMatchObject({ pairs: 3, ok: 1, empty: 1, errors: 1, minPrice: 812.34, budgetStopped: false, fatalError: null })
+    expect(summary).toMatchObject({ pairs: 3, ok: 1, empty: 1, errors: 1, minPrice: 812.34, budgetStopped: false, stopped: null })
     // Las llamadas a Sabre las cuenta el shopper (el handler), no el resumen.
     expect('sabreCalls' in summary).toBe(false)
     expect(heartbeat).toHaveBeenCalledTimes(3)
@@ -257,15 +267,15 @@ describe('runEstimate', () => {
 
     const summary = await runEstimate(d, entrada)
 
-    expect(summary.fatalError).toBe(mensaje)
+    expect(summary.stopped).toEqual({ error: mensaje, retry: false })
     expect(summary.errors).toBe(1)
     expect(d.shop).toHaveBeenCalledTimes(1)
     expect(log).toHaveBeenCalled()
   })
 
-  it('un fault del BFM que no se reintenta NO corta el job (es cosa de esa fecha)', async () => {
-    // Mismo `retryable: false`, pero es un código de aeropuerto que Sabre no
-    // acepta: las otras fechas de la tanda se estiman igual.
+  it('un error suelto del BFM no corta la tanda, aunque no se reintente', async () => {
+    // Un "INVALID CITY CODE" es un problema de la ruta, no del PCC: se anota y
+    // se sigue; recién tres al hilo hacen abandonar.
     const { deps: d } = deps(async (input) =>
       input.departDate === '2026-12-01'
         ? { status: 'error', itineraries: [], elapsedMs: 90, error: 'ERR.SWS.HOST: INVALID CITY CODE', retryable: false, sessionLost: false }
@@ -274,17 +284,70 @@ describe('runEstimate', () => {
 
     const summary = await runEstimate(d, entrada)
 
-    expect(summary.fatalError).toBeNull()
+    expect(summary.stopped).toBeNull()
     expect(summary.errors).toBe(1)
     expect(summary.ok).toBe(2)
     expect(d.shop).toHaveBeenCalledTimes(3)
+  })
+
+  it('un fault que habla de permisos tarifarios tampoco es un problema de credenciales', async () => {
+    // El texto dice "NOT AUTHORIZED", pero es la tarifa, no el PCC: si esto
+    // cortara el job, una tarifa restringida apagaría la noche entera.
+    const { deps: d } = deps(async (input) =>
+      input.departDate === '2026-12-01'
+        ? { status: 'error', itineraries: [], elapsedMs: 90, error: 'NOT AUTHORIZED TO USE THIS FARE', retryable: false, sessionLost: false }
+        : ok(700)
+    )
+
+    const summary = await runEstimate(d, entrada)
+
+    expect(summary.stopped).toBeNull()
+    expect(summary.ok).toBe(2)
+    expect(d.shop).toHaveBeenCalledTimes(3)
+  })
+
+  it('tres errores seguidos abandonan la tanda y no se piden los pares que faltan', async () => {
+    const cinco = [...PARES, { depart: '2026-12-15', return: '2026-12-22', nights: 7 }, { depart: '2026-12-18', return: '2026-12-28', nights: 10 }]
+    const { deps: d, guardadas } = deps(async () => ({
+      status: 'error',
+      itineraries: [],
+      elapsedMs: 100,
+      error: 'SYSTEM NOT AVAILABLE - TRY LATER',
+      retryable: true,
+      sessionLost: false,
+    }))
+
+    const summary = await runEstimate(d, { ...entrada, pairs: cinco })
+
+    expect(d.shop).toHaveBeenCalledTimes(3)
+    expect(summary.errors).toBe(3)
+    // El host caído puede volver: el job se reintenta.
+    expect(summary.stopped).toEqual({ error: '3 errores seguidos: SYSTEM NOT AVAILABLE - TRY LATER', retry: true })
+    expect(guardadas).toHaveLength(0)
+  })
+
+  it('errores salteados entre búsquedas buenas no cortan nada', async () => {
+    const cinco = [...PARES, { depart: '2026-12-15', return: '2026-12-22', nights: 7 }, { depart: '2026-12-18', return: '2026-12-28', nights: 10 }]
+    const respuestas: BfmResult[] = [
+      { status: 'error', itineraries: [], elapsedMs: 100, error: 'timeout', retryable: true, sessionLost: false },
+      { status: 'error', itineraries: [], elapsedMs: 100, error: 'timeout', retryable: true, sessionLost: false },
+      { status: 'empty', itineraries: [], elapsedMs: 100 },
+      { status: 'error', itineraries: [], elapsedMs: 100, error: 'timeout', retryable: true, sessionLost: false },
+      ok(640),
+    ]
+    const { deps: d } = deps(async () => respuestas.shift()!)
+
+    const summary = await runEstimate(d, { ...entrada, pairs: cinco })
+
+    expect(d.shop).toHaveBeenCalledTimes(5)
+    expect(summary).toMatchObject({ pairs: 5, ok: 1, empty: 1, errors: 3, stopped: null })
   })
 
   it('un origen sin IATA no le pide nada a Sabre', async () => {
     const { deps: d } = deps(async () => ok(700))
     const summary = await runEstimate(d, { ...entrada, route: ruta({ origin_tc_code: 'XXX' }) })
 
-    expect(summary.fatalError).toContain('XXX')
+    expect(summary.stopped).toEqual({ error: expect.stringContaining('XXX'), retry: false })
     expect(summary.pairs).toBe(0)
     expect(d.shop).not.toHaveBeenCalled()
     expect(d.save).not.toHaveBeenCalled()
@@ -355,6 +418,14 @@ describe('pickPairsToConfirm', () => {
     expect(pickPairsToConfirm({ estimates: [...mismoPrecio].reverse(), month: '2026-12', confirmPerMonth: 2, today: HOY, minLeadDays: 3 })).toEqual(picks)
   })
 
+  it('ignora las estimaciones que no están en USD', () => {
+    const otraMoneda = { ...estimacion('2026-12-02', '2026-12-09', 1), currency: 'ARS' }
+    const picks = pickPairsToConfirm({ estimates: [otraMoneda, ...estimates], month: '2026-12', confirmPerMonth: 1, today: HOY, minLeadDays: 3 })
+
+    // Sin el filtro, un precio en pesos sería siempre "el más barato".
+    expect(picks).toEqual([{ depart: '2026-12-04', return: '2026-12-14', nights: 10 }])
+  })
+
   it('respeta la anticipación mínima y no mira otros meses', () => {
     const cerca = [estimacion('2026-09-10', '2026-09-17', 200), estimacion('2026-09-20', '2026-09-27', 800)]
     const picks = pickPairsToConfirm({ estimates: cerca, month: '2026-09', confirmPerMonth: 3, today: HOY, minLeadDays: 3 })
@@ -376,5 +447,13 @@ describe('minEstimateByMonth', () => {
     expect(porMes.get('2026-12')).toBe(640)
     expect(porMes.get('2027-01')).toBe(300)
     expect(porMes.get('2026-11')).toBeUndefined()
+  })
+
+  it('no mira las estimaciones que no están en USD (el chip dice "≈ US$")', () => {
+    const rows: EstimateRow[] = [
+      { id: 1, route_id: 7, depart_date: '2026-12-04', return_date: '2026-12-11', price_pp: 900, currency: 'USD', airline_code: null, stops_out: null, stops_back: null, duration_out_minutes: null, duration_back_minutes: null, observed_at: '2026-09-09T00:30:00.000Z' },
+      { id: 2, route_id: 7, depart_date: '2026-12-18', return_date: '2026-12-25', price_pp: 1, currency: 'ARS', airline_code: null, stops_out: null, stops_back: null, duration_out_minutes: null, duration_back_minutes: null, observed_at: '2026-09-09T00:30:00.000Z' },
+    ]
+    expect(minEstimateByMonth(rows).get('2026-12')).toBe(900)
   })
 })

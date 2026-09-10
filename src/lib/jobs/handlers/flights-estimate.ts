@@ -1,4 +1,5 @@
 import { SABRE_PROVIDER, createSabreShopper, isSabreConfigured } from '@/lib/sabre/client'
+import { invalidatePublicCache } from '@/lib/vuelos-baratos/cache'
 import { runEstimate } from '@/lib/vuelos-baratos/estimate'
 import { findDestination, parsePairs } from '@/lib/vuelos-baratos/job-payload'
 import { getRoute, upsertEstimates } from '@/lib/vuelos-baratos/queries'
@@ -60,6 +61,10 @@ export const flightsEstimateHandler: HandlerDefinition = {
       await shopper.close()
     }
 
+    // Los chips de la landing muestran el estimado de los meses sin sonda: el
+    // memo público (10 min) tiene que ver lo recién guardado.
+    invalidatePublicCache()
+
     const result = { ...summary, sabreCalls: shopper.callsMade }
     const meses = Array.isArray(job.payload.months) ? job.payload.months.join(', ') : ''
     const etiqueta = `${route.origin_tc_code}→${destination.code} ${meses}`.trim()
@@ -70,7 +75,7 @@ export const flightsEstimateHandler: HandlerDefinition = {
       summary.errors > 0 ? 'warning' : 'info'
     )
 
-    if (summary.fatalError) return { ok: false, error: summary.fatalError, retry: false, result }
+    if (summary.stopped) return { ok: false, error: summary.stopped.error, retry: summary.stopped.retry, result }
     if (summary.budgetStopped) {
       return { ok: false, skipped: true, reason: `presupuesto sabre agotado (${summary.pairs}/${pairs.length} pares estimados)` }
     }

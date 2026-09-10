@@ -29,19 +29,25 @@ import type { DatePair, EstimateInsert, EstimateRow, EstimateSummary, LandingDes
 export const ESTIMATE_SOURCE = 'sabre_bfm'
 
 /**
- * Un error de credenciales no mejora con el próximo par: corta el job entero.
+ * Credenciales rechazadas: corta el job entero, no mejora con el próximo par.
  *
- * Se mira el texto porque el `BfmResult` no alcanza: `retryable: false` también
- * lo devuelve un fault del BFM (un código de aeropuerto que Sabre no acepta), y
- * eso sí es cosa de una ruta sola. Lo que sí es inconfundible es el mensaje de
- * `SabreAuthError` ("Sabre no abrió la sesión: …"), que es el ÚNICO error de
- * `createSabreShopper().shop()` que viene de crear la sesión; las variantes en
- * inglés cubren el faultstring que manda Sabre (AUTHENTICATION FAILED,
- * "Authorization failed") si llegara por otro camino.
- *
- * Una caída de red vuelve como `retryable: true` y sí se sigue intentando.
+ * Es el prefijo EXACTO con el que `shop()` envuelve un `SabreAuthError`, que a
+ * su vez sólo se lanza cuando Sabre no devolvió token al abrir la sesión. No se
+ * mira el texto de Sabre: un fault de la búsqueda también puede decir "NOT
+ * AUTHORIZED TO USE THIS FARE" y ése es un problema del pedido, no del PCC.
+ * (Una caída de red al abrir la sesión llega con el mensaje crudo del fetch y
+ * `retryable: true`, así que tampoco matchea.)
  */
-const AUTH_ERROR_RE = /^Sabre no abrió la sesión|authoriz|authenticat|credenc|credential/i
+const AUTH_ERROR_RE = /^Sabre no abrió la sesión/
+
+/**
+ * Errores seguidos que hacen abandonar la tanda.
+ *
+ * Un par que falla no dice nada; tres al hilo es la ruta (un código que Sabre
+ * no acepta) o el host caído, y seguir pidiendo es quemar transacciones del
+ * presupuesto para juntar el mismo error 20 veces.
+ */
+const MAX_CONSECUTIVE_ERRORS = 3
 
 export interface EstimateDeps {
   shop: (input: BfmInput) => Promise<BfmResult>
@@ -69,7 +75,9 @@ export interface EstimateInput {
  * cargando `iata_display` en el destino.
  */
 export function destinationIata(destination: LandingDestinationRow): string {
-  return (destination.iata_display ?? destination.tc_code).trim().toUpperCase()
+  // `?? ` no alcanza: un `iata_display` en blanco (o con espacios) es un campo
+  // sin cargar, no un código, y Sabre rechazaría el pedido entero.
+  return (destination.iata_display?.trim() || destination.tc_code).trim().toUpperCase()
 }
 
 /** Los pares de un mes que estima Sabre para una ruta. `day` rota los exploradores. */
@@ -170,7 +178,7 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
     minPrice: null,
     durationMs: 0,
     budgetStopped: false,
-    fatalError: null,
+    stopped: null,
   }
 
   const etiqueta = `${route.origin_tc_code}→${destination.code}`
@@ -178,17 +186,18 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
   if (!origen) {
     // Sabre no entiende los códigos de destino de TC: sin IATA no hay búsqueda
     // posible y reintentar no lo arregla (falta mapear el origen en config.ts).
-    summary.fatalError = `El origen ${route.origin_tc_code} no tiene IATA mapeado para Sabre`
+    summary.stopped = { error: `El origen ${route.origin_tc_code} no tiene IATA mapeado para Sabre`, retry: false }
     summary.durationMs = Date.now() - empezo
-    await deps.log(`Estimación ${etiqueta}: ${summary.fatalError}`, { routeId: route.id }, 'warning')
+    await deps.log(`Estimación ${etiqueta}: ${summary.stopped.error}`, { routeId: route.id }, 'warning')
     return summary
   }
   const destino = destinationIata(destination)
 
   const rows: EstimateInsert[] = []
+  let seguidos = 0
 
   for (const pair of pairs) {
-    if (summary.budgetStopped || summary.fatalError) break
+    if (summary.budgetStopped || summary.stopped) break
 
     // El heartbeat va en el finally: un par que falló también consumió tiempo
     // del lease, y sin renovarlo el job se reencola solo.
@@ -210,11 +219,11 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
         }
         summary.pairs++
         summary.errors++
-        await deps.log(
-          `Estimación ${etiqueta} ${pair.depart}/${pair.return} falló: ${err instanceof Error ? err.message : String(err)}`,
-          { routeId: route.id, pair },
-          'warning'
-        )
+        seguidos++
+        const motivo = err instanceof Error ? err.message : String(err)
+        // Un input que Sabre no acepta no se arregla reintentando el job.
+        if (seguidos >= MAX_CONSECUTIVE_ERRORS) summary.stopped = { error: `${seguidos} errores seguidos: ${motivo}`, retry: false }
+        await deps.log(`Estimación ${etiqueta} ${pair.depart}/${pair.return} falló: ${motivo}`, { routeId: route.id, pair }, 'warning')
         continue
       }
 
@@ -223,6 +232,7 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
       if (res.status === 'ok') {
         const mejor = res.cheapest
         summary.ok++
+        seguidos = 0
         if (summary.minPrice === null || mejor.totalUsd < summary.minPrice) summary.minPrice = mejor.totalUsd
         rows.push({
           route_id: route.id,
@@ -245,9 +255,15 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
         })
       } else if (res.status === 'empty') {
         summary.empty++
+        seguidos = 0
       } else {
         summary.errors++
-        if (!res.retryable && AUTH_ERROR_RE.test(res.error)) summary.fatalError = res.error
+        seguidos++
+        if (AUTH_ERROR_RE.test(res.error)) summary.stopped = { error: res.error, retry: false }
+        else if (seguidos >= MAX_CONSECUTIVE_ERRORS) {
+          // Si el último error era reintentable (host caído), el job se reencola.
+          summary.stopped = { error: `${seguidos} errores seguidos: ${res.error}`, retry: res.retryable }
+        }
         await deps.log(
           `Estimación ${etiqueta} ${pair.depart}/${pair.return}: ${res.error}`,
           { routeId: route.id, pair, retryable: res.retryable },
@@ -296,7 +312,9 @@ export function pickPairsToConfirm(input: PickPairsInput): DatePair[] {
 
   const desde = addDays(todayIso(today), minLeadDays)
   const candidatas = estimates
-    .filter(e => monthOf(e.depart_date) === month && e.depart_date >= desde)
+    // Sólo USD: el BFM se pide en USD, pero una fila en otra moneda no se puede
+    // comparar contra las demás ni mostrar como US$.
+    .filter(e => e.currency === 'USD' && monthOf(e.depart_date) === month && e.depart_date >= desde)
     // Desempate completo (precio → ida → vuelta): dos estimaciones al mismo
     // precio tienen que elegirse igual en cada corrida.
     .sort((a, b) => a.price_pp - b.price_pp || a.depart_date.localeCompare(b.depart_date) || a.return_date.localeCompare(b.return_date))
@@ -313,10 +331,13 @@ export function pickPairsToConfirm(input: PickPairsInput): DatePair[] {
   return elegidos
 }
 
-/** El mínimo estimado de cada mes, para los chips de la landing. */
+/** El mínimo estimado (en USD) de cada mes, para los chips de la landing. */
 export function minEstimateByMonth(estimates: EstimateRow[]): Map<string, number> {
   const porMes = new Map<string, number>()
   for (const e of estimates) {
+    // Mismo criterio que `pickPairsToConfirm`: el chip dice "≈ US$", así que
+    // una fila en otra moneda no entra.
+    if (e.currency !== 'USD') continue
     const mes = monthOf(e.depart_date)
     const actual = porMes.get(mes)
     if (actual === undefined || e.price_pp < actual) porMes.set(mes, e.price_pp)

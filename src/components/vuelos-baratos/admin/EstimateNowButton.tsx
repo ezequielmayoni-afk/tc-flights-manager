@@ -20,7 +20,7 @@ const MESES = 2
  * El lane `sabre` no tiene ventana horaria, así que corre enseguida. Cada par
  * es una búsqueda BFM que se cobra: por eso son 2 meses y no los 12 de la ruta.
  * Comparte la clave de dedupe con el plan nocturno (ruta + meses + día), así
- * que después de las 00:00 UTC devuelve los que ya estaban encolados.
+ * que después de las 23:00 UTC devuelve los que ya estaban encolados.
  */
 export function EstimateNowButton({ slug, origin, scanPerMonth, months = MESES }: Props) {
   const router = useRouter()

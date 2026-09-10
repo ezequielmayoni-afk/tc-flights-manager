@@ -7,12 +7,13 @@ import { enqueueJob } from '../queue'
 import type { HandlerDefinition } from '../types'
 
 /**
- * El plan del estimador de Sabre (00:00 UTC = 21:00 ART).
+ * El plan del estimador de Sabre (23:00 UTC = 20:00 ART).
  *
- * Corre una hora antes que `flights.sweep.plan` a propósito: cuando el barrido
- * arma su noche, las estimaciones de hoy ya están guardadas y puede elegir qué
- * fechas confirmar. No le pide nada a Sabre: sólo encola un `flights.estimate`
- * por ruta activa × grupo de meses en el lane `sabre` (uno por vez).
+ * Corre dos horas antes que `flights.sweep.plan` a propósito: la tanda avanza a
+ * ~1 job por tick (el runner toma uno por lane y por minuto), así que necesita
+ * ese margen para que el barrido de la 01:00 encuentre las estimaciones de hoy
+ * ya guardadas. No le pide nada a Sabre: sólo encola un `flights.estimate` por
+ * ruta activa × grupo de meses en el lane `sabre` (uno por vez).
  */
 export const flightsEstimatePlanHandler: HandlerDefinition = {
   kind: 'flights.estimate.plan',

@@ -16,12 +16,29 @@ export const PROBE_RETRY_DELAY_MS = 5_000
 /** No se sondea nada con menos de 3 días de anticipación (no es tarifa de landing). */
 export const MIN_LEAD_DAYS = 3
 export const SWEEP_ENQUEUE_HOUR_UTC = 1
-/** Las estimaciones de Sabre se encolan una hora antes que el plan del barrido. */
-export const ESTIMATE_ENQUEUE_HOUR_UTC = 0
+/**
+ * Las estimaciones se encolan DOS horas antes que el plan del barrido (23:00
+ * UTC = 20:00 ART).
+ *
+ * El runner toma un job por lane y por tick (un minuto) y sostiene el lock del
+ * lane mientras corre, así que la tanda entera avanza a ~1 job por minuto: con
+ * una hora de margen el barrido de la 01:00 encontraba media noche sin estimar.
+ *
+ * Efecto lateral conocido: a las 23:00 UTC del último día del mes, el `day` UTC
+ * todavía es el mes viejo, así que `monthsAhead` arranca un mes antes que el
+ * del barrido (que corre a la 01:00 del día siguiente). Ese primer mes ya no
+ * tiene fechas candidatas (`MIN_LEAD_DAYS`) y sale vacío, y el último mes del
+ * barrido esa noche cae a fechas fijas: no se rompe nada.
+ */
+export const ESTIMATE_ENQUEUE_HOUR_UTC = 23
 /** Una estimación sirve para planificar el barrido de esa noche (y la mañana siguiente). */
 export const ESTIMATE_WINDOW_HOURS = 30
-/** Meses por job de estimación: la sesión de Sabre busca de a un par por vez. */
-export const ESTIMATE_MONTHS_PER_JOB = 2
+/**
+ * Meses por job de estimación. La sesión de Sabre busca de a un par por vez
+ * (~3 s), así que 3 meses × 8 pares son ~1,5 min de job; con 5 rutas × 12 meses
+ * son 20 jobs, ~40 min de tanda a un job por tick.
+ */
+export const ESTIMATE_MONTHS_PER_JOB = 3
 /** Itinerarios que Sabre devuelve (y que se guardan resumidos) por par de fechas. */
 export const SABRE_MAX_ITINERARIES = 5
 /**

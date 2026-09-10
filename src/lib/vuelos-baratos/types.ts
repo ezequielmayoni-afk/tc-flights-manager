@@ -185,11 +185,20 @@ export interface EstimateSummary {
   minPrice: number | null
   durationMs: number
   budgetStopped: boolean
-  /**
-   * Error que corta el job entero y no se reintenta: credenciales rechazadas o
-   * un origen sin IATA mapeado. Seguir pidiendo pares no lo arregla.
-   */
-  fatalError: string | null
+  /** Si la tanda se cortó antes de terminar: por qué, y si conviene reintentar. */
+  stopped: EstimateStop | null
+}
+
+/**
+ * Corte anticipado de una tanda de estimaciones.
+ *
+ * `retry: false` para lo que no mejora reintentando (credenciales rechazadas,
+ * un origen sin IATA); `true` para lo que puede ser pasajero (Sabre devolviendo
+ * error tras error, que suele ser el host caído).
+ */
+export interface EstimateStop {
+  error: string
+  retry: boolean
 }
 
 export interface SweepSummary {
