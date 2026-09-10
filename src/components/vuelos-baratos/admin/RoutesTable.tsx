@@ -97,7 +97,7 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
   const editDestination = (g: AdminDestinationGroup) =>
     setDestEditor({ mode: 'edit', values: { code: g.code, name: g.name, slug: g.slug, tc_code: g.tcCode, iata_display: g.iataDisplay, haul: g.haul, seo_title: g.seoTitle, seo_description: g.seoDescription, hero_image_url: g.heroImageUrl, faq: g.faq, active: g.active, sort_order: g.sortOrder } })
   const editRoute = (g: AdminDestinationGroup, r: AdminRouteRow) =>
-    setRouteEditor({ mode: 'edit', destinationCode: g.code, destinationName: g.name, values: { id: r.id, origin_tc_code: r.originCode, origin_name: r.originName, stay_nights: r.stayNights, weekdays: r.weekdays, probes_per_month: r.probesPerMonth, months_ahead: r.monthsAhead, active: r.active } })
+    setRouteEditor({ mode: 'edit', destinationCode: g.code, destinationName: g.name, values: { id: r.id, origin_tc_code: r.originCode, origin_name: r.originName, stay_nights: r.stayNights, weekdays: r.weekdays, probes_per_month: r.probesPerMonth, scan_per_month: r.scanPerMonth, confirm_per_month: r.confirmPerMonth, months_ahead: r.monthsAhead, active: r.active } })
 
   return (
     <div className="divide-y divide-gray-200">

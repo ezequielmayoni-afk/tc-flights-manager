@@ -17,6 +17,10 @@ const createSchema = z.object({
   stay_nights: z.array(z.number().int().min(1).max(30)).min(1).max(6).optional(),
   weekdays: z.array(z.number().int().min(1).max(7)).max(7).optional(),
   probes_per_month: z.number().int().min(1).max(31).optional(),
+  /** Pares que estima Sabre por mes; 0 apaga el estimador de esa ruta. */
+  scan_per_month: z.number().int().min(0).max(62).optional(),
+  /** De los estimados, cuántos confirma el barrido con una sonda real. */
+  confirm_per_month: z.number().int().min(1).max(31).optional(),
   months_ahead: z.number().int().min(1).max(18).optional(),
   active: z.boolean().optional(),
 })

@@ -239,7 +239,8 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
    todavía no tiene landing (la landing es una extensión 1:1 del perfil) y precarga slug, código TC, IATA y
    distancia; nace sin publicar y con la ruta BUE apagada. "Editar" cambia todo lo demás (slug = URL pública,
    SEO, portada, FAQ, orden). "Nueva ruta" / "Editar" en cada ruta: origen (código de ciudad de TC), estadías,
-   días de salida, sondas/mes, meses. "Borrar" pide confirmación: borrar un destino se lleva sus rutas
+   días de salida, sondas/mes, **Sabre/mes**, **Confirmar/mes** y meses; una ruta nueva que no los declare
+   toma los defaults de la tabla (8 y 3). "Borrar" pide confirmación: borrar un destino se lleva sus rutas
    (cascade), las sondas ya guardadas quedan con `route_id` en null y el perfil de Producto no se toca.
    API: `GET/POST /api/vuelos-baratos/destinations`, `PATCH/DELETE .../destinations/[code]`,
    `GET/POST /api/vuelos-baratos/routes`, `PATCH/DELETE .../routes/[id]`. Cada cambio invalida el memo
