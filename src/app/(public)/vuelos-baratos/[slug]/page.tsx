@@ -13,7 +13,7 @@ import { OriginSelect } from '@/components/vuelos-baratos/OriginSelect'
 import { Pagination } from '@/components/vuelos-baratos/Pagination'
 import { SearchBox } from '@/components/vuelos-baratos/SearchBox'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
-import { BOTON_PRIMARIO, CARD, formatDuration, formatUsd, medianDurationMin } from '@/components/vuelos-baratos/ui'
+import { BOTON_PRIMARIO, CARD, formatUsd } from '@/components/vuelos-baratos/ui'
 import {
   airlinesWithMin,
   applyFilters,
@@ -37,6 +37,7 @@ import {
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
 import { monthsAhead } from '@/lib/vuelos-baratos/date-pairs'
 import { hasActiveFilters, parseExplorerFilters } from '@/lib/vuelos-baratos/filters'
+import { formatDuration, medianDurationMin } from '@/lib/vuelos-baratos/insights'
 import { buildDestinationMeta } from '@/lib/vuelos-baratos/seo-meta'
 import { MESES_A_MOSTRAR, type SearchParams, loadDestino, loadPorCiudad, mesMasBarato, origenDe } from '../_data'
 

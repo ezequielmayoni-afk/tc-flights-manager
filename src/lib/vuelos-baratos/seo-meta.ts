@@ -34,6 +34,17 @@ const DESTINOS_MAX = 3
 
 const CTA_HOME = 'Compará por mes y fecha y comprá en siviajo.com.'
 const CTA_DESTINO = 'Elegí tu fecha y comprá en siviajo.com.'
+/** El cierre de los textos que todavía no tienen precio que mostrar. */
+const CTA_SIN_PRECIO = 'Elegí fecha y comprá en siviajo.com.'
+
+/**
+ * Lo que se le deja pasar a un título cargado a mano en la ficha.
+ *
+ * Más que los 60 del calculado: el que lo escribió sabe lo que quiere decir y
+ * Google lo va a cortar solo. El tope existe para que un copy/paste enorme no
+ * termine de título.
+ */
+export const SEO_TITLE_MAX = 70
 
 /**
  * El año que va en los títulos ("Pasajes 2026").
@@ -132,7 +143,12 @@ export function buildHomeMeta(input: {
 
 function descripcionHome(input: { originName: string; top: Array<{ name: string; minPrice: number }> }): string {
   if (input.top.length === 0) {
-    return `Los vuelos más baratos saliendo de ${input.originName}, por persona e ida y vuelta, actualizados todos los días. Elegí fecha y comprá en siviajo.com.`
+    return componerDescripcion(
+      `Los vuelos más baratos saliendo de ${input.originName}, por persona e ida y vuelta, actualizados todos los días.`,
+      'Los vuelos más baratos, por persona e ida y vuelta, actualizados todos los días.',
+      [],
+      CTA_SIN_PRECIO
+    )
   }
 
   const lista = (n: number): string => listaEs(input.top.slice(0, n).map(d => `${d.name} desde ${usd(d.minPrice)}`))
@@ -170,9 +186,12 @@ export function buildDestinationMeta(input: {
   // corta, que uno sin el dato que hace que te clickeen (el precio).
   const calculado = conMarcaEntra(conAno) ? conAno : sinAno
 
+  const tituloFicha = cargado(input.seoTitle)
+  const descripcionFicha = cargado(input.seoDescription)
+
   return {
-    title: cargado(input.seoTitle) ?? calculado,
-    description: cargado(input.seoDescription) ?? descripcionDestino(input),
+    title: tituloFicha ? truncate(tituloFicha, SEO_TITLE_MAX) : calculado,
+    description: descripcionFicha ? truncate(descripcionFicha, DESC_MAX) : descripcionDestino(input),
   }
 }
 
@@ -185,7 +204,12 @@ function descripcionDestino(input: {
   directAvailable: boolean
 }): string {
   if (input.minPrice === null) {
-    return `Vuelos a ${input.name} desde ${input.originName}: precios por persona, ida y vuelta, actualizados todos los días. Elegí fecha y comprá en siviajo.com.`
+    return componerDescripcion(
+      `Vuelos a ${input.name} desde ${input.originName}: precios por persona, ida y vuelta, actualizados todos los días.`,
+      `Vuelos a ${input.name}: precios por persona, ida y vuelta, actualizados todos los días.`,
+      [],
+      CTA_SIN_PRECIO
+    )
   }
 
   const precio = usd(input.minPrice)

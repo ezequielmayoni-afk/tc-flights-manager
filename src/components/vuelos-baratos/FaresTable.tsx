@@ -3,9 +3,10 @@ import { parseDate } from '@/lib/dates'
 import { airlineLogo } from '@/lib/vuelos-baratos/airlines'
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
 import { filtersWith } from '@/lib/vuelos-baratos/filters'
+import { formatDuration } from '@/lib/vuelos-baratos/insights'
 import type { BestPair, ExplorerFilters, SortKey } from '@/lib/vuelos-baratos/types'
 import { SelectFlightLink } from './SelectFlightLink'
-import { formatDuration, formatUsd, withFilters } from './ui'
+import { formatUsd, withFilters } from './ui'
 
 const ORDENES: Array<{ key: SortKey; label: string }> = [
   { key: 'price', label: 'Precio' },

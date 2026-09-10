@@ -1,5 +1,5 @@
 import { serializeExplorerFilters } from '@/lib/vuelos-baratos/filters'
-import type { BestPair, ExplorerFilters } from '@/lib/vuelos-baratos/types'
+import type { ExplorerFilters } from '@/lib/vuelos-baratos/types'
 
 /**
  * Piezas compartidas por los componentes de la landing pública.
@@ -54,34 +54,4 @@ export function withFilters(basePath: string, filters: ExplorerFilters): string 
 /** 'US$ 722' (sin decimales: son precios de vidriera). */
 export function formatUsd(price: number): string {
   return `US$ ${Math.round(price).toLocaleString('es-AR')}`
-}
-
-/**
- * 555 → '9 h 15 m'. Sin dato (null o ≤ 0) devuelve `null`: la tabla pone '—' y
- * el texto de la ficha directamente se saltea la frase.
- */
-export function formatDuration(minutes: number | null): string | null {
-  if (minutes === null || minutes <= 0) return null
-  const horas = Math.floor(minutes / 60)
-  const resto = minutes % 60
-  if (horas === 0) return `${resto} m`
-  return resto === 0 ? `${horas} h` : `${horas} h ${resto} m`
-}
-
-/**
- * Mediana de la duración de ida de los pares.
- *
- * Mediana y no promedio: una sola combinación con dos escalas largas corre el
- * promedio horas enteras y la ficha diría una duración que no vuela nadie. Las
- * observaciones sin duración (Sabre no manda `ElapsedTime`) no cuentan; si no
- * queda ninguna, `null` y no se dice nada.
- */
-export function medianDurationMin(pairs: BestPair[]): number | null {
-  const valores = pairs
-    .map(pair => pair.durationOutMin)
-    .filter((v): v is number => v !== null && v > 0)
-    .sort((a, b) => a - b)
-  if (valores.length === 0) return null
-  const medio = Math.floor(valores.length / 2)
-  return valores.length % 2 === 1 ? valores[medio] : Math.round((valores[medio - 1] + valores[medio]) / 2)
 }

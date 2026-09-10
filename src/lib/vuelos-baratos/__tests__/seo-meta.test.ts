@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DESC_MAX,
+  SEO_TITLE_MAX,
   TITLE_BRAND,
   TITLE_BUDGET,
   TITLE_MAX,
@@ -135,6 +136,14 @@ describe('buildHomeMeta', () => {
     expect(description.length).toBeLessThanOrEqual(DESC_MAX)
   })
 
+  it('sin destinos y con un origen largo también entra en 160', () => {
+    const { description } = buildHomeMeta({ originName: 'Cataratas del Iguazú y alrededores', top: [], now: HOY })
+    expect(description.startsWith('Los vuelos más baratos, por persona')).toBe(true)
+    expect(description.endsWith('Elegí fecha y comprá en siviajo.com.')).toBe(true)
+    expect(description).not.toContain('…')
+    expect(description.length).toBeLessThanOrEqual(DESC_MAX)
+  })
+
   it('con un origen imposible suelta la parte del origen antes que recortar', () => {
     const { description } = buildHomeMeta({
       originName: 'San Miguel de Tucumán y alrededores del norte argentino',
@@ -199,6 +208,20 @@ describe('buildDestinationMeta', () => {
     expect(description).toBe(
       'Vuelos a Miami desde Buenos Aires: precios por persona, ida y vuelta, actualizados todos los días. Elegí fecha y comprá en siviajo.com.'
     )
+    expect(description.length).toBeLessThanOrEqual(DESC_MAX)
+  })
+
+  it('sin precio y con un nombre largo suelta el origen antes que recortar', () => {
+    const { description } = buildDestinationMeta({
+      ...base,
+      name: 'Cataratas del Iguazú y alrededores',
+      minPrice: null,
+      pairs: 0,
+    })
+    expect(description).toBe(
+      'Vuelos a Cataratas del Iguazú y alrededores: precios por persona, ida y vuelta, actualizados todos los días. Elegí fecha y comprá en siviajo.com.'
+    )
+    expect(description).not.toContain('…')
     expect(description.length).toBeLessThanOrEqual(DESC_MAX)
   })
 
@@ -267,6 +290,17 @@ describe('buildDestinationMeta', () => {
     })
     expect(description.startsWith('Pasajes a Islas Malvinas del Sur Profundo y Alrededores Lejanos ida y vuelta desde US$ 665')).toBe(true)
     expect(description.endsWith('siviajo.com.')).toBe(true)
+    expect(description.length).toBeLessThanOrEqual(DESC_MAX)
+  })
+
+  it('le pone un techo a lo que viene cargado en la ficha', () => {
+    const { title, description } = buildDestinationMeta({
+      ...base,
+      seoTitle: 'Vuelos baratos a Miami desde Buenos Aires en oferta todo el año con las mejores aerolíneas',
+      seoDescription: 'Miami barato '.repeat(20),
+    })
+    expect(title.length).toBeLessThanOrEqual(SEO_TITLE_MAX)
+    expect(title.endsWith('…')).toBe(true)
     expect(description.length).toBeLessThanOrEqual(DESC_MAX)
   })
 

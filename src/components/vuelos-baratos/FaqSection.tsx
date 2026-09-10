@@ -1,3 +1,4 @@
+import { normalize } from '@/lib/vuelos-baratos/text'
 import { JsonLd } from './JsonLd'
 
 export interface FaqItem {
@@ -7,6 +8,28 @@ export interface FaqItem {
 
 function esValida(item: FaqItem): boolean {
   return Boolean(item) && typeof item.q === 'string' && typeof item.a === 'string' && item.q.trim() !== '' && item.a.trim() !== ''
+}
+
+/** '¿Cuánto dura el vuelo?' y '¿Cuanto dura el vuelo?' son la misma pregunta. */
+function clave(pregunta: string): string {
+  return normalize(pregunta).replace(/[¿?¡!.,;:]/g, '').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Una pregunta por tema, la primera que aparezca.
+ *
+ * Las de la ficha van antes que las calculadas: si alguien escribió a mano
+ * "¿Cuánto cuesta un pasaje a Miami desde Buenos Aires?", esa respuesta gana y
+ * la calculada no se repite abajo (ni en el JSON-LD, que rechaza duplicados).
+ */
+function sinRepetidas(items: FaqItem[]): FaqItem[] {
+  const vistas = new Set<string>()
+  return items.filter(item => {
+    const k = clave(item.q)
+    if (vistas.has(k)) return false
+    vistas.add(k)
+    return true
+  })
 }
 
 /**
@@ -20,7 +43,7 @@ function esValida(item: FaqItem): boolean {
  * prometerle a Google algo que no está en la página es motivo de penalización.
  */
 export function FaqSection({ items, title }: { items: FaqItem[]; title: string }) {
-  const validas = items.filter(esValida)
+  const validas = sinRepetidas(items.filter(esValida))
   if (validas.length === 0) return null
 
   const faqPage = {
