@@ -5,7 +5,7 @@ import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { invalidatePublicCache } from '@/lib/vuelos-baratos/cache'
-import { getRoute, updateRoute } from '@/lib/vuelos-baratos/queries'
+import { deleteRoute, getRoute, updateRoute } from '@/lib/vuelos-baratos/queries'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +26,8 @@ const patchSchema = z
     stay_nights: z.array(z.number().int().min(1).max(30)).min(1).max(6),
     weekdays: z.array(z.number().int().min(1).max(7)).max(7),
     months_ahead: z.number().int().min(1).max(18),
+    origin_tc_code: z.string().trim().regex(/^[A-Z0-9]{2,10}$/, 'código de origen de TC inválido'),
+    origin_name: z.string().trim().min(2).max(80),
   })
   .partial()
 
@@ -68,6 +70,35 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     )
 
     return NextResponse.json(route)
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
+/** DELETE /api/vuelos-baratos/routes/[id] — saca la ruta del barrido; sus sondas quedan sin ruta. */
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+  const { authorized, user } = await checkSectionAccess('producto')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+
+  try {
+    const id = Number((await params).id)
+    if (!Number.isInteger(id) || id <= 0) throw API_ERRORS.BAD_REQUEST('id de ruta inválido')
+    const db = createAdminClient()
+    const route = await getRoute(db, id)
+    if (!route) throw API_ERRORS.NOT_FOUND(`La ruta ${id}`)
+    await deleteRoute(db, id)
+    invalidatePublicCache()
+    await logEvent(
+      db,
+      {
+        source: 'automation',
+        action: 'vuelos_baratos.route_deleted',
+        message: `Ruta ${route.origin_tc_code}→${route.destination_code} borrada`,
+        details: { routeId: id, route },
+      },
+      user ? { id: user.id, email: user.email } : null
+    )
+    return NextResponse.json({ ok: true })
   } catch (error) {
     return errorResponse(error)
   }

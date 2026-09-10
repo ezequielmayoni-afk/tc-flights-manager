@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { publicPackageUrl } from '@/lib/packages/public-url'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
@@ -117,12 +118,16 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <a
-                          href={`/packages/${pkg.packageId}`}
+                          href={publicPackageUrl(pkg.tcPackageId, pkg.title)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="Abrir el paquete en siviajo.com"
                           className="font-mono text-xs text-primary hover:underline inline-flex items-center gap-1"
                         >
                           {pkg.tcPackageId}
                           <ExternalLink className="h-3 w-3" />
                         </a>
+                        <a href={`/packages/${pkg.packageId}`} className="text-[11px] text-gray-400 hover:underline" title="Ver en HUB">HUB</a>
                         <span className="text-sm truncate">{pkg.title}</span>
                         {pkg.sendToMarketing && (
                           <Badge variant="secondary" className="text-xs">en marketing</Badge>

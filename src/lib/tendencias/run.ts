@@ -151,8 +151,14 @@ async function persist(db: Db, runId: string, destinations: TrendDestination[], 
     if (error) throw new Error(`No se pudieron guardar los destinos: ${error.message}`)
   }
 
-  if (alerts.length > 0) {
-    const { error } = await db.from('trend_alerts').insert(alerts.map(a => ({
+  // Alertas: una por condición. Las abiertas que siguen apareciendo no se
+  // repiten; las que dejaron de aparecer se cierran como "superseded".
+  const { data: openRows } = await db.from('trend_alerts').select('id, dedupe_key').eq('acknowledged', false)
+  const open = new Map(((openRows ?? []) as Array<{ id: string; dedupe_key: string | null }>).filter(r => r.dedupe_key).map(r => [r.dedupe_key as string, r.id]))
+  const currentKeys = new Set(alerts.map(a => a.dedupeKey))
+  const fresh = alerts.filter(a => !open.has(a.dedupeKey))
+  if (fresh.length > 0) {
+    const { error } = await db.from('trend_alerts').insert(fresh.map(a => ({
       trend_run_id: runId,
       destination: a.destination,
       alert_type: a.alertType,
@@ -161,7 +167,12 @@ async function persist(db: Db, runId: string, destinations: TrendDestination[], 
       description: a.description,
       source: a.source,
       data: a.data,
+      dedupe_key: a.dedupeKey,
     })))
     if (error) throw new Error(`No se pudieron guardar las alertas: ${error.message}`)
+  }
+  const superseded = [...open.entries()].filter(([key]) => !currentKeys.has(key)).map(([, id]) => id)
+  if (superseded.length > 0) {
+    await db.from('trend_alerts').update({ acknowledged: true, action_taken: 'superseded', acknowledged_by: 'tendencias', acknowledged_at: new Date().toISOString() }).in('id', superseded)
   }
 }

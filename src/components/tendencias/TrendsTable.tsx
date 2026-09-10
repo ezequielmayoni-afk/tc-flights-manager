@@ -2,6 +2,7 @@
 
 import { Fragment, useMemo, useState } from 'react'
 import type { TrendDestinationRow } from '@/lib/tendencias/queries'
+import { CreateIdeaDialog, type CreateIdeaTarget } from './CreateIdeaDialog'
 
 const CLASS_LABEL: Record<string, { label: string; className: string }> = {
   opportunity: { label: 'Oportunidad', className: 'bg-emerald-100 text-emerald-800' },
@@ -90,6 +91,7 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
   const [onlyWithPackages, setOnlyWithPackages] = useState(false)
   const [sort, setSort] = useState<SortKey>('rank')
   const [open, setOpen] = useState<string | null>(null)
+  const [ideaTarget, setIdeaTarget] = useState<CreateIdeaTarget | null>(null)
 
   const regions = useMemo(() => [...new Set(destinations.map(d => d.region))].sort(), [destinations])
 
@@ -110,6 +112,7 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
 
   return (
     <div>
+      <CreateIdeaDialog target={ideaTarget} onClose={() => setIdeaTarget(null)} />
       <div className="flex flex-wrap items-center gap-3 border-b border-gray-200 px-4 py-2 text-xs text-gray-600">
         <label className="flex items-center gap-1">Clasificación
           <select className={select} value={classification} onChange={e => setClassification(e.target.value)}>
@@ -158,6 +161,7 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
                 <th className="px-3 py-2 text-right">Paquetes</th>
                 <th className="px-3 py-2 text-right">Desde</th>
                 <th className="px-3 py-2">Qué buscan</th>
+                <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -185,8 +189,11 @@ export function TrendsTable({ destinations }: { destinations: TrendDestinationRo
                     <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.matching_package_count || '—'}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-700">{d.cheapest_package_price ? `USD ${Math.round(d.cheapest_package_price).toLocaleString('es-AR')}` : '—'}</td>
                     <td className="px-3 py-2 text-xs text-gray-600">{buy.map(q => q.query).join(' · ') || '—'}</td>
+                    <td className="px-3 py-2">
+                      <button type="button" onClick={() => setIdeaTarget({ name: d.destination, slug: d.destination_slug })} className="whitespace-nowrap rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100" title="Convertir esta tendencia en una idea de paquete cotizada según el perfil del destino">Crear idea</button>
+                    </td>
                   </tr>
-                  {isOpen && <tr><td colSpan={13} className="p-0"><Evidence d={d} /></td></tr>}
+                  {isOpen && <tr><td colSpan={14} className="p-0"><Evidence d={d} /></td></tr>}
                   </Fragment>
                 )
               })}

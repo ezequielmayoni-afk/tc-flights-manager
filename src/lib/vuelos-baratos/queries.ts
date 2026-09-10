@@ -1,3 +1,4 @@
+import { ApiError } from '@/lib/api/errors'
 import { cancelJob } from '@/lib/jobs/queue'
 import type { Db, JobRow } from '@/lib/jobs/types'
 import { ESTIMATE_WINDOW_HOURS, OBSERVATION_WINDOW_HOURS } from './config'
@@ -324,8 +325,51 @@ export async function getSweepHealth(db: Db, sinceHours = 24): Promise<Map<numbe
 }
 
 export type RoutePatch = Partial<
-  Pick<LandingRouteRow, 'active' | 'probes_per_month' | 'scan_per_month' | 'confirm_per_month' | 'stay_nights' | 'weekdays' | 'months_ahead'>
+  Pick<
+    LandingRouteRow,
+    | 'active'
+    | 'probes_per_month'
+    | 'scan_per_month'
+    | 'confirm_per_month'
+    | 'stay_nights'
+    | 'weekdays'
+    | 'months_ahead'
+    | 'origin_tc_code'
+    | 'origin_name'
+  >
 >
+
+/**
+ * Fila nueva de `flight_landing_routes`; lo que falta toma el default de la tabla.
+ *
+ * `scan_per_month`/`confirm_per_month` son opcionales a propósito: una ruta
+ * recién creada arranca con el cupo por defecto del estimador y se ajusta
+ * después desde el tablero.
+ */
+export type RouteInsert = Pick<LandingRouteRow, 'destination_code' | 'origin_tc_code' | 'origin_name'> &
+  Partial<
+    Pick<
+      LandingRouteRow,
+      'stay_nights' | 'weekdays' | 'probes_per_month' | 'scan_per_month' | 'confirm_per_month' | 'months_ahead' | 'active'
+    >
+  >
+
+export async function createRoute(db: Db, row: RouteInsert): Promise<LandingRouteRow> {
+  const { data, error } = await db.from('flight_landing_routes').insert(row).select(ROUTE_COLUMNS).single()
+  if (error) {
+    if (error.code === '23505') throw new ApiError(`Ya existe la ruta ${row.origin_tc_code}→${row.destination_code}`, 409, 'CONFLICT')
+    if (error.code === '23503') throw new ApiError(`El destino ${row.destination_code} no está en la landing`, 400, 'INVALID_REF')
+    throw new Error(`No se pudo crear la ruta: ${error.message}`)
+  }
+  return data as unknown as LandingRouteRow
+}
+
+/** Borra una ruta; las sondas quedan (route_id pasa a null). Devuelve false si no existía. */
+export async function deleteRoute(db: Db, id: number): Promise<boolean> {
+  const { data, error } = await db.from('flight_landing_routes').delete().eq('id', id).select('id')
+  if (error) throw new Error(`No se pudo borrar la ruta ${id}: ${error.message}`)
+  return (data ?? []).length > 0
+}
 
 export async function updateRoute(db: Db, id: number, patch: RoutePatch): Promise<LandingRouteRow> {
   const { data, error } = await db
@@ -340,7 +384,27 @@ export async function updateRoute(db: Db, id: number, patch: RoutePatch): Promis
   return data as unknown as LandingRouteRow
 }
 
-export type LandingDestinationPatch = Partial<Pick<LandingDestinationRow, 'active' | 'seo_title' | 'seo_description'>>
+export type LandingDestinationPatch = Partial<Pick<LandingDestinationRow, 'active' | 'seo_title' | 'seo_description' | 'slug' | 'tc_code' | 'iata_display' | 'haul' | 'hero_image_url' | 'faq' | 'sort_order'>>
+
+/** Fila nueva de `flight_landing_destinations`: `code` debe existir en `destination_profiles`. */
+export type LandingDestinationInsert = Pick<LandingDestinationRow, 'code' | 'slug' | 'tc_code' | 'haul'> & Partial<Pick<LandingDestinationRow, 'iata_display' | 'seo_title' | 'seo_description' | 'hero_image_url' | 'faq' | 'active' | 'sort_order'>>
+
+export async function createLandingDestination(db: Db, row: LandingDestinationInsert): Promise<LandingDestinationRow> {
+  const { data, error } = await db.from('flight_landing_destinations').insert(row).select(DESTINATION_COLUMNS).single()
+  if (error) {
+    if (error.code === '23505') throw new ApiError(`Ya hay una landing con el código ${row.code} o el slug ${row.slug}`, 409, 'CONFLICT')
+    if (error.code === '23503') throw new ApiError(`El perfil ${row.code} no existe en destination_profiles`, 400, 'INVALID_REF')
+    throw new Error(`No se pudo crear el destino: ${error.message}`)
+  }
+  return toDestination(data as unknown as Record<string, unknown>)
+}
+
+/** Borra la landing y sus rutas (cascade); el perfil de destino queda. Devuelve false si no existía. */
+export async function deleteLandingDestination(db: Db, code: string): Promise<boolean> {
+  const { data, error } = await db.from('flight_landing_destinations').delete().eq('code', code).select('code')
+  if (error) throw new Error(`No se pudo borrar el destino ${code}: ${error.message}`)
+  return (data ?? []).length > 0
+}
 
 /**
  * Publica/despublica un destino de la landing y edita su SEO.

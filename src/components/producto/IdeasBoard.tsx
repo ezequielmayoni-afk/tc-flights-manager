@@ -1,14 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
+import { siviajoPackageSearchUrl } from '@/lib/packages/public-url'
 
-interface ProfileOption { code: string; name: string; family: string; nights_default: number; regimen_required: string | null; stars_min: number; direct_required: boolean; cotizador_instance: string }
+interface ProfileOption { code: string; name: string; family: string; nights_default: number; regimen_required: string | null; stars_min: number; direct_required: boolean; cotizador_instance: string; tc_destination_code: string | null; iata_airport: string | null }
 
 interface Idea {
   id: number; kind: string; source: string; status: string; destination_code: string | null; destination_name: string; origin: string
   month: string | null; departure_date: string | null; chosen_departure_date: string | null; return_date: string | null; date_choice_reason: string | null
-  nights: number; adults: number; children: number; regimen: string | null; stars_min: number | null; direct_flight: boolean | null; budget_max_pp: number | null
-  quoted_price_pp: number | null; quoted_currency: string | null; quote_summary: { chosen?: { hotelName?: string; board?: string; stars?: number; airline?: string; direct?: boolean | null; flightNumbers?: string[]; durationMinutes?: number | null; regimenConfirmed?: boolean; alternatives?: Array<{ date: string; pricePerPax: number; direct: boolean }> }; stopover?: string | null } | null
+  nights: number; adults: number; children: number; children_ages: number[] | null; regimen: string | null; stars_min: number | null; direct_flight: boolean | null; budget_max_pp: number | null
+  quoted_price_pp: number | null; quoted_currency: string | null; quote_summary: { chosen?: { hotelName?: string; hotelUrl?: string | null; board?: string; stars?: number; airline?: string; direct?: boolean | null; flightNumbers?: string[]; durationMinutes?: number | null; regimenConfirmed?: boolean; alternatives?: Array<{ date: string; pricePerPax: number; direct: boolean }> }; stopover?: string | null } | null
   validation: { ok: boolean; hard: string[]; soft: string[] }; title_suggested: string | null; tc_package_id: number | null; error: string | null; created_at: string; updated_at: string; notes: string | null
 }
 
@@ -231,8 +232,20 @@ export function IdeasBoard({ profiles }: { profiles: ProfileOption[] }) {
                       <div>
                         <p className="font-semibold text-gray-900">Otras fechas sondeadas</p>
                         {q?.alternatives?.length ? <ul className="space-y-0.5">{q.alternatives.slice(0, 5).map(a => <li key={a.date}>{fmtDate(a.date)} · USD {Math.round(a.pricePerPax)}{a.direct ? ' directo' : ''}</li>)}</ul> : <p>—</p>}
+                        {(() => {
+                          const prof = profiles.find(p => p.code === i.destination_code)
+                          const url = siviajoPackageSearchUrl({ origin: i.origin, destinationTcCode: prof?.tc_destination_code ?? null, departDate: i.chosen_departure_date ?? i.departure_date, returnDate: i.return_date, adults: i.adults, childrenAges: i.children_ages ?? [] })
+                          return (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]" title={prof?.tc_destination_code ? 'Abre el buscador de siviajo.com con esta búsqueda cargada' : 'El perfil no tiene código de destino de TC: el buscador abre con fechas y pasajeros, elegí el destino a mano'}>
+                                Abrir búsqueda en siviajo.com
+                              </a>
+                              {q?.hotelUrl && <a href={q.hotelUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100">Ver hotel cotizado</a>}
+                            </div>
+                          )
+                        })()}
                         {i.status === 'approved' && (
-                          <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-amber-800">Hasta la Fase 6 se guarda a mano: entrá a siviajo.com, armá la idea con estos datos, guardala y pegá el ID acá.</p>
+                          <p className="mt-2 rounded border border-amber-200 bg-amber-50 p-2 text-amber-800">Hasta la Fase 6 se guarda a mano: abrí la búsqueda, armá la idea con estos datos, guardala y pegá el ID acá.</p>
                         )}
                       </div>
                     </div>

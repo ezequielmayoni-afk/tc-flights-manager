@@ -112,6 +112,7 @@ export interface QuoteSummary {
   currency: string
   hotelName: string | null
   hotelCode: string | null
+  hotelUrl: string | null
   board: string | null
   regimen: Regimen | null
   stars: number | null
@@ -170,6 +171,7 @@ export function summarizeQuote(res: QuoteMultiResponse): QuoteSummary {
     currency: res.moneda ?? 'USD',
     hotelName: option?.hotel?.nombre ?? null,
     hotelCode: option?.hotel?.code ?? null,
+    hotelUrl: option?.hotel?.url && /^https?:\/\//.test(option.hotel.url) ? option.hotel.url : null,
     board: option?.hotel?.regimen ?? null,
     regimen: canonicalRegimen(option?.hotel?.regimen),
     stars: option?.hotel?.estrellas ?? null,

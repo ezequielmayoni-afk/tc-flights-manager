@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { TrendAlertRow } from '@/lib/tendencias/queries'
+import { CreateIdeaDialog, type CreateIdeaTarget } from './CreateIdeaDialog'
 
 const SEVERITY_STYLE: Record<string, string> = {
   critical: 'border-red-200 bg-red-50',
@@ -19,13 +20,14 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 /**
- * Alertas abiertas con "Descartar". "Crear idea" se habilita en la Fase 3,
- * cuando exista package_ideas.
+ * Alertas abiertas: "Crear idea" las convierte en una idea cotizada según el
+ * perfil del destino (y las cierra); "Descartar" las cierra sin acción.
  */
 export function AlertsList({ alerts, weekByRun }: { alerts: TrendAlertRow[]; weekByRun: Record<string, string> }) {
   const router = useRouter()
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [ideaTarget, setIdeaTarget] = useState<CreateIdeaTarget | null>(null)
 
   async function dismiss(alert: TrendAlertRow) {
     setBusy(alert.id)
@@ -48,6 +50,7 @@ export function AlertsList({ alerts, weekByRun }: { alerts: TrendAlertRow[]; wee
 
   return (
     <div className="space-y-2 p-4">
+      <CreateIdeaDialog target={ideaTarget} onClose={() => { setIdeaTarget(null); router.refresh() }} />
       {error && <p className="text-xs text-red-600">{error}</p>}
       {alerts.map(alert => {
         const buyQueries = (alert.data?.buyQueries as string[] | undefined) ?? []
@@ -67,13 +70,21 @@ export function AlertsList({ alerts, weekByRun }: { alerts: TrendAlertRow[]; wee
                   <p className="mt-1 text-xs text-gray-600">Buscan: {buyQueries.join(' · ')}</p>
                 )}
               </div>
-              <button
-                onClick={() => dismiss(alert)}
-                disabled={busy === alert.id}
-                className="shrink-0 rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-              >
-                {busy === alert.id ? '…' : 'Descartar'}
-              </button>
+              <div className="flex shrink-0 gap-2">
+                <button
+                  onClick={() => setIdeaTarget({ name: alert.destination, slug: (alert.data?.destinationSlug as string | undefined) ?? alert.destination, alertId: alert.id, query: alert.data?.query as string | undefined })}
+                  className="rounded-md bg-[#1A237E] px-2 py-1 text-xs font-medium text-white hover:bg-[#283593]"
+                >
+                  Crear idea
+                </button>
+                <button
+                  onClick={() => dismiss(alert)}
+                  disabled={busy === alert.id}
+                  className="rounded-md border border-gray-300 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                >
+                  {busy === alert.id ? '…' : 'Descartar'}
+                </button>
+              </div>
             </div>
           </div>
         )

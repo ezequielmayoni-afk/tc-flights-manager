@@ -2,12 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { EMPTY_PROFILE, ProfileEditor, type ProfileFormValues } from './ProfileEditor'
 
-interface Profile {
-  code: string; name: string; family: string; cotizador_instance: string; tc_destination_code: string | null; iata_airport: string | null
-  regimen_required: string | null; nights_default: number; nights_allowed: number[]; stars_min: number; high_season_months: number[]
-  booking_window_days: number; stopover_threshold_pct: number | null; direct_required: boolean; active: boolean; notes: string | null; trend_slug: string | null
-}
+type Profile = ProfileFormValues
 
 const FAMILY_LABEL: Record<string, string> = { caribe: 'Caribe', brasil: 'Brasil', usa: 'Estados Unidos', europa: 'Europa', medio_oriente_asia: 'Medio Oriente y Asia', argentina: 'Argentina', sudamerica: 'Sudamérica' }
 const REGIMEN_LABEL: Record<string, string> = { all_inclusive: 'All inclusive', media_pension: 'Media pensión', desayuno: 'Desayuno', sin_pension: 'Sin pensión' }
@@ -18,6 +15,22 @@ export function ProfilesTable({ profiles }: { profiles: Profile[] }) {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState<string | null>(null)
+  const [editor, setEditor] = useState<{ mode: 'create' | 'edit'; values: ProfileFormValues } | null>(null)
+
+  async function remove(p: Profile) {
+    if (!window.confirm(`¿Borrar el perfil ${p.name} (${p.code})? Si tiene ideas o una landing asociada, no se va a poder.`)) return
+    setSaving(p.code); setError(null)
+    try {
+      const res = await fetch(`/api/producto/perfiles?code=${encodeURIComponent(p.code)}`, { method: 'DELETE' })
+      const body = await res.json()
+      if (!res.ok) throw new Error(body.error ?? 'No se pudo borrar')
+      router.refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setSaving(null)
+    }
+  }
 
   async function save(code: string, patch: Record<string, unknown>) {
     setSaving(code)
@@ -39,6 +52,11 @@ export function ProfilesTable({ profiles }: { profiles: Profile[] }) {
 
   return (
     <div>
+      {editor && <ProfileEditor initial={editor.values} mode={editor.mode} onClose={() => setEditor(null)} />}
+      <div className="flex items-center justify-between px-4 py-2">
+        <p className="text-xs text-gray-500">{profiles.length} destinos · {profiles.filter(p => p.review_pending).length} pendientes de revisión</p>
+        <button onClick={() => setEditor({ mode: 'create', values: EMPTY_PROFILE })} className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]">Nuevo perfil</button>
+      </div>
       {error && <p className="px-4 py-2 text-xs text-red-600">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
@@ -54,11 +72,12 @@ export function ProfilesTable({ profiles }: { profiles: Profile[] }) {
               <th className="px-3 py-2" title="Ahorro mínimo para aceptar escala en vez de directo. Vacío = manda el precio">Umbral escala %</th>
               <th className="px-3 py-2">Directo obligatorio</th>
               <th className="px-3 py-2">Activo</th>
+              <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {families.map(family => (
-              <FamilyRows key={family} family={family} profiles={profiles.filter(p => p.family === family)} save={save} saving={saving} parseList={parseList} />
+              <FamilyRows key={family} family={family} profiles={profiles.filter(p => p.family === family)} save={save} saving={saving} parseList={parseList} onEdit={p => setEditor({ mode: 'edit', values: p })} onDelete={remove} />
             ))}
           </tbody>
         </table>
@@ -67,14 +86,15 @@ export function ProfilesTable({ profiles }: { profiles: Profile[] }) {
   )
 }
 
-function FamilyRows({ family, profiles, save, saving, parseList }: { family: string; profiles: Profile[]; save: (code: string, patch: Record<string, unknown>) => Promise<void>; saving: string | null; parseList: (v: string) => number[] }) {
+function FamilyRows({ family, profiles, save, saving, parseList, onEdit, onDelete }: { family: string; profiles: Profile[]; save: (code: string, patch: Record<string, unknown>) => Promise<void>; saving: string | null; parseList: (v: string) => number[]; onEdit: (p: Profile) => void; onDelete: (p: Profile) => void }) {
   return (
     <>
-      <tr className="bg-gray-50/60"><td colSpan={10} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{FAMILY_LABEL[family] ?? family}</td></tr>
+      <tr className="bg-gray-50/60"><td colSpan={11} className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{FAMILY_LABEL[family] ?? family}</td></tr>
       {profiles.map(p => (
         <tr key={p.code} className={`align-top ${saving === p.code ? 'opacity-60' : ''} ${!p.active ? 'text-gray-400' : ''}`}>
           <td className="px-3 py-2">
-            <div className="font-medium text-gray-900">{p.name} <span className="font-normal text-gray-400">{p.code}</span></div>
+            <div className="font-medium text-gray-900">{p.name} <span className="font-normal text-gray-400">{p.code}</span>{p.review_pending && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800">pendiente de revisión</span>}</div>
+            {p.review_pending && <button onClick={() => save(p.code, { review_pending: false })} className="mt-1 text-[11px] text-emerald-700 hover:underline">Marcar como revisado</button>}
             <div className="text-[11px] text-gray-500">{p.cotizador_instance === 'nacional' ? 'cotizador nacional' : ''}{p.notes ? ` ${p.notes}` : ''}</div>
           </td>
           <td className="px-3 py-2 text-gray-600">{p.tc_destination_code ?? '—'} / {p.iata_airport ?? '—'}</td>
@@ -95,6 +115,11 @@ function FamilyRows({ family, profiles, save, saving, parseList }: { family: str
           <td className="px-3 py-2"><input type="number" min={0} max={100} className={`${inputCls} w-14`} defaultValue={p.stopover_threshold_pct ?? ''} onBlur={e => save(p.code, { stopover_threshold_pct: e.target.value === '' ? null : Number(e.target.value) })} /></td>
           <td className="px-3 py-2"><input type="checkbox" defaultChecked={p.direct_required} onChange={e => save(p.code, { direct_required: e.target.checked })} /></td>
           <td className="px-3 py-2"><input type="checkbox" defaultChecked={p.active} onChange={e => save(p.code, { active: e.target.checked })} /></td>
+          <td className="whitespace-nowrap px-3 py-2">
+            <button onClick={() => onEdit(p)} className="text-[11px] text-[#1A237E] hover:underline">Editar</button>
+            <span className="mx-1 text-gray-300">·</span>
+            <button onClick={() => onDelete(p)} className="text-[11px] text-red-600 hover:underline">Borrar</button>
+          </td>
         </tr>
       ))}
     </>
