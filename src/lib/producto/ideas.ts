@@ -86,6 +86,7 @@ export async function createIdea(db: Db, input: NewIdeaInput): Promise<NewIdeaRe
     created_by: input.createdBy ?? null,
   }
   const validation = profile ? validateIdea({ destinationCode: profile.code, origin: draftRow.origin, month, nights, adults: draftRow.adults, children: draftRow.children, regimen: draftRow.regimen, starsMin: draftRow.stars_min, directFlight: draftRow.direct_flight }, profile) : null
+  if (validation && profile?.review_pending) validation.soft.push(`El perfil de ${profile.name} se creó desde Tendencias y está pendiente de revisión`)
 
   const { data, error } = await db.from('package_ideas').insert({ ...draftRow, validation: validation ?? { ok: false, hard: ['Sin perfil de destino: elegí uno de la lista'], soft: [] } }).select('id').single()
   if (error || !data) throw new Error(`No se pudo crear la idea: ${error?.message ?? 'sin datos'}`)
@@ -98,7 +99,10 @@ export async function createIdea(db: Db, input: NewIdeaInput): Promise<NewIdeaRe
     jobId = r.jobId
     status = r.status
   }
-  await logEvent(db, { source: 'automation', action: 'idea.created', message: `Idea #${id}: ${draftRow.destination_name} ${nights} noches ${month}${status !== 'draft' ? ` (${status})` : ''}`, details: { ideaId: id, profile: profile?.code ?? null, source: draftRow.source, validation } }, null)
+  if (input.trendAlertId) {
+    await db.from('trend_alerts').update({ acknowledged: true, action_taken: 'idea_created', idea_id: id, acknowledged_by: input.createdBy ?? null, acknowledged_at: new Date().toISOString() }).eq('id', input.trendAlertId)
+  }
+  await logEvent(db, { source: 'automation', action: 'idea.created', message: `Idea #${id}: ${draftRow.destination_name} ${nights} noches ${month}${status !== 'draft' ? ` (${status})` : ''}`, details: { ideaId: id, profile: profile?.code ?? null, source: draftRow.source, trendAlertId: input.trendAlertId ?? null, validation } }, null)
   return { id, profile, status, validation, jobId }
 }
 

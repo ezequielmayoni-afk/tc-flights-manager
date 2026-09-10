@@ -104,7 +104,7 @@ export default async function TendenciasPage({ searchParams }: PageProps) {
         <section className="rounded-lg border border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-900">Alertas</h2>
-            <p className="text-xs text-gray-500">Picos de demanda y destinos que se buscan pero no están en el catálogo. Descartar las cierra; crear la idea llega con la Fase 3.</p>
+            <p className="text-xs text-gray-500">Picos de demanda, búsquedas en alza y destinos que se buscan pero no están en el catálogo. “Crear idea” la convierte en una idea cotizada según el perfil del destino; “Descartar” la cierra.</p>
           </div>
           <AlertsList alerts={openAlerts} weekByRun={weekByRun} />
         </section>
@@ -112,7 +112,7 @@ export default async function TendenciasPage({ searchParams }: PageProps) {
         <section className="rounded-lg border border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-900">Destinos {run ? `· ${run.week_label}` : ''}</h2>
-            <p className="text-xs text-gray-500">Score 0–100 relativo a la corrida: 45 % Google Trends (comparación directa, Argentina, último mes) + 20 % búsquedas relacionadas de “paquetes”, “viajes”, “vuelos”… + 20 % Autocomplete de Google + 10 % YouTube + 5 % tendencias ahora. El momentum compara con la corrida anterior.</p>
+            <p className="text-xs text-gray-500">Cada destino tiene “Crear idea”. Score 0–100 relativo a la corrida: 45 % Google Trends (comparación directa, Argentina, último mes) + 20 % búsquedas relacionadas de “paquetes”, “viajes”, “vuelos”… + 20 % Autocomplete de Google + 10 % YouTube + 5 % tendencias ahora. El momentum compara con la corrida anterior.</p>
           </div>
           <TrendsTable destinations={destinations} />
         </section>

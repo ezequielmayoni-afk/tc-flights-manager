@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 interface Profile {
   code: string; name: string; family: string; cotizador_instance: string; tc_destination_code: string | null; iata_airport: string | null
   regimen_required: string | null; nights_default: number; nights_allowed: number[]; stars_min: number; high_season_months: number[]
-  booking_window_days: number; stopover_threshold_pct: number | null; direct_required: boolean; active: boolean; notes: string | null; trend_slug: string | null
+  booking_window_days: number; stopover_threshold_pct: number | null; direct_required: boolean; active: boolean; notes: string | null; trend_slug: string | null; review_pending?: boolean
 }
 
 const FAMILY_LABEL: Record<string, string> = { caribe: 'Caribe', brasil: 'Brasil', usa: 'Estados Unidos', europa: 'Europa', medio_oriente_asia: 'Medio Oriente y Asia', argentina: 'Argentina', sudamerica: 'Sudamérica' }
@@ -74,7 +74,8 @@ function FamilyRows({ family, profiles, save, saving, parseList }: { family: str
       {profiles.map(p => (
         <tr key={p.code} className={`align-top ${saving === p.code ? 'opacity-60' : ''} ${!p.active ? 'text-gray-400' : ''}`}>
           <td className="px-3 py-2">
-            <div className="font-medium text-gray-900">{p.name} <span className="font-normal text-gray-400">{p.code}</span></div>
+            <div className="font-medium text-gray-900">{p.name} <span className="font-normal text-gray-400">{p.code}</span>{p.review_pending && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-800">pendiente de revisión</span>}</div>
+            {p.review_pending && <button onClick={() => save(p.code, { review_pending: false })} className="mt-1 text-[11px] text-emerald-700 hover:underline">Marcar como revisado</button>}
             <div className="text-[11px] text-gray-500">{p.cotizador_instance === 'nacional' ? 'cotizador nacional' : ''}{p.notes ? ` ${p.notes}` : ''}</div>
           </td>
           <td className="px-3 py-2 text-gray-600">{p.tc_destination_code ?? '—'} / {p.iata_airport ?? '—'}</td>
