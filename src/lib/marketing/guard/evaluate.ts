@@ -192,6 +192,13 @@ export async function runMarketingGuard(
       weekLabel,
     }
     const decisions = evaluatePackage(input)
+    // Propuestas viejas de este paquete que ya no salen de la evaluación (ej. era "pausar" y ahora hay
+    // otra salida con lugares → "redirigir"): se vencen para que Tareas muestre sólo lo vigente.
+    const currentKeys = decisions.map(d => d.dedupeKey)
+    let stale = db.from('ad_decisions').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('package_id', p.id).eq('status', 'proposed')
+    if (currentKeys.length > 0) stale = stale.not('dedupe_key', 'in', `(${currentKeys.map(k => `"${k}"`).join(',')})`)
+    const { data: staleRows } = await stale.select('id')
+    summary.expired += staleRows?.length ?? 0
     for (const d of decisions) {
       summary.byRule[d.rule] = (summary.byRule[d.rule] ?? 0) + 1
       const id = await persistDecision(db, p, d, mode, options.jobId ?? null)
