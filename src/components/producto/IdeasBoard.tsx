@@ -237,7 +237,7 @@ export function IdeasBoard({ profiles }: { profiles: ProfileOption[] }) {
                           const url = siviajoPackageSearchUrl({ origin: i.origin, destinationTcCode: prof?.tc_destination_code ?? null, departDate: i.chosen_departure_date ?? i.departure_date, returnDate: i.return_date, adults: i.adults, childrenAges: i.children_ages ?? [] })
                           return (
                             <div className="mt-2 flex flex-wrap gap-2">
-                              <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]" title={prof?.tc_destination_code ? 'Abre el buscador de siviajo.com con esta búsqueda cargada' : 'El perfil no tiene código de destino de TC: el buscador abre con fechas y pasajeros, elegí el destino a mano'}>
+                              <a href={url} target="_blank" rel="noopener noreferrer" className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]" title={prof?.tc_destination_code ? 'Abre siviajo.com y dispara esta búsqueda' : 'El perfil no tiene código de destino de TC: el buscador abre con fechas y pasajeros, elegí el destino a mano'}>
                                 Abrir búsqueda en siviajo.com
                               </a>
                               {q?.hotelUrl && <a href={q.hotelUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100">Ver hotel cotizado</a>}
