@@ -41,6 +41,12 @@ type OptionalEnvVars = {
   SERPAPI_API_KEY?: string
   /** Propiedad de Search Console; default https://www.siviajo.com/ */
   GOOGLE_SEARCH_CONSOLE_SITE_URL?: string
+  /**
+   * Propiedad que usa el job `gsc.vuelos_sync`; default `sc-domain:siviajo.com`
+   * (propiedad de dominio: cubre www.siviajo.com y vuelos.siviajo.com). Autentica
+   * con la service account de `GOOGLE_DRIVE_CREDENTIALS`, sin impersonar.
+   */
+  GSC_SITE_URL?: string
   /** Cotizador-bot (Fase 3): http://127.0.0.1:8090 en el VPS. */
   COTIZADOR_URL?: string
   COTIZADOR_API_KEY?: string

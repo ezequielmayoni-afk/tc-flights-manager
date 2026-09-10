@@ -52,6 +52,10 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         { kind: 'cupo.link_refresh', payload: { at: day }, dedupeKey: `cupo.link_refresh:${day}` },
         { kind: 'health.check', payload: { at: day }, dedupeKey: `health.check:${day}` },
         { kind: 'health.digest', payload: { at: day }, dedupeKey: `health.digest:${day}`, runAfter: digestAt },
+        // Search Console de vuelos.siviajo.com: sitemap, indexación y métricas.
+        // Sin ventana horaria (lane `gsc`), gasta como mucho 23 de las 100
+        // llamadas del día.
+        { kind: 'gsc.vuelos_sync', payload: { at: day }, dedupeKey: `gsc.vuelos_sync:${day}` },
       ]
     }
     case 'nightly':

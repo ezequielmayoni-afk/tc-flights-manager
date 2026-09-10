@@ -1,11 +1,17 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/Header'
+import { GscSyncButton } from '@/components/vuelos-baratos/admin/GscSyncButton'
+import { GscUrlTable, type GscUrlRow } from '@/components/vuelos-baratos/admin/GscUrlTable'
 import { RoutesTable, type AdminDestinationGroup, type AdminRouteRow } from '@/components/vuelos-baratos/admin/RoutesTable'
 import { checkSectionAccess } from '@/lib/auth'
+import { GSC_PROVIDER, gscSiteUrl, isGscConfigured } from '@/lib/gsc/client'
+import { getGscSummary } from '@/lib/gsc/queries'
+import type { GscSummary } from '@/lib/gsc/types'
 import { getBudgetStatus } from '@/lib/jobs/budget'
 import { FLAGS, isFlagEnabled, loadFlags } from '@/lib/jobs/flags'
 import { isSabreConfigured } from '@/lib/sabre/client'
+import type { Db } from '@/lib/jobs/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { bestOverall, bestPerPair, freshnessLabel, lastObservedAt } from '@/lib/vuelos-baratos/aggregates'
 import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
@@ -27,6 +33,10 @@ const HEALTH_HOURS = 24
 const PROVEEDOR_SONDAS = 'cotizador_probe'
 /** Una unidad = una búsqueda BargainFinderMax. */
 const PROVEEDOR_SABRE = 'sabre'
+/** Una unidad = una llamada a la API de Search Console (100/día). */
+const PROVEEDOR_GSC = GSC_PROVIDER
+/** Ventana de la card de Search Console (la misma que muestra Google por defecto). */
+const GSC_DAYS = 28
 
 /** El precio se arma acá y no en el cliente: `toLocaleString` no da igual en los dos. */
 function money(value: number | null, currency: string | null): string {
@@ -35,12 +45,92 @@ function money(value: number | null, currency: string | null): string {
   return currency && currency !== 'USD' ? `${currency} ${monto}` : `US$ ${monto}`
 }
 
+function numero(value: number): string {
+  return Math.round(value).toLocaleString('es-AR')
+}
+
+function decimal(value: number, digits = 1): string {
+  return value.toLocaleString('es-AR', { minimumFractionDigits: digits, maximumFractionDigits: digits })
+}
+
+function fecha(iso: string | null): string {
+  if (!iso) return '—'
+  const ts = Date.parse(iso)
+  if (Number.isNaN(ts)) return '—'
+  return new Date(ts).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' })
+}
+
+/** Google devuelve el veredicto en inglés y en mayúsculas; acá se lee en castellano. */
+function veredicto(verdict: string | null): { label: string; tone: GscUrlRow['tone'] } {
+  switch (verdict) {
+    case 'PASS':
+      return { label: 'Indexada', tone: 'ok' }
+    case 'PARTIAL':
+      return { label: 'Con avisos', tone: 'warn' }
+    case 'FAIL':
+      return { label: 'Excluida', tone: 'warn' }
+    case 'NEUTRAL':
+      return { label: 'Sin indexar', tone: 'muted' }
+    default:
+      return { label: 'Sin inspeccionar', tone: 'muted' }
+  }
+}
+
+/**
+ * Search Console de la landing.
+ *
+ * Va aparte y con `try`: las tablas `gsc_*` se crean con la migración que
+ * aplica el controlador, y hasta entonces (o si Supabase se cae) la pantalla
+ * de rutas tiene que seguir abriendo — la card muestra "sin datos" y listo.
+ */
+async function loadGsc(db: Db, base: string): Promise<GscSummary | null> {
+  try {
+    return await getGscSummary(db, { site: gscSiteUrl(), pagePrefix: base, days: GSC_DAYS })
+  } catch (err) {
+    console.error('[vuelos-baratos] No se pudo leer Search Console:', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/** Une lo que inspeccionamos con lo que trajo tráfico: una fila por URL. */
+function gscRows(gsc: GscSummary | null, base: string, now: Date): GscUrlRow[] {
+  if (!gsc) return []
+
+  const sinBarra = (url: string) => url.replace(/\/+$/, '')
+  const totales = new Map(gsc.pages.map(p => [sinBarra(p.page), p]))
+  const urls = new Set([...gsc.urlStatus.map(u => sinBarra(u.url)), ...totales.keys()])
+  const estados = new Map(gsc.urlStatus.map(u => [sinBarra(u.url), u]))
+
+  const filas = [...urls].map(url => {
+    const estado = estados.get(url)
+    const total = totales.get(url)
+    const { label, tone } = veredicto(estado?.verdict ?? null)
+    const row: GscUrlRow = {
+      url,
+      path: url.startsWith(base) ? url.slice(base.length) || '/' : url,
+      verdict: label,
+      tone,
+      coverage: estado?.coverage_state ?? null,
+      crawled: estado?.last_crawl_time ? freshnessLabel(estado.last_crawl_time, now) : '—',
+      clicks: numero(total?.clicks ?? 0),
+      impressions: numero(total?.impressions ?? 0),
+      position: total && total.impressions > 0 ? decimal(total.position) : '—',
+    }
+    return { row, clicks: total?.clicks ?? 0 }
+  })
+
+  // Primero lo que trae tráfico; entre las que no traen nada, por URL.
+  return filas.sort((a, b) => b.clicks - a.clicks || a.row.path.localeCompare(b.row.path)).map(f => f.row)
+}
+
 async function loadPage() {
   const db = createAdminClient()
   const now = new Date()
   const fromDate = todayIso(now)
 
-  const [destinations, routes, health, jobs, budget, sabreBudget, estimates24h, lastEstimateAt, flags] = await Promise.all([
+  const base = publicBaseUrl()
+
+  const [destinations, routes, health, jobs, budget, sabreBudget, estimates24h, lastEstimateAt, flags, gscBudget, gsc] = await Promise.all([
     listLandingDestinations(db),
     listRoutes(db),
     getSweepHealth(db, HEALTH_HOURS),
@@ -50,6 +140,8 @@ async function loadPage() {
     countEstimatesSince(db, HEALTH_HOURS),
     getLastEstimateAtByRoute(db),
     loadFlags(db),
+    getBudgetStatus(db, PROVEEDOR_GSC),
+    loadGsc(db, base),
   ])
 
   // Los pares vigentes hacen falta para el mínimo y la frescura de cada ruta.
@@ -59,7 +151,6 @@ async function loadPage() {
     { fromDate }
   )
 
-  const base = publicBaseUrl()
   const routesByDestination = new Map<string, AdminRouteRow[]>()
   for (const route of routes) {
     const salud = health.get(route.id)
@@ -128,6 +219,29 @@ async function loadPage() {
     cotizadorOff: !isFlagEnabled(flags, FLAGS.cotizadorCalls),
     sabreOff: !isFlagEnabled(flags, FLAGS.sabreCalls),
     sabreUnconfigured: !isSabreConfigured(),
+    gscBudget,
+    gscOff: !isFlagEnabled(flags, FLAGS.gscWrites),
+    gscUnconfigured: !isGscConfigured(),
+    gscSite: gscSiteUrl(),
+    gscRows: gscRows(gsc, base, now),
+    gsc: gsc
+      ? {
+          clicks: numero(gsc.clicks),
+          impressions: numero(gsc.impressions),
+          ctr: gsc.impressions > 0 ? `${decimal(gsc.ctr * 100, 2)} %` : '—',
+          position: gsc.impressions > 0 ? decimal(gsc.position) : '—',
+          sitemap: gsc.sitemap
+            ? {
+                submitted: fecha(gsc.sitemap.last_submitted),
+                pending: gsc.sitemap.is_pending === true,
+                indexed: numero(gsc.sitemap.indexed_urls ?? 0),
+                urls: numero(gsc.sitemap.submitted_urls ?? 0),
+                leido: gsc.sitemap.submitted_urls !== null,
+                errores: gsc.sitemap.errors ?? 0,
+              }
+            : null,
+        }
+      : null,
   }
 }
 
@@ -143,8 +257,26 @@ export default async function VuelosBaratosAdminPage() {
   const { authorized } = await checkSectionAccess('producto')
   if (!authorized) redirect('/dashboard')
 
-  const { groups, budget, sabreBudget, estimates24h, totales, queued, running, totalJobs, sweepOff, cotizadorOff, sabreOff, sabreUnconfigured } =
-    await loadPage()
+  const {
+    groups,
+    budget,
+    sabreBudget,
+    estimates24h,
+    totales,
+    queued,
+    running,
+    totalJobs,
+    sweepOff,
+    cotizadorOff,
+    sabreOff,
+    sabreUnconfigured,
+    gsc,
+    gscRows: urlRows,
+    gscBudget,
+    gscOff,
+    gscUnconfigured,
+    gscSite,
+  } = await loadPage()
   const publicados = groups.filter(g => g.active).length
   const rutasActivas = groups.reduce((acc, g) => acc + g.routes.filter(r => r.active).length, 0)
 
@@ -261,6 +393,85 @@ export default async function VuelosBaratosAdminPage() {
             </p>
           </div>
           <RoutesTable groups={groups} />
+        </section>
+
+        <section className="rounded-lg border border-gray-200 bg-white">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-200 px-4 py-3">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900">Search Console ({GSC_DAYS} días)</h2>
+              <p className="text-xs text-gray-500">
+                Propiedad <code>{gscSite}</code> · {gscBudget.spentToday}
+                {gscBudget.dailyCap ? ` / ${gscBudget.dailyCap}` : ''} llamadas hoy · el job diario reenvía el sitemap e inspecciona hasta 20 URLs
+              </p>
+            </div>
+            <GscSyncButton />
+          </div>
+
+          {(gscOff || gscUnconfigured) && (
+            <p className="border-b border-gray-200 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+              {gscUnconfigured ? (
+                <>
+                  Falta <code>GOOGLE_DRIVE_CREDENTIALS</code> en <code>/opt/hub/.env.local</code>: el job termina omitido y estos números no se
+                  actualizan.
+                </>
+              ) : (
+                <>
+                  <code>{FLAGS.gscWrites}</code> está apagado en{' '}
+                  <Link href="/automatizacion" className="font-medium underline underline-offset-2">
+                    /automatizacion
+                  </Link>
+                  : el job termina omitido y estos números no se actualizan.
+                </>
+              )}
+            </p>
+          )}
+
+          <div className="grid gap-4 border-b border-gray-200 px-4 py-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Clics</p>
+              <p className="text-2xl font-semibold tabular-nums text-gray-900">{gsc ? gsc.clicks : '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">Impresiones</p>
+              <p className="text-2xl font-semibold tabular-nums text-gray-900">{gsc ? gsc.impressions : '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs uppercase tracking-wide text-gray-500">CTR</p>
+              <p className="text-2xl font-semibold tabular-nums text-gray-900">{gsc ? gsc.ctr : '—'}</p>
+            </div>
+            <div title="Ponderada por impresiones, como la calcula Google">
+              <p className="text-xs uppercase tracking-wide text-gray-500">Posición media</p>
+              <p className="text-2xl font-semibold tabular-nums text-gray-900">{gsc ? gsc.position : '—'}</p>
+            </div>
+          </div>
+
+          <p className="border-b border-gray-200 px-4 py-2 text-xs text-gray-600">
+            {gsc?.sitemap ? (
+              <>
+                <strong>Sitemap</strong>: enviado {gsc.sitemap.submitted} · {gsc.sitemap.pending ? 'pendiente de procesar' : 'procesado'}
+                {gsc.sitemap.leido ? (
+                  <>
+                    {' '}
+                    · {gsc.sitemap.indexed}/{gsc.sitemap.urls} URLs indexadas
+                  </>
+                ) : (
+                  ' · Google todavía no lo descargó'
+                )}
+                {gsc.sitemap.errores > 0 ? ` · ${gsc.sitemap.errores} errores` : ''}
+              </>
+            ) : (
+              <>
+                <strong>Sitemap</strong>: sin datos todavía. El job diario lo reenvía y guarda acá lo que responde Google.
+              </>
+            )}
+          </p>
+
+          <GscUrlTable rows={urlRows} />
+
+          <p className="px-4 py-3 text-xs text-gray-500">
+            Un dominio nuevo tarda días o semanas en indexarse: mientras tanto la inspección dice &ldquo;sin indexar&rdquo; y no es un error.
+            Lo que acelera es que le lleguen enlaces desde siviajo.com y el blog.
+          </p>
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600">

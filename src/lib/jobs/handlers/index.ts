@@ -18,6 +18,7 @@ import { flightsSweepPlanHandler } from './flights-sweep-plan'
 import { flightsSweepHandler } from './flights-sweep'
 import { flightsEstimatePlanHandler } from './flights-estimate-plan'
 import { flightsEstimateHandler } from './flights-estimate'
+import { gscVuelosSyncHandler } from './gsc-vuelos-sync'
 
 /**
  * Registro de handlers: un archivo por `kind`. Las fases del loop van sumando
@@ -47,6 +48,7 @@ const HANDLERS: HandlerDefinition[] = [
   flightsSweepHandler,
   flightsEstimatePlanHandler,
   flightsEstimateHandler,
+  gscVuelosSyncHandler,
 ]
 
 const byKind = new Map(HANDLERS.map(h => [h.kind, h]))
