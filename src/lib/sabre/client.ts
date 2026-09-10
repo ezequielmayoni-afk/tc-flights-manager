@@ -481,18 +481,18 @@ function faultstring(xml: string): string {
 /**
  * Abre una sesión de Sabre. No se registra en `external_calls`: lo facturable
  * es la búsqueda, no la sesión (y una sesión sirve para muchas búsquedas).
+ *
+ * `SabreAuthError` significa que Sabre contestó y no dio token (credenciales,
+ * PCC, dominio). Una caída de red o un timeout se propagan tal cual: son
+ * transitorios y el que llama puede reintentar, cosa que con un error de
+ * credenciales no tiene sentido.
  */
 export async function createSabreSession(fetchImpl?: typeof fetch): Promise<SabreSession> {
   const cfg = sabreConfig()
   const conversationId = `hub-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 
-  let xml = ''
-  try {
-    const res = await postSoap(cfg, 'OTA', buildSessionCreateEnvelope(cfg, conversationId), SESSION_TIMEOUT_MS, fetchImpl)
-    xml = await res.text().catch(() => '')
-  } catch (err) {
-    throw new SabreAuthError(err instanceof Error ? err.message : String(err))
-  }
+  const res = await postSoap(cfg, 'OTA', buildSessionCreateEnvelope(cfg, conversationId), SESSION_TIMEOUT_MS, fetchImpl)
+  const xml = await res.text().catch(() => '')
 
   const token = /<(?:[\w.-]+:)?BinarySecurityToken[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?BinarySecurityToken>/.exec(xml)?.[1]?.trim()
   if (!token) throw new SabreAuthError(faultstring(xml) || 'sin token')

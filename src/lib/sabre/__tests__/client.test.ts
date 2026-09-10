@@ -99,6 +99,14 @@ describe('createSabreSession', () => {
     await expect(createSabreSession(fetchMock)).rejects.toThrow(/Authorization failed/)
   })
 
+  it('un corte de red se propaga tal cual, no como error de credenciales', async () => {
+    const fetchMock = stub(async () => {
+      throw new TypeError('fetch failed')
+    })
+    // Reintentar tiene sentido; con SabreAuthError el job lo daría por perdido.
+    await expect(createSabreSession(fetchMock)).rejects.toBeInstanceOf(TypeError)
+  })
+
   it('lanza SabreAuthError si no vino token', async () => {
     const fetchMock = stub(async () => soap('<Envelope><Body><SessionCreateRS/></Body></Envelope>'))
     await expect(createSabreSession(fetchMock)).rejects.toThrow(/sin token/)
