@@ -33,6 +33,8 @@ const SESSION_OK = `<Envelope><Header><wsse:Security xmlns:wsse="http://schemas.
 const SIN_ITINERARIOS = `<Envelope><Body><OTA_AirLowFareSearchRS><Success/><PricedItineraries/></OTA_AirLowFareSearchRS></Body></Envelope>`
 const SIN_DISPONIBILIDAD = `<Envelope><Body><OTA_AirLowFareSearchRS><Errors><Error Type="Application" Code="ERR.2SG.SEC" ShortText="NO AVAILABILITY FOR THIS REQUEST"/></Errors></OTA_AirLowFareSearchRS></Body></Envelope>`
 const FAULT = `<Envelope><Body><Fault><faultstring>Invalid Request: schema validation failed</faultstring></Fault></Body></Envelope>`
+const HOST_CAIDO = `<Envelope><Body><OTA_AirLowFareSearchRS><Errors><Error Type="Application" Code="ERR.SWS.HOST.ERROR_IN_RESPONSE" ShortText="SYSTEM NOT AVAILABLE"/></Errors></OTA_AirLowFareSearchRS></Body></Envelope>`
+const HOST_OCUPADO = `<Envelope><Body><OTA_AirLowFareSearchRS><Errors><Error Type="Application" Code="ERR.SWS.HOST.ERROR_IN_RESPONSE" ShortText="NOT AVAILABLE - TRY LATER"/></Errors></OTA_AirLowFareSearchRS></Body></Envelope>`
 const SESION_PERDIDA = `<Envelope><Body><Fault><faultstring>USG_INVALID_SESSION: session token is not valid</faultstring></Fault></Body></Envelope>`
 
 function soap(xml: string, status = 200): Response {
@@ -57,8 +59,14 @@ function acciones(fetchMock: ReturnType<typeof vi.fn>): string[] {
   return fetchMock.mock.calls.map((c) => String((c[1] as RequestInit & { headers: Record<string, string> }).headers.SOAPAction))
 }
 
+const SABRE_KEYS = ['SABRE_USERNAME', 'SABRE_PASSWORD', 'SABRE_PCC', 'SABRE_CLIENT_ID', 'SABRE_CLIENT_SECRET', 'SABRE_DOMAIN', 'SABRE_SOAP_URL'] as const
+// El entorno real puede tener credenciales cargadas: se guardan y se reponen
+// para que estos tests no se las pisen a nadie.
+const entornoPrevio = new Map<string, string | undefined>()
+
 beforeEach(() => {
   vi.clearAllMocks()
+  for (const key of SABRE_KEYS) entornoPrevio.set(key, process.env[key])
   process.env.SABRE_USERNAME = 'usuario'
   process.env.SABRE_PASSWORD = 'clave'
   process.env.SABRE_PCC = '6U9L'
@@ -72,6 +80,11 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers()
+  for (const key of SABRE_KEYS) {
+    const previo = entornoPrevio.get(key)
+    if (previo === undefined) delete process.env[key]
+    else process.env[key] = previo
+  }
 })
 
 describe('createSabreSession', () => {
@@ -163,9 +176,29 @@ describe('bargainFinderMax', () => {
   })
 
   it('un faultstring de esquema es un error que no se reintenta', async () => {
-    const res = await bargainFinderMax(db, SESSION, INPUT, { fetchImpl: stub(async () => soap(FAULT, 500)) })
+    const res = await bargainFinderMax(db, SESSION, INPUT, { fetchImpl: stub(async () => soap(FAULT)) })
     expect(res).toMatchObject({ status: 'error', retryable: false, sessionLost: false })
     expect(res.status === 'error' && res.error).toContain('schema validation failed')
+    expect(mocks.recordExternalCall.mock.calls[0][1]).toMatchObject({ status: 'error' })
+  })
+
+  it('el mismo fault con un 5xx sí se reintenta', async () => {
+    // El pedido puede haber sido válido y haberse roto el server: no se descarta.
+    const res = await bargainFinderMax(db, SESSION, INPUT, { fetchImpl: stub(async () => soap(FAULT, 500)) })
+    expect(res).toMatchObject({ status: 'error', retryable: true, sessionLost: false })
+  })
+
+  it('"SYSTEM NOT AVAILABLE" es una caída del host, no una búsqueda vacía', async () => {
+    const res = await bargainFinderMax(db, SESSION, INPUT, { fetchImpl: stub(async () => soap(HOST_CAIDO)) })
+    expect(res).toMatchObject({ status: 'error', retryable: true, sessionLost: false })
+    expect(res.status === 'error' && res.error).toContain('SYSTEM NOT AVAILABLE')
+    // Registrarla como ok escondería la caída en el tablero de presupuesto.
+    expect(mocks.recordExternalCall.mock.calls[0][1]).toMatchObject({ status: 'error' })
+  })
+
+  it('"NOT AVAILABLE - TRY LATER" también es error reintentable', async () => {
+    const res = await bargainFinderMax(db, SESSION, INPUT, { fetchImpl: stub(async () => soap(HOST_OCUPADO)) })
+    expect(res).toMatchObject({ status: 'error', retryable: true, sessionLost: false })
     expect(mocks.recordExternalCall.mock.calls[0][1]).toMatchObject({ status: 'error' })
   })
 
@@ -261,7 +294,7 @@ describe('createSabreShopper', () => {
     expect(acciones(fetchMock).filter((a) => a === '"BargainFinderMaxRQ"')).toHaveLength(2)
   })
 
-  it('renueva la sesión cuando pasó el TTL', async () => {
+  it('renueva la sesión cuando pasó el TTL y cierra la vieja antes', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-09-10T01:00:00Z'))
     const fetchMock = fakeSabre(() => soap(BFM_OK))
@@ -271,7 +304,60 @@ describe('createSabreShopper', () => {
     vi.setSystemTime(new Date(Date.now() + SESSION_TTL_MS + 1_000))
     await shopper.shop(INPUT)
 
-    expect(acciones(fetchMock).filter((a) => a === '"OTA"')).toHaveLength(2)
+    // La vencida por TTL sigue viva del lado de Sabre y el PCC tiene cupo de
+    // sesiones: se cierra antes de pedir la nueva.
+    expect(acciones(fetchMock)).toEqual([
+      '"OTA"',
+      '"BargainFinderMaxRQ"',
+      '"SessionCloseRQ"',
+      '"OTA"',
+      '"BargainFinderMaxRQ"',
+    ])
+  })
+
+  it('con la sesión perdida NO cierra la vieja: ya no existe', async () => {
+    let bfm = 0
+    const fetchMock = fakeSabre(() => {
+      bfm++
+      return bfm === 1 ? soap(SESION_PERDIDA, 500) : soap(BFM_OK)
+    })
+    const shopper = createSabreShopper(db, { fetchImpl: fetchMock })
+    await shopper.shop(INPUT)
+    expect(acciones(fetchMock)).not.toContain('"SessionCloseRQ"')
+  })
+
+  it('si no se puede abrir la sesión devuelve error reintentable, no lanza', async () => {
+    const fetchMock = stub(async () => {
+      throw new TypeError('fetch failed')
+    })
+    const shopper = createSabreShopper(db, { fetchImpl: fetchMock })
+
+    const res = await shopper.shop(INPUT)
+    expect(res).toMatchObject({ status: 'error', retryable: true, sessionLost: false })
+    expect(res.status === 'error' && res.error).toContain('fetch failed')
+    // No se mandó ningún BFM: no se cuenta ni se registra.
+    expect(shopper.callsMade).toBe(0)
+    expect(mocks.recordExternalCall).not.toHaveBeenCalled()
+  })
+
+  it('si las credenciales están mal el error no es reintentable', async () => {
+    const fetchMock = stub(async () => soap('<Envelope><Body><Fault><faultstring>Authorization failed</faultstring></Fault></Body></Envelope>', 500))
+    const shopper = createSabreShopper(db, { fetchImpl: fetchMock })
+
+    const res = await shopper.shop(INPUT)
+    expect(res).toMatchObject({ status: 'error', retryable: false, sessionLost: false })
+    expect(res.status === 'error' && res.error).toContain('Authorization failed')
+    expect(shopper.callsMade).toBe(0)
+  })
+
+  it('el presupuesto agotado sigue lanzando y no cuenta la llamada', async () => {
+    mocks.getBudgetStatus.mockResolvedValue({ exhausted: true, pct: 101 })
+    const fetchMock = fakeSabre(() => soap(BFM_OK))
+    const shopper = createSabreShopper(db, { fetchImpl: fetchMock })
+
+    await expect(shopper.shop(INPUT)).rejects.toBeInstanceOf(SabreBudgetExhausted)
+    expect(shopper.callsMade).toBe(0)
+    expect(acciones(fetchMock)).not.toContain('"BargainFinderMaxRQ"')
   })
 
   it('close sin sesión abierta no llama a Sabre', async () => {

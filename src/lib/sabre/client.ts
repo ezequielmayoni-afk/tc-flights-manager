@@ -44,8 +44,17 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 /** Aviso que Sabre manda en toda respuesta; no es un problema de la búsqueda. */
 const IGNORED_ERROR_CODES = new Set(['DEPRECATEDRS'])
 
-/** Textos que significan "no hay vuelos", no "se rompió algo". */
-const SIN_DISPONIBILIDAD_RE = /no\s+availability|no\s+fares|no\s+combinable|no\s+flights|not\s+available|no\s+itinerar|sin\s+disponibilidad/i
+/**
+ * Textos que significan "no hay vuelos", no "se rompió algo".
+ *
+ * Acotado a propósito: un "NOT AVAILABLE" suelto casi siempre es el host de
+ * Sabre caído ("SYSTEM NOT AVAILABLE", "NOT AVAILABLE - TRY LATER"), y tomarlo
+ * por búsqueda vacía haría que una caída se registre como noche sin tarifas.
+ */
+const SIN_DISPONIBILIDAD_RE = /no\s+availability|no\s+fares?\b|no\s+combinable|no\s+flights|no\s+itinerar|not\s+available\s+for\s+the\s+requested|sin\s+disponibilidad/i
+
+/** El host de Sabre no está o está saturado: reintentar más tarde sí sirve. */
+const HOST_CAIDO_RE = /try\s+later|try\s+again|system\s+not\s+available|service\s+unavailable|temporarily\s+unavailable|host\s+(?:down|error|not\s+available)|timed?\s*out|too\s+many\s+requests/i
 
 /** Señales de que la sesión murió y hay que abrir otra. */
 const SESION_PERDIDA_RE = /usg_invalid_session|session|token|expired/i
@@ -388,8 +397,11 @@ function parseItinerary(itinXml: string): BfmItinerary | null {
   const totalAttrs = totalBlock ? firstBlock(totalBlock.inner, 'TotalFare')?.attrs : null
   const fallback = firstBlock(firstBlock(itinXml, 'PassengerFare')?.inner ?? '', 'TotalFare')?.attrs
   const attrs = totalAttrs ?? fallback ?? ''
-  const monto = Number(attr(attrs, 'Amount') ?? '')
-  if (!Number.isFinite(monto)) return null
+  // Un itinerario sin tarifa se descarta, no vale 0: `Number('')` es 0 y un 0
+  // ordena primero, así que se publicaría como el más barato del mes.
+  const bruto = attr(attrs, 'Amount')
+  const monto = bruto === null || bruto.trim() === '' ? Number.NaN : Number(bruto)
+  if (!Number.isFinite(monto) || monto <= 0) return null
 
   const codigos: string[] = []
   for (const s of [...ida, ...vuelta]) {
@@ -569,13 +581,17 @@ export async function bargainFinderMax(
       }
       return { status: 'empty', itineraries: [], elapsedMs }
     }
-    if (SIN_DISPONIBILIDAD_RE.test(diagnostico)) {
+    // El host caído se mira primero: "NOT AVAILABLE - TRY LATER" no es una
+    // búsqueda sin resultados y registrarla como `empty` escondería la caída.
+    const hostCaido = HOST_CAIDO_RE.test(diagnostico)
+    if (!hostCaido && SIN_DISPONIBILIDAD_RE.test(diagnostico)) {
       return { status: 'empty', itineraries: [], elapsedMs, message: diagnostico }
     }
 
-    // Fault o error de esquema: reintentar con el mismo pedido no cambia nada.
+    // Fault o error de esquema: reintentar con el mismo pedido no cambia nada,
+    // salvo que Sabre además haya contestado 5xx o avisado que vuelve después.
     registro = 'error'
-    return { status: 'error', itineraries: [], elapsedMs, error: diagnostico, retryable: false, sessionLost: false }
+    return { status: 'error', itineraries: [], elapsedMs, error: diagnostico, retryable: !res.ok || hostCaido, sessionLost: false }
   } catch (err) {
     const elapsedMs = Date.now() - started
     const esTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError')
@@ -611,8 +627,11 @@ export interface SabreShopper {
  *
  * Abre la sesión en la primera búsqueda (si el job no llega a buscar nada, no
  * gasta una), la renueva cuando se pasa el TTL o cuando Sabre avisa que la
- * perdió (un reintento, uno solo) y la cierra con `close()`. La sesión vencida
- * no se cierra: ya no existe del lado de Sabre.
+ * perdió (un reintento, uno solo) y la cierra con `close()`.
+ *
+ * `shop` devuelve un `BfmResult` incluso si no se pudo abrir la sesión: una
+ * ruta que falla no debe cortar la noche entera. Lo único que sigue lanzando es
+ * el presupuesto agotado (hay que frenar todo) y un input inválido (es un bug).
  */
 export function createSabreShopper(
   db: Db,
@@ -624,14 +643,41 @@ export function createSabreShopper(
 
   async function sesionVigente(): Promise<SabreSession> {
     if (session && Date.now() - session.createdAt <= SESSION_TTL_MS) return session
+    if (session) {
+      // Vencida por TTL pero todavía viva del lado de Sabre: el PCC tiene un
+      // cupo de sesiones abiertas y dejarla colgada lo consume hasta que expire.
+      // (Con `sessionLost` no se pasa por acá: esa sesión ya no existe.)
+      const vencida = session
+      session = null
+      await closeSabreSession(vencida, fetchImpl)
+    }
     session = await createSabreSession(fetchImpl)
     return session
   }
 
   async function buscar(input: BfmInput): Promise<BfmResult> {
-    const actual = await sesionVigente()
+    const inicio = Date.now()
+    let actual: SabreSession
+    try {
+      actual = await sesionVigente()
+    } catch (err) {
+      // Credenciales mal no mejora reintentando; una caída de red sí.
+      const esAuth = err instanceof SabreAuthError
+      return {
+        status: 'error',
+        itineraries: [],
+        elapsedMs: Date.now() - inicio,
+        error: err instanceof Error ? err.message : String(err),
+        retryable: !esAuth,
+        sessionLost: false,
+      }
+    }
+
+    const res = await bargainFinderMax(db, actual, input, { jobId, fetchImpl })
+    // Se cuenta recién acá: si el presupuesto o el input frenaron la llamada,
+    // `bargainFinderMax` lanzó y no se mandó ningún pedido a Sabre.
     callsMade++
-    return bargainFinderMax(db, actual, input, { jobId, fetchImpl })
+    return res
   }
 
   return {

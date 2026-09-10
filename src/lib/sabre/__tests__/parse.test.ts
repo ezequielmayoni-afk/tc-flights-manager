@@ -121,3 +121,32 @@ describe('parseBfmResponse con etiquetas con espacio de nombres', () => {
     expect(parseBfmResponse('<Errors></Errors><PricedItineraries></PricedItineraries>')).toEqual({ itineraries: [], errors: [], sessionLost: false })
   })
 })
+
+describe('parseBfmResponse con itinerarios sin tarifa', () => {
+  function itinerario(fare: string): string {
+    return `<PricedItinerary><AirItinerary><OriginDestinationOptions>
+      <OriginDestinationOption><FlightSegment DepartureDateTime="2026-12-02T10:00:00" ArrivalDateTime="2026-12-02T19:55:00" StopQuantity="0" FlightNumber="900"><MarketingAirline Code="AA"/></FlightSegment></OriginDestinationOption>
+      <OriginDestinationOption><FlightSegment DepartureDateTime="2026-12-06T22:00:00" ArrivalDateTime="2026-12-07T09:00:00" StopQuantity="0" FlightNumber="901"><MarketingAirline Code="AA"/></FlightSegment></OriginDestinationOption>
+      </OriginDestinationOptions></AirItinerary><AirItineraryPricingInfo>${fare}</AirItineraryPricingInfo></PricedItinerary>`
+  }
+  const CON_TARIFA = itinerario('<ItinTotalFare><TotalFare Amount="810.00" CurrencyCode="USD"/></ItinTotalFare>')
+
+  it('descarta el itinerario que no trae TotalFare', () => {
+    const xml = `<PricedItineraries>${itinerario('<ItinTotalFare/>')}${CON_TARIFA}</PricedItineraries>`
+    const { itineraries } = parseBfmResponse(xml)
+    expect(itineraries).toHaveLength(1)
+    expect(itineraries[0].totalUsd).toBe(810)
+  })
+
+  it('descarta Amount="0" y Amount vacío en vez de tomarlos como el más barato', () => {
+    const xml = `<PricedItineraries>${itinerario('<ItinTotalFare><TotalFare Amount="0" CurrencyCode="USD"/></ItinTotalFare>')}${itinerario('<ItinTotalFare><TotalFare Amount="" CurrencyCode="USD"/></ItinTotalFare>')}${CON_TARIFA}</PricedItineraries>`
+    const { itineraries } = parseBfmResponse(xml)
+    expect(itineraries).toHaveLength(1)
+    expect(itineraries[0].totalUsd).toBe(810)
+  })
+
+  it('descarta un Amount que no es número', () => {
+    const xml = `<PricedItineraries>${itinerario('<ItinTotalFare><TotalFare Amount="N/A" CurrencyCode="USD"/></ItinTotalFare>')}</PricedItineraries>`
+    expect(parseBfmResponse(xml).itineraries).toEqual([])
+  })
+})
