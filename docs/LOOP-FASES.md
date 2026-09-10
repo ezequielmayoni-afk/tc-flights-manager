@@ -125,8 +125,9 @@ un paquete de prueba; decidir el flag "ocultar en TC cuando el cupo se agota" (d
 **Qué hay**: `/producto/perfiles` con 45 destinos cargados con las reglas del consultor (editables en línea);
 `/producto/ideas` para crear una idea con los defaults del destino, verla sondear y cotizar sola con el precio real
 de siviajo.com, aprobarla o rechazarla, y pegar el ID cuando la guardás a mano. La regla directo/escala corre con
-dos cotizaciones como máximo. "Crear idea" desde una alerta de Tendencias. Auditoría semanal de los paquetes
-activos contra su perfil.
+dos cotizaciones como máximo. "Crear idea" desde cualquier destino o alerta de Tendencias: si el destino no tiene
+perfil, se crea en la misma ventana con los mínimos y queda "pendiente de revisión" en Perfiles (2026-09-10).
+Auditoría semanal de los paquetes activos contra su perfil.
 
 **Lo que falta para "listo"**: que valides 10 ideas contra Google Flights y siviajo.com (misma fecha, misma
 decisión directo/escala, mismo hotel); desplegar vuelos-siviajo en el VPS para tener el calendario del mes (sin
