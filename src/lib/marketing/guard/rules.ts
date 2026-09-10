@@ -56,11 +56,16 @@ export interface GuardSibling {
 
 export interface GuardInsights {
   days: number
+  /** Gasto en USD (convertido si la cuenta factura en otra moneda). */
   spend: number
+  spendLocal?: number
+  currency?: string
+  fxRate?: number | null
   impressions: number
   clicks: number
   conversations: number
   ctrPct: number | null
+  /** Costo por conversación en USD; null si no hay conversaciones o no se pudo convertir. */
   costPerConversation: number | null
 }
 
@@ -99,6 +104,7 @@ export interface GuardDecision {
 
 const MIN_IMPRESSIONS_FOR_PERFORMANCE = 1000
 const MIN_DAYS_FOR_PERFORMANCE = 7
+const MIN_CONVERSATIONS_FOR_COST = 5
 
 function activeAds(input: GuardInput): GuardAd[] {
   return input.ads.filter(a => a.status === 'ACTIVE' && a.autoManaged)
@@ -249,24 +255,22 @@ export function evaluatePackage(input: GuardInput): GuardDecision[] {
     }
   }
 
-  // 4. Rendimiento (sólo aviso, con datos suficientes)
+  // 4. Rendimiento: un solo aviso por paquete y por semana, con datos suficientes (los insights son del paquete entero)
   const ins = input.insights
   if (ins && ins.days >= MIN_DAYS_FOR_PERFORMANCE && ins.impressions >= MIN_IMPRESSIONS_FOR_PERFORMANCE) {
     const lowCtr = ins.ctrPct !== null && ins.ctrPct < input.settings.ctrThresholdPct
-    const highCpc = ins.costPerConversation !== null && ins.costPerConversation > input.settings.cplThreshold
+    const highCpc = ins.costPerConversation !== null && ins.conversations >= MIN_CONVERSATIONS_FOR_COST && ins.costPerConversation > input.settings.cplThreshold
     if (lowCtr || highCpc) {
-      for (const ad of ads) {
-        decisions.push({
-          rule: 'underperforming',
-          action: 'alert',
-          severity: 'info',
-          reason: [lowCtr ? `CTR ${ins.ctrPct} % (umbral ${input.settings.ctrThresholdPct} %)` : null, highCpc ? `costo por conversación USD ${ins.costPerConversation} (umbral ${input.settings.cplThreshold})` : null].filter(Boolean).join(' · '),
-          dedupeKey: `guard:underperforming:ad:${ad.metaAdId}:${input.weekLabel}`,
-          metaAdId: ad.metaAdId,
-          deterministic: false,
-          inputs: { packageId: p.id, tcPackageId: p.tcPackageId, ...ins },
-        })
-      }
+      decisions.push({
+        rule: 'underperforming',
+        action: 'alert',
+        severity: 'info',
+        reason: [lowCtr ? `CTR ${ins.ctrPct} % (umbral ${input.settings.ctrThresholdPct} %)` : null, highCpc ? `costo por conversación USD ${ins.costPerConversation} (umbral USD ${input.settings.cplThreshold}) en ${ins.days} días` : null].filter(Boolean).join(' · '),
+        dedupeKey: `guard:underperforming:pkg:${p.id}:${input.weekLabel}`,
+        metaAdId: null,
+        deterministic: false,
+        inputs: { packageId: p.id, tcPackageId: p.tcPackageId, ads: ads.length, ...ins },
+      })
     }
   }
 

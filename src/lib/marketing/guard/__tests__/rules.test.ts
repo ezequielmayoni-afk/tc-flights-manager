@@ -73,12 +73,16 @@ describe('evaluatePackage', () => {
     expect(evaluatePackage(input({}, { currentPricePerPax: 1540 }))).toEqual([]) // +2,7 % < 5 %
   })
 
-  it('rendimiento bajo con datos suficientes: aviso por anuncio, una vez por semana', () => {
+  it('rendimiento bajo con datos suficientes: un aviso por paquete y por semana', () => {
     const insights = { days: 7, spend: 120, impressions: 5000, clicks: 10, conversations: 4, ctrPct: 0.2, costPerConversation: 30 }
     const d = evaluatePackage(input({ insights }))
-    expect(d.map(x => x.action)).toEqual(['alert', 'alert'])
-    expect(d[0].dedupeKey).toBe('guard:underperforming:ad:a1:2026-W37')
+    expect(d.map(x => x.action)).toEqual(['alert'])
+    expect(d[0].dedupeKey).toBe('guard:underperforming:pkg:10:2026-W37')
+    expect(d[0].reason).toMatch(/CTR 0.2/)
+    expect(d[0].reason).not.toMatch(/costo por conversación/) // 4 conversaciones no alcanzan para juzgar el costo
     expect(evaluatePackage(input({ insights: { ...insights, impressions: 300 } }))).toEqual([])
+    const costly = evaluatePackage(input({ insights: { ...insights, ctrPct: 3, conversations: 20, costPerConversation: 30 } }))
+    expect(costly[0].reason).toMatch(/costo por conversación USD 30/)
   })
 
   it('con bloqueo de escritura vigente no decide nada', () => {

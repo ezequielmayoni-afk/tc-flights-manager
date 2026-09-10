@@ -88,8 +88,22 @@ function toGuardLinks(links: PackageLink[] | undefined): GuardLink[] {
   }))
 }
 
-/** Insights de los últimos 7 días agregados por paquete (todos sus anuncios). */
-async function loadInsights(db: Db, adsByPackage: Map<number, GuardAd[]>): Promise<Map<number, GuardInsights>> {
+/**
+ * Moneda de la cuenta publicitaria (la guarda health.check) y, si no es USD,
+ * el dólar minorista del BCRA que ya recolecta demand.signals. Sin eso, el
+ * costo por conversación no se compara con el umbral (que está en USD).
+ */
+async function loadFx(db: Db, meta: Awaited<ReturnType<typeof getIntegrationStatus>>): Promise<{ currency: string; rate: number | null }> {
+  const currency = String((meta?.details as { account?: { currency?: string } } | null)?.account?.currency ?? process.env.META_ACCOUNT_CURRENCY ?? 'USD').toUpperCase()
+  if (currency === 'USD') return { currency, rate: 1 }
+  if (currency !== 'ARS') return { currency, rate: null }
+  const { data } = await db.from('demand_signals_weekly').select('metadata').eq('source', 'bcra_fx').eq('destination_code', '*').order('week_label', { ascending: false }).limit(1).maybeSingle()
+  const last = (data as { metadata?: { minorista?: { last?: number | null } } } | null)?.metadata?.minorista?.last
+  return { currency, rate: typeof last === 'number' && last > 0 ? last : null }
+}
+
+/** Insights de los últimos 7 días agregados por paquete (todos sus anuncios), en USD. */
+async function loadInsights(db: Db, adsByPackage: Map<number, GuardAd[]>, fx: { currency: string; rate: number | null }): Promise<Map<number, GuardInsights>> {
   const allAdIds = [...adsByPackage.values()].flat().map(a => a.metaAdId)
   const result = new Map<number, GuardInsights>()
   if (allAdIds.length === 0) return result
@@ -118,14 +132,18 @@ async function loadInsights(db: Db, adsByPackage: Map<number, GuardAd[]>): Promi
     acc.set(pkgId, a)
   }
   for (const [pkgId, a] of acc) {
+    const spendUsd = fx.rate ? a.spend / fx.rate : null
     result.set(pkgId, {
       days: a.days.size,
-      spend: Math.round(a.spend * 100) / 100,
+      spend: spendUsd === null ? 0 : Math.round(spendUsd * 100) / 100,
+      spendLocal: Math.round(a.spend * 100) / 100,
+      currency: fx.currency,
+      fxRate: fx.rate,
       impressions: a.impressions,
       clicks: a.clicks,
       conversations: a.conversations,
       ctrPct: a.impressions > 0 ? Math.round((a.clicks / a.impressions) * 10000) / 100 : null,
-      costPerConversation: a.conversations > 0 ? Math.round((a.spend / a.conversations) * 100) / 100 : null,
+      costPerConversation: spendUsd !== null && a.conversations > 0 ? Math.round((spendUsd / a.conversations) * 100) / 100 : null,
     })
   }
   return result
@@ -166,7 +184,8 @@ export async function runMarketingGuard(
   const groupIds = [...new Set(packages.map(p => p.departure_group_id).filter((g): g is string => Boolean(g)))]
   const groupRows = groupIds.length ? ((await db.from('packages').select(PACKAGE_SELECT).in('departure_group_id', groupIds)).data ?? []) as PackageRow[] : []
   const linksById = await loadPackageLinks(db, [...new Set([...packageIds, ...groupRows.map(g => g.id)])])
-  const insightsByPackage = await loadInsights(db, adsByPackage)
+  const fx = await loadFx(db, meta)
+  const insightsByPackage = await loadInsights(db, adsByPackage, fx)
 
   const siblingsOf = (p: PackageRow): GuardSibling[] => {
     if (!p.departure_group_id) return []
