@@ -245,6 +245,12 @@ export async function runMarketingGuard(
     else summary.failed++
   }
 
+  // Paquetes que ya no tienen anuncios activos: sus propuestas no tienen sentido.
+  if (!options.packageIds?.length) {
+    const { data: orphan } = await db.from('ad_decisions').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('status', 'proposed').not('package_id', 'in', `(${packageIds.join(',')})`).select('id')
+    summary.expired += orphan?.length ?? 0
+  }
+
   // Propuestas viejas que nadie decidió
   const { data: expiredRows } = await db.from('ad_decisions').update({ status: 'expired', updated_at: new Date().toISOString() }).eq('status', 'proposed').lt('expires_at', new Date().toISOString()).select('id')
   summary.expired = expiredRows?.length ?? 0
