@@ -81,7 +81,9 @@ export async function POST(request: NextRequest) {
     if (action === 'group_departures' || action === 'ungroup_departures') {
       const list = [...(packages || [])].sort((a, b) => String(a.departure_date ?? '9999').localeCompare(String(b.departure_date ?? '9999')))
       const existing = list.map(p => p.departure_group_id).find(Boolean) as string | undefined
-      const groupId = action === 'group_departures' ? (existing ?? `grp-${Date.now().toString(36)}`) : null
+      // Los grupos automáticos (auto:…) se recalculan a diario por firma de producto; uno manual (grp-…) manda sobre ellos.
+      const manualExisting = existing && !existing.startsWith('auto:') ? existing : undefined
+      const groupId = action === 'group_departures' ? (manualExisting ?? `grp-${Date.now().toString(36)}`) : null
       for (const [index, pkg] of list.entries()) {
         const { error } = await db.from('packages').update({ departure_group_id: groupId, departure_index: groupId ? index + 1 : null }).eq('id', pkg.id)
         results.push({ id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title, status: error ? 'error' : 'success', error: error?.message })

@@ -94,7 +94,9 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
   (`notification_settings.price_change_threshold_pct`, el único umbral); CTR o costo por conversación fuera de umbral.
 - **Salidas múltiples**: si el paquete tiene `departure_group_id` y otra salida del grupo tiene lugares, en vez de pausar
   crea una redirección en `siv_redirects` (el bot del CRM responde con la salida nueva al recibir el SIV viejo) y pide
-  creatividad con la fecha nueva. Se agrupa desde la tabla de paquetes ("Agrupar salidas").
+  creatividad con la fecha nueva. Los grupos `auto:…` los calcula `cupo.link_refresh` por firma de producto
+  (`src/lib/cupos/departure-groups.ts`: origen + destinos + noches en más de una fecha); un grupo manual `grp-…`
+  desde "Agrupar salidas" manda sobre el automático.
 - **Sombra** registra "haría X"; **semi** aplica lo determinista (vencido, no visible, inactivo, cupo agotado confirmado)
   con aviso a Slack y deshacer; **auto** aplica también las pausas por precio. Los avisos de rendimiento nunca pausan.
 - Si `integration_status.meta` no está `ok`, sólo propone. `automation.meta_writes` apagado ⇒ `skipped`.

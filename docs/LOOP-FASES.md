@@ -110,8 +110,10 @@ Meta** (los creativos son inmutables y cambiarlos reinicia el aprendizaje). HUB 
 del CRM consulta el SIV en HUB y HUB le devuelve la siguiente salida con lugares, con la nota "la salida
 del 12/03 se agotó; hay lugar el 26/03". En paralelo pide a diseño la creatividad con la fecha nueva y,
 cuando está, relanza el anuncio con el ID nuevo y pausa el viejo. Sólo si no queda ninguna salida con
-lugares se pausa. Requiere agrupar las salidas en `/packages` ("Agrupar salidas"); en la Fase 6 se
-agrupan solas al nacer de una idea.
+lugares se pausa. Los grupos se arman solos (2026-09-10): un cupo es un par de transportes ida/vuelta que
+sirve a varios productos, y el mismo producto se repite en cada cupo nuevo; el grupo es el producto (mismo origen,
+mismos destinos en orden, mismas noches) en distintas fechas, recalculado a diario. "Agrupar salidas" en `/packages`
+queda para excepciones y manda sobre el automático.
 
 **Modo**: 14 días en sombra (sólo propone), después semi (pausa y avisa con deshacer).
 

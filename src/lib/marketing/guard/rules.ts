@@ -104,11 +104,13 @@ function activeAds(input: GuardInput): GuardAd[] {
   return input.ads.filter(a => a.status === 'ACTIVE' && a.autoManaged)
 }
 
+/** La siguiente salida del mismo producto con lugares: primero las posteriores a la actual, después cualquiera. */
 function nextSibling(input: GuardInput): GuardSibling | null {
+  const current = input.package.departureDate ?? ''
   const candidates = input.siblings
-    .filter(s => s.sellable && s.hasSeats && s.packageId !== input.package.id)
+    .filter(s => s.sellable && s.hasSeats && s.packageId !== input.package.id && (s.departureDate ?? '') !== current)
     .sort((a, b) => (a.departureDate ?? '9999').localeCompare(b.departureDate ?? '9999'))
-  return candidates[0] ?? null
+  return candidates.find(s => (s.departureDate ?? '') > current) ?? candidates[0] ?? null
 }
 
 /** Motivo por el que el paquete no debería seguir en pauta, si lo hay. */
