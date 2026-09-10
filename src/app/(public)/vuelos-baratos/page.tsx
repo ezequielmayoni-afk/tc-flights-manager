@@ -6,22 +6,10 @@ import { OriginTabs } from '@/components/vuelos-baratos/OriginTabs'
 import { PublicHero } from '@/components/vuelos-baratos/PublicHero'
 import { SearchBox } from '@/components/vuelos-baratos/SearchBox'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
-import { BOTON_PRIMARIO, formatUsd } from '@/components/vuelos-baratos/ui'
-import { createAdminClient } from '@/lib/supabase/admin'
-import { summarizeDestinations } from '@/lib/vuelos-baratos/aggregates'
-import { ttlMemo } from '@/lib/vuelos-baratos/cache'
-import {
-  DEFAULT_ORIGIN,
-  ORIGINS,
-  PUBLIC_CACHE_TTL_MS,
-  type Origin,
-  originByCode,
-  publicBaseUrl,
-  siviajoBaseUrl,
-} from '@/lib/vuelos-baratos/config'
-import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
-import { getRecentProbesForRoutes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
-import type { DestinationSummary } from '@/lib/vuelos-baratos/types'
+import { BOTON_PRIMARIO } from '@/components/vuelos-baratos/ui'
+import { DEFAULT_ORIGIN, ORIGINS, publicBaseUrl, siviajoBaseUrl } from '@/lib/vuelos-baratos/config'
+import { buildHomeMeta } from '@/lib/vuelos-baratos/seo-meta'
+import { type SearchParams, loadHome, masBaratos, origenDe } from './_data'
 
 /**
  * Home de vuelos.siviajo.com: el precio más bajo vigente de cada destino
@@ -32,74 +20,35 @@ import type { DestinationSummary } from '@/lib/vuelos-baratos/types'
  * cuando el visitante toca "Seleccionar" y se va a siviajo.com.
  */
 
-const ORIGEN_POR_DEFECTO: Origin = originByCode(DEFAULT_ORIGIN) ?? ORIGINS[0]
-
-type SearchParams = Record<string, string | string[] | undefined>
+/** Los que entran en la descripción del resultado de Google sin que se coma el resto. */
+const DESTINOS_EN_LA_META = 3
 
 interface PageProps {
   searchParams: Promise<SearchParams>
 }
 
-function first(value: string | string[] | undefined): string | undefined {
-  const v = Array.isArray(value) ? value[0] : value
-  return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined
-}
-
-/** Un `?from=` desconocido no rompe nada: cae en el origen por defecto. */
-function origenDe(sp: SearchParams): Origin {
-  return originByCode(first(sp.from)) ?? ORIGEN_POR_DEFECTO
-}
-
-async function loadHome(originCode: string): Promise<DestinationSummary[]> {
-  return ttlMemo(`landing:${originCode}`, PUBLIC_CACHE_TTL_MS, async () => {
-    const db = createAdminClient()
-    const [destinations, routes] = await Promise.all([
-      listLandingDestinations(db, { activeOnly: true }),
-      listRoutes(db, { activeOnly: true }),
-    ])
-    const delOrigen = routes.filter(route => route.origin_tc_code === originCode)
-    const fromDate = todayIso(new Date())
-    const rowsByRoute = await getRecentProbesForRoutes(
-      db,
-      delOrigen.map(route => route.id),
-      { fromDate }
-    )
-    return summarizeDestinations({ rowsByRoute, routes: delOrigen, destinations, fromDate })
-  })
-}
-
-/** 'Miami desde US$ 722, Madrid desde US$ 850 y Roma desde US$ 900'. */
-function listaEs(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? ''
-  return `${items.slice(0, -1).join(', ')} y ${items[items.length - 1]}`
-}
-
-function masBaratos(resumen: DestinationSummary[], cuantos: number): DestinationSummary[] {
-  return resumen
-    .filter((d): d is DestinationSummary & { minPrice: number } => d.minPrice !== null)
-    .sort((a, b) => a.minPrice - b.minPrice)
-    .slice(0, cuantos)
-}
-
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
   const origen = origenDe(await searchParams)
   const resumen = await loadHome(origen.code)
-  const top = masBaratos(resumen, 3)
-
-  const title = `Vuelos baratos desde ${origen.name}`
-  const description =
-    top.length > 0
-      ? `${listaEs(top.map(d => `${d.name} desde ${formatUsd(d.minPrice as number)}`))}. Precios por persona, ida y vuelta, encontrados en las últimas 48 horas en siviajo.com.`
-      : `Los vuelos más baratos que encontramos saliendo de ${origen.name}. Precios por persona, ida y vuelta, actualizados todos los días en siviajo.com.`
+  const { title, description } = buildHomeMeta({
+    originName: origen.name,
+    top: masBaratos(resumen, DESTINOS_EN_LA_META),
+    now: new Date(),
+  })
 
   return {
-    title,
+    // `absolute`: el layout le pega '| Sí, Viajo' a todo, y el título ya viene
+    // medido para los 60 caracteres que muestra Google.
+    title: { absolute: title },
     description,
     alternates: { canonical: '/vuelos-baratos' },
     // Una sola versión indexable: las demás ciudades son la misma página filtrada.
     robots: { index: origen.code === DEFAULT_ORIGIN, follow: true },
     // El openGraph de la página pisa al del layout: `locale` y `siteName` van de nuevo.
+    // `images` NO se declara: lo llena `opengraph-image.tsx` de este segmento.
     openGraph: { ...OG_BASE, title, description, type: 'website', url: '/vuelos-baratos' },
+    // El título, la descripción y la imagen los hereda del openGraph de arriba.
+    twitter: { card: 'summary_large_image' },
   }
 }
 
@@ -126,6 +75,7 @@ export default async function VuelosBaratosHome({ searchParams }: PageProps) {
     <>
       <PublicHero
         title={`Vuelos baratos desde ${origen.name}`}
+        intro={`Compará ofertas de vuelos ida y vuelta desde ${origen.name} y encontrá los pasajes más baratos a cada destino. Elegí el mes que más te conviene y mirá el precio de cada fecha antes de comprar.`}
         subtitle="Los mejores precios que encontramos en siviajo.com en las últimas 48 horas. Por persona, ida y vuelta, tarifa más baja sin valija despachada."
       >
         <SearchBox originCode={origen.code} siviajoBase={siviajoBaseUrl()} />
@@ -134,10 +84,13 @@ export default async function VuelosBaratosHome({ searchParams }: PageProps) {
       <OriginTabs origins={ORIGINS} active={origen.code} />
 
       {conDatos.length > 0 ? (
-        <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {conDatos.map(destino => (
-            <DestinationCard key={`${destino.code}-${destino.originCode}`} summary={destino} originName={origen.name} now={now} />
-          ))}
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold text-[#1A237E]">Destinos más buscados desde {origen.name}</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {conDatos.map(destino => (
+              <DestinationCard key={`${destino.code}-${destino.originCode}`} summary={destino} originName={origen.name} now={now} />
+            ))}
+          </div>
         </section>
       ) : (
         <section className="mt-6 rounded-[8px] border border-[#E3E3E3] bg-[#F8F9FA] px-4 py-10 text-center">

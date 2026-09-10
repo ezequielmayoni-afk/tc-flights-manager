@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Breadcrumb } from '@/components/vuelos-baratos/Breadcrumb'
+import { DestinationInsights } from '@/components/vuelos-baratos/DestinationInsights'
 import { Disclosure } from '@/components/vuelos-baratos/Disclosure'
 import { FaqSection, type FaqItem } from '@/components/vuelos-baratos/FaqSection'
 import { FaresTable } from '@/components/vuelos-baratos/FaresTable'
@@ -12,47 +13,32 @@ import { OriginSelect } from '@/components/vuelos-baratos/OriginSelect'
 import { Pagination } from '@/components/vuelos-baratos/Pagination'
 import { SearchBox } from '@/components/vuelos-baratos/SearchBox'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
-import { BOTON_PRIMARIO, CARD, formatUsd } from '@/components/vuelos-baratos/ui'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { BOTON_PRIMARIO, CARD, formatDuration, formatUsd, medianDurationMin } from '@/components/vuelos-baratos/ui'
 import {
   airlinesWithMin,
   applyFilters,
   bestOverall,
   bestPerMonth,
-  bestPerPair,
   freshnessLabel,
   lastObservedAt,
   paginate,
   priceLimits,
   sortPairs,
-  summarizeDestinations,
 } from '@/lib/vuelos-baratos/aggregates'
-import { ttlMemo } from '@/lib/vuelos-baratos/cache'
 import {
   DEFAULT_ORIGIN,
-  OBSERVATION_WINDOW_HOURS,
   ORIGINS,
   PAGE_SIZE,
-  PUBLIC_CACHE_TTL_MS,
   SLUG_RE,
-  type Origin,
   originByCode,
   publicBaseUrl,
   siviajoBaseUrl,
 } from '@/lib/vuelos-baratos/config'
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
-import { monthsAhead, todayIso } from '@/lib/vuelos-baratos/date-pairs'
-import { minEstimateByMonth } from '@/lib/vuelos-baratos/estimate'
+import { monthsAhead } from '@/lib/vuelos-baratos/date-pairs'
 import { hasActiveFilters, parseExplorerFilters } from '@/lib/vuelos-baratos/filters'
-import {
-  getEstimatesForRoute,
-  getRecentProbes,
-  getRecentProbesForRoutes,
-  getRouteByCodes,
-  listLandingDestinations,
-  listRoutes,
-} from '@/lib/vuelos-baratos/queries'
-import type { BestPair, DestinationSummary, LandingDestinationRow, LandingRouteRow, MonthSummary } from '@/lib/vuelos-baratos/types'
+import { buildDestinationMeta } from '@/lib/vuelos-baratos/seo-meta'
+import { MESES_A_MOSTRAR, type SearchParams, loadDestino, loadPorCiudad, mesMasBarato, origenDe } from '../_data'
 
 /**
  * Página de destino: el explorador de fechas de una ruta (origen → destino).
@@ -62,96 +48,18 @@ import type { BestPair, DestinationSummary, LandingDestinationRow, LandingRouteR
  * así una URL con filtros no le pega a Supabase de nuevo.
  */
 
-const ORIGEN_POR_DEFECTO: Origin = originByCode(DEFAULT_ORIGIN) ?? ORIGINS[0]
-const MESES_A_MOSTRAR = 12
 /** Google no lee más de eso y el HTML no tiene por qué crecer al pedo. */
 const MAX_OFERTAS_JSONLD = 20
-
-type SearchParams = Record<string, string | string[] | undefined>
 
 interface PageProps {
   params: Promise<{ slug: string }>
   searchParams: Promise<SearchParams>
 }
 
-interface DestinoData {
-  destination: LandingDestinationRow
-  route: LandingRouteRow | null
-  pairs: BestPair[]
-  /** Mínimo estimado por Sabre de cada mes: sólo para los chips sin sonda. */
-  estimatedByMonth: Map<string, number>
-}
-
-function first(value: string | string[] | undefined): string | undefined {
-  const v = Array.isArray(value) ? value[0] : value
-  return typeof v === 'string' && v.trim() !== '' ? v.trim() : undefined
-}
-
-function origenDe(sp: SearchParams): Origin {
-  return originByCode(first(sp.from)) ?? ORIGEN_POR_DEFECTO
-}
-
-/**
- * Los destinos publicados, indexados por slug, bajo UNA sola clave de memo.
- *
- * Resolver el slug acá (y no con una consulta por slug) evita cachear un
- * `null` por cada URL inventada: un crawler hostil pega siempre a esta entrada.
- * Despublicar un destino tiene que sacarlo de Google, así que sólo entran los
- * activos.
- */
-async function destinosPublicados(): Promise<Map<string, LandingDestinationRow>> {
-  return ttlMemo('landing:destinations', PUBLIC_CACHE_TTL_MS, async () => {
-    const destinos = await listLandingDestinations(createAdminClient(), { activeOnly: true })
-    return new Map(destinos.map(destino => [destino.slug, destino]))
-  })
-}
-
-async function loadDestino(slug: string, originCode: string): Promise<DestinoData | null> {
-  const destination = (await destinosPublicados()).get(slug)
-  // Un slug que no existe no se memoiza: sólo lo publicado ocupa lugar.
-  if (!destination) return null
-
-  return ttlMemo(`dest:${slug}:${originCode}`, PUBLIC_CACHE_TTL_MS, async () => {
-    const db = createAdminClient()
-    const route = await getRouteByCodes(db, destination.code, originCode)
-    if (!route) return { destination, route: null, pairs: [], estimatedByMonth: new Map() }
-
-    const fromDate = todayIso(new Date())
-    const rows = await getRecentProbes(db, route.id, { fromDate })
-    // Las estimaciones de Sabre valen lo mismo que una observación (48 h) y
-    // sólo se usan para los chips de meses todavía sin sonda.
-    const estimates = await getEstimatesForRoute(db, route.id, { sinceHours: OBSERVATION_WINDOW_HOURS, fromDate })
-    return { destination, route, pairs: bestPerPair(rows, { fromDate }), estimatedByMonth: minEstimateByMonth(estimates) }
-  })
-}
-
-/** El mínimo del destino desde cada ciudad, para la sección "por ciudad". */
-async function loadPorCiudad(destination: LandingDestinationRow): Promise<DestinationSummary[]> {
-  return ttlMemo(`dest-cities:${destination.code}`, PUBLIC_CACHE_TTL_MS, async () => {
-    const db = createAdminClient()
-    const routes = await listRoutes(db, { activeOnly: true, destinationCode: destination.code })
-    const fromDate = todayIso(new Date())
-    const rowsByRoute = await getRecentProbesForRoutes(
-      db,
-      routes.map(route => route.id),
-      { fromDate }
-    )
-    return summarizeDestinations({ rowsByRoute, routes, destinations: [destination], fromDate })
-  })
-}
-
-type MesConPrecio = MonthSummary & { minPrice: number }
-
 /** '2026-12-02' → '02/12/2026'. Sin `Date`: acá no hay que meter zonas horarias. */
 function fechaJsonLd(iso: string): string {
   const [año, mes, dia] = iso.split('-')
   return dia && mes && año ? `${dia}/${mes}/${año}` : iso
-}
-
-function mesMasBarato(months: MonthSummary[]): MesConPrecio | null {
-  return months
-    .filter((m): m is MesConPrecio => m.minPrice !== null)
-    .sort((a, b) => a.minPrice - b.minPrice || a.month.localeCompare(b.month))[0] ?? null
 }
 
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
@@ -165,28 +73,32 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   if (!data) return { title: 'Vuelos baratos' }
 
   const { destination, pairs } = data
-  const min = bestOverall(pairs)?.pricePp ?? null
   const mes = mesMasBarato(bestPerMonth(pairs, monthsAhead(new Date(), MESES_A_MOSTRAR)))
-
-  const title =
-    destination.seo_title ??
-    (min === null ? `Vuelos baratos a ${destination.name}` : `Vuelos baratos a ${destination.name} desde ${formatUsd(min)}`)
-  const description =
-    destination.seo_description ??
-    (pairs.length === 0
-      ? `Precios de vuelos a ${destination.name} desde ${origen.name}: por persona, ida y vuelta, actualizados todos los días en siviajo.com.`
-      : `${pairs.length} ${pairs.length === 1 ? 'combinación' : 'combinaciones'} de fechas para volar a ${destination.name} desde ${origen.name}${
-          mes ? `. El mes más barato es ${mes.label} desde ${formatUsd(mes.minPrice)}` : ''
-        }. Precios por persona, ida y vuelta, sin valija despachada.`)
+  const { title, description } = buildDestinationMeta({
+    name: destination.name,
+    originName: origen.name,
+    minPrice: bestOverall(pairs)?.pricePp ?? null,
+    cheapestMonth: mes ? { label: mes.label, minPrice: mes.minPrice } : null,
+    pairs: pairs.length,
+    directAvailable: pairs.some(pair => pair.stopsOut === 0),
+    now: new Date(),
+    seoTitle: destination.seo_title,
+    seoDescription: destination.seo_description,
+  })
 
   return {
-    title,
+    // `absolute`: el layout le pega '| Sí, Viajo' a todo, y el título ya viene
+    // medido para los 60 caracteres que muestra Google.
+    title: { absolute: title },
     description,
     alternates: { canonical: `/vuelos-baratos/${slug}` },
     // Sólo la versión limpia va al índice: filtros y meses son la misma página.
     robots: { index: origen.code === DEFAULT_ORIGIN && !hasActiveFilters(filters) && !filters.month, follow: true },
     // El openGraph de la página pisa al del layout: `locale` y `siteName` van de nuevo.
+    // `images` NO se declara: lo llena `opengraph-image.tsx` de este segmento.
     openGraph: { ...OG_BASE, title, description, type: 'website', url: `/vuelos-baratos/${slug}` },
+    // El título, la descripción y la imagen los hereda del openGraph de arriba.
+    twitter: { card: 'summary_large_image' },
   }
 }
 
@@ -275,8 +187,20 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
   const mesBarato = mesMasBarato(months)
   const hayDirectos = pairs.some(pair => pair.stopsOut === 0)
   const directoMin = bestOverall(pairs.filter(pair => pair.stopsOut === 0))
+  const duracionTipica = formatDuration(medianDurationMin(pairs))
   const faqs: FaqItem[] = [...destination.faq]
   if (!vacio) {
+    if (limits) {
+      faqs.push({
+        q: `¿Cuánto cuesta un pasaje a ${destination.name} desde ${origen.name}?`,
+        a:
+          limits.min === limits.max
+            ? `Lo que encontramos hoy sale ${formatUsd(limits.min)} por persona, ida y vuelta.`
+            : `Los pasajes que encontramos van de ${formatUsd(limits.min)} a ${formatUsd(
+                limits.max
+              )} por persona, ida y vuelta, según la fecha que elijas.`,
+      })
+    }
     if (mesBarato) {
       faqs.push({
         q: `¿Cuál es el mes más barato para volar a ${destination.name}?`,
@@ -293,6 +217,12 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
           }.`
         : `En las fechas que sondeamos no encontramos vuelos directos desde ${origen.name}: las opciones más baratas hacen al menos una escala.`,
     })
+    if (duracionTipica) {
+      faqs.push({
+        q: `¿Cuánto dura el vuelo a ${destination.name}?`,
+        a: `La ida típica dura ${duracionTipica} (la mediana de las combinaciones que sondeamos desde ${origen.name}). Las escalas cambian bastante ese número.`,
+      })
+    }
   }
 
   const porCiudad = (await loadPorCiudad(destination))
@@ -368,6 +298,8 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
           </div>
         </>
       )}
+
+      <DestinationInsights destinationName={destination.name} originName={origen.name} pairs={pairs} months={months} />
 
       {porCiudad.length > 0 ? (
         <section className="mt-10">

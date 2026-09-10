@@ -5,7 +5,7 @@ import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
 import { filtersWith } from '@/lib/vuelos-baratos/filters'
 import type { BestPair, ExplorerFilters, SortKey } from '@/lib/vuelos-baratos/types'
 import { SelectFlightLink } from './SelectFlightLink'
-import { formatUsd, withFilters } from './ui'
+import { formatDuration, formatUsd, withFilters } from './ui'
 
 const ORDENES: Array<{ key: SortKey; label: string }> = [
   { key: 'price', label: 'Precio' },
@@ -26,11 +26,7 @@ function fechaLarga(iso: string): string {
 }
 
 function duracion(minutos: number | null): string {
-  if (minutos === null || minutos <= 0) return '—'
-  const horas = Math.floor(minutos / 60)
-  const resto = minutos % 60
-  if (horas === 0) return `${resto} m`
-  return resto === 0 ? `${horas} h` : `${horas} h ${resto} m`
+  return formatDuration(minutos) ?? '—'
 }
 
 function escalas(stops: number | null): string {
