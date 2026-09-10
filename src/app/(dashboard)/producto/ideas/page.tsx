@@ -8,8 +8,8 @@ export const dynamic = 'force-dynamic'
 
 async function loadProfiles() {
   const db = createAdminClient()
-  const { data } = await db.from('destination_profiles').select('code, name, family, nights_default, regimen_required, stars_min, direct_required, cotizador_instance').eq('active', true).order('family').order('name')
-  return (data ?? []) as Array<{ code: string; name: string; family: string; nights_default: number; regimen_required: string | null; stars_min: number; direct_required: boolean; cotizador_instance: string }>
+  const { data } = await db.from('destination_profiles').select('code, name, family, nights_default, regimen_required, stars_min, direct_required, cotizador_instance, tc_destination_code, iata_airport').eq('active', true).order('family').order('name')
+  return (data ?? []) as Array<{ code: string; name: string; family: string; nights_default: number; regimen_required: string | null; stars_min: number; direct_required: boolean; cotizador_instance: string; tc_destination_code: string | null; iata_airport: string | null }>
 }
 
 /** Ideas de paquete (Fase 3): de "qué armar" a precio real de siviajo.com, con aprobación humana. */

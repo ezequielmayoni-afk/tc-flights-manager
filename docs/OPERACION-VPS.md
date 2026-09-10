@@ -107,13 +107,17 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 ## Producto: perfiles e ideas (Fase 3 del loop)
 
 - `destination_profiles`: usos y costumbres por destino (régimen obligatorio, noches, categoría, temporada, ventana
-  de compra, umbral directo/escala). Pantalla `/producto/perfiles`. `profile.audit` corre los lunes y asigna
-  `destination_profile_code`, `family`, `is_cupo` y `profile_violations` a los paquetes activos.
+  de compra, umbral directo/escala). Pantalla `/producto/perfiles` (alta, edición completa y borrado; el borrado
+  falla con 409 si el perfil tiene ideas o una landing de vuelos baratos, y desvincula los paquetes que lo
+  tenían asignado). `profile.audit` corre los lunes y asigna `destination_profile_code`, `family`, `is_cupo` y
+  `profile_violations` a los paquetes activos.
 - Ideas (`package_ideas`): `/producto/ideas`. `idea.probe` (lane `vuelos`, sólo si `VUELOS_URL` está configurada:
   matrix de vuelos-siviajo para el mes) → `idea.quote` (lane `cotizador`, ventana nocturna salvo manual): valida
   contra el perfil, cotiza con `POST /quote-multi` (fecha flexible por mes) y, si salió con escala y el destino tiene
   umbral, cotiza sólo directo en la misma fecha; la regla directo/escala decide. Máximo dos cotizaciones por idea.
-  Cada llamada queda en `quote_runs`; las fechas alternativas en `flight_price_probes`.
+  Cada llamada queda en `quote_runs`; las fechas alternativas en `flight_price_probes`. Cada idea tiene "Abrir
+  búsqueda en siviajo.com" (`siviajoPackageSearchUrl` en `src/lib/packages/public-url.ts`, mismo formato de URL
+  que usa el cotizador-bot) para corregir a mano lo que cotizó.
 - Estados: draft → probing → quoting → priced | needs_review | failed → approved (siempre humano) → saved (hasta la
   Fase 6, a mano: "pegar ID") → verified → imported.
 - Env: `COTIZADOR_URL` (127.0.0.1:8090), `COTIZADOR_API_KEY`, opcional `COTIZADOR_NACIONAL_URL` (8091) y

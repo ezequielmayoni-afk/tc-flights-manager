@@ -1,6 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { ActiveToggle } from './ActiveToggle'
+import { DeleteButton } from './DeleteButton'
+import { DestinationEditor, type DestinationFormValues } from './DestinationEditor'
+import { RouteEditor, type RouteFormValues } from './RouteEditor'
 import { ProbesPerMonthInput } from './ProbesPerMonthInput'
 import { ResolveCodeButton } from './ResolveCodeButton'
 import { SweepNowButton } from './SweepNowButton'
@@ -18,6 +22,7 @@ export interface AdminRouteRow {
   probesPerMonth: number
   monthsAhead: number
   stayNights: number[]
+  weekdays: number[]
   /** `freshnessLabel` de la observación con precio más nueva; null = nunca. */
   freshness: string | null
   /** Última sonda de cualquier estado en 24 h: distingue "sin datos" de "sin correr". */
@@ -39,6 +44,12 @@ export interface AdminDestinationGroup {
   tcCode: string
   haul: 'short' | 'medium' | 'long'
   active: boolean
+  iataDisplay: string | null
+  seoTitle: string | null
+  seoDescription: string | null
+  heroImageUrl: string | null
+  faq: Array<{ q: string; a: string }>
+  sortOrder: number
   /** URL pública de la landing del destino. */
   landingUrl: string
   routes: AdminRouteRow[]
@@ -72,12 +83,29 @@ function Health({ route }: { route: AdminRouteRow }) {
  * sondas, qué tan fresco está y cómo viene rindiendo.
  */
 export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
-  if (groups.length === 0) {
-    return <p className="px-4 py-8 text-center text-sm text-gray-500">Todavía no hay destinos cargados en la landing.</p>
-  }
+  const [destEditor, setDestEditor] = useState<{ mode: 'create' | 'edit'; values?: DestinationFormValues } | null>(null)
+  const [routeEditor, setRouteEditor] = useState<{ mode: 'create' | 'edit'; destinationCode: string; destinationName: string; values?: RouteFormValues } | null>(null)
+  const existingCodes = groups.map(g => g.code)
+
+  const editDestination = (g: AdminDestinationGroup) =>
+    setDestEditor({ mode: 'edit', values: { code: g.code, name: g.name, slug: g.slug, tc_code: g.tcCode, iata_display: g.iataDisplay, haul: g.haul, seo_title: g.seoTitle, seo_description: g.seoDescription, hero_image_url: g.heroImageUrl, faq: g.faq, active: g.active, sort_order: g.sortOrder } })
+  const editRoute = (g: AdminDestinationGroup, r: AdminRouteRow) =>
+    setRouteEditor({ mode: 'edit', destinationCode: g.code, destinationName: g.name, values: { id: r.id, origin_tc_code: r.originCode, origin_name: r.originName, stay_nights: r.stayNights, weekdays: r.weekdays, probes_per_month: r.probesPerMonth, months_ahead: r.monthsAhead, active: r.active } })
 
   return (
     <div className="divide-y divide-gray-200">
+      {destEditor && <DestinationEditor mode={destEditor.mode} initial={destEditor.values} existingCodes={existingCodes} onClose={() => setDestEditor(null)} />}
+      {routeEditor && <RouteEditor mode={routeEditor.mode} destinationCode={routeEditor.destinationCode} destinationName={routeEditor.destinationName} initial={routeEditor.values} onClose={() => setRouteEditor(null)} />}
+
+      <div className="flex items-center justify-between px-4 py-2">
+        <p className="text-xs text-gray-500">{groups.length} destinos en la landing</p>
+        <button type="button" onClick={() => setDestEditor({ mode: 'create' })} className="rounded-md bg-[#1A237E] px-2.5 py-1 text-xs font-medium text-white hover:bg-[#283593]">
+          Nuevo destino
+        </button>
+      </div>
+
+      {groups.length === 0 && <p className="px-4 py-8 text-center text-sm text-gray-500">Todavía no hay destinos cargados en la landing.</p>}
+
       {groups.map(group => (
         <section key={group.code}>
           <header className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 px-4 py-3">
@@ -104,6 +132,17 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                 Ver landing
               </a>
               <ResolveCodeButton name={group.name} tcCode={group.tcCode} />
+              <button type="button" onClick={() => editDestination(group)} className="text-xs font-medium text-[#1A237E] underline-offset-2 hover:underline">
+                Editar
+              </button>
+              <button type="button" onClick={() => setRouteEditor({ mode: 'create', destinationCode: group.code, destinationName: group.name })} className="text-xs font-medium text-[#1A237E] underline-offset-2 hover:underline">
+                Nueva ruta
+              </button>
+              <DeleteButton
+                url={`/api/vuelos-baratos/destinations/${group.code}`}
+                entity={group.name}
+                description={`Se saca ${group.name} de vuelos.siviajo.com con sus ${group.routes.length} ruta(s). Las sondas ya guardadas quedan. El perfil de destino en Producto no se toca.`}
+              />
             </div>
           </header>
 
@@ -163,7 +202,17 @@ export function RoutesTable({ groups }: { groups: AdminDestinationGroup[] }) {
                       </td>
                       <td className="px-4 py-2 font-medium tabular-nums text-gray-900">{route.minPriceLabel}</td>
                       <td className="px-4 py-2 text-right">
-                        <SweepNowButton slug={group.slug} origin={route.originCode} pendingJobs={route.pendingJobs} />
+                        <div className="flex items-center justify-end gap-3">
+                          <SweepNowButton slug={group.slug} origin={route.originCode} pendingJobs={route.pendingJobs} />
+                          <button type="button" onClick={() => editRoute(group, route)} className="text-xs font-medium text-[#1A237E] underline-offset-2 hover:underline">
+                            Editar
+                          </button>
+                          <DeleteButton
+                            url={`/api/vuelos-baratos/routes/${route.id}`}
+                            entity={`${route.originCode}→${group.code}`}
+                            description="La ruta sale del barrido nocturno. Las sondas ya guardadas quedan, sin ruta."
+                          />
+                        </div>
                       </td>
                     </tr>
                   ))}

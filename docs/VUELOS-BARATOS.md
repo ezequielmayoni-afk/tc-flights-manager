@@ -137,6 +137,15 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
    nocturno (ruta + mes + día), así que **después de las 01:00 UTC dedupea contra los jobs de esa noche**:
    devuelve los que ya estaban encolados (`deduped: true`) en vez de duplicar sondas — la ventana no se
    saltea, esos jobs ya van a correr igual.
+5. **Alta, edición y borrado** (2026-09-10): "Nuevo destino" elige un perfil de `destination_profiles` que
+   todavía no tiene landing (la landing es una extensión 1:1 del perfil) y precarga slug, código TC, IATA y
+   distancia; nace sin publicar y con la ruta BUE apagada. "Editar" cambia todo lo demás (slug = URL pública,
+   SEO, portada, FAQ, orden). "Nueva ruta" / "Editar" en cada ruta: origen (código de ciudad de TC), estadías,
+   días de salida, sondas/mes, meses. "Borrar" pide confirmación: borrar un destino se lleva sus rutas
+   (cascade), las sondas ya guardadas quedan con `route_id` en null y el perfil de Producto no se toca.
+   API: `GET/POST /api/vuelos-baratos/destinations`, `PATCH/DELETE .../destinations/[code]`,
+   `GET/POST /api/vuelos-baratos/routes`, `PATCH/DELETE .../routes/[id]`. Cada cambio invalida el memo
+   público y queda en `system_logs` (`vuelos_baratos.*`).
 
 ## Cómo escalar con cuidado
 
