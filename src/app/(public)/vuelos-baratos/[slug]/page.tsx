@@ -87,9 +87,9 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   })
 
   return {
-    // `absolute`: el layout le pega '| Sí, Viajo' a todo, y el título ya viene
-    // medido para los 60 caracteres que muestra Google.
-    title: { absolute: title },
+    // Sin `absolute`: el template del layout le agrega ' | Sí, Viajo' y el
+    // título ya viene medido para entrar en 60 CON la marca puesta.
+    title,
     description,
     alternates: { canonical: `/vuelos-baratos/${slug}` },
     // Sólo la versión limpia va al índice: filtros y meses son la misma página.
