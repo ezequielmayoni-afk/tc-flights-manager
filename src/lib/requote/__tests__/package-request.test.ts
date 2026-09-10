@@ -75,10 +75,12 @@ describe('hotel matching', () => {
       { precio_pp_final: 1500, hotel: { nombre: 'Vik Hotel Arena Blanca All Inclusive' } },
     ] }
     const p = pickMatchingOption(res, ['VIK Hotel Arena Blanca'])
-    expect(p.matched).toBe(true); expect(p.option?.precio_pp_final).toBe(1500)
+    expect(p.match).toBe('matched'); expect(p.option?.precio_pp_final).toBe(1500)
     const q = pickMatchingOption(res, ['Whala!Bayahibe'])
-    expect(q.matched).toBe(false); expect(q.option?.precio_pp_final).toBe(1300)
-    expect(pickMatchingOption({ status: 'ok', opciones: [] }, ['x']).option).toBeNull()
+    expect(q.match).toBe('missing'); expect(q.option?.precio_pp_final).toBe(1300)
+    const u = pickMatchingOption(res, [])
+    expect(u.match).toBe('unknown'); expect(u.option?.precio_pp_final).toBe(1300)
+    expect(pickMatchingOption({ status: 'ok', opciones: [] }, ['x'])).toEqual({ option: null, match: 'missing' })
   })
   it('starsFromCategory lee S4, 4* y 5 estrellas', () => {
     expect(starsFromCategory('S4')).toBe(4); expect(starsFromCategory('5 estrellas')).toBe(5); expect(starsFromCategory(null)).toBeNull()

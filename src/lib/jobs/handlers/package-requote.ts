@@ -100,14 +100,14 @@ export const packageRequoteHandler: HandlerDefinition = {
       }).eq('id', runId)
     }
 
-    const ev = evaluateRequote({ referencePrice: reference, newPrice, thresholdPct: threshold, hotelMatched: picked.matched, expectedHotel: build.expectedHotels[0] ?? null, quotedHotel, quoteStatus: response.status, diagnostico: summary.diagnostico })
+    const ev = evaluateRequote({ referencePrice: reference, newPrice, thresholdPct: threshold, hotelMatch: picked.match, expectedHotel: build.expectedHotels[0] ?? null, quotedHotel, quoteStatus: response.status, diagnostico: summary.diagnostico, directNotAvailable: Boolean(build.request.vuelo_directo) && summary.direct === false })
     await db.from('packages').update({
       requote_status: ev.status === 'pending' ? (pkg.row.requote_status ?? 'pending') : ev.status,
       ...(newPrice !== null ? { requote_price: newPrice, requote_variance_pct: ev.variancePct } : {}),
       requote_note: ev.note, requote_source: 'cotizador', last_requote_at: now,
     }).eq('id', packageId)
     await db.from('package_requote_logs').insert({ package_id: packageId, previous_price: reference, new_price: newPrice, variance_pct: ev.variancePct, action_taken: ev.action, error_message: ev.action === 'error' ? ev.note : null, source: 'cotizador', quote_run_id: runId })
-    await log(`${label}: ${ev.status} · ${ev.note}`, { packageId, runId, newPrice, reference, variancePct: ev.variancePct, hotelMatched: picked.matched, direct: summary.direct, airline: summary.airline }, ev.status === 'needs_manual' ? 'warning' : 'info')
-    return { ok: true, result: { packageId, tcPackageId: pkg.tc_package_id, status: ev.status, action: ev.action, pricePp: newPrice, reference, variancePct: ev.variancePct, hotelMatched: picked.matched, note: ev.note, runId } }
+    await log(`${label}: ${ev.status} · ${ev.note}`, { packageId, runId, newPrice, reference, variancePct: ev.variancePct, hotelMatch: picked.match, direct: summary.direct, airline: summary.airline }, ev.status === 'needs_manual' ? 'warning' : 'info')
+    return { ok: true, result: { packageId, tcPackageId: pkg.tc_package_id, status: ev.status, action: ev.action, pricePp: newPrice, reference, variancePct: ev.variancePct, hotelMatch: picked.match, note: ev.note, runId } }
   },
 }

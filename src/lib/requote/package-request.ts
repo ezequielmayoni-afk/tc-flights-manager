@@ -141,19 +141,26 @@ export function optionMentionsHotel(option: QuoteOption, hotelName: string): boo
   return hits / tokens.length >= 0.7
 }
 
-export interface PickedOption { option: QuoteOption | null; matched: boolean }
+/**
+ * matched: la opción trae el hotel del paquete · missing: el paquete tiene
+ * hotel y ninguna opción lo trae · unknown: HUB no sabe el nombre del hotel
+ * (TC no lo mandó), así que se compara contra la más barata y se avisa.
+ */
+export type HotelMatch = 'matched' | 'missing' | 'unknown'
+export interface PickedOption { option: QuoteOption | null; match: HotelMatch }
 
 /**
  * La opción a comparar: la más barata entre las que traen el mismo hotel que
- * el paquete. Si ninguna lo trae, la más barata de todas y `matched: false`,
+ * el paquete. Si ninguna lo trae, la más barata de todas y `match: 'missing'`,
  * porque un precio de otro hotel no dice nada del nuestro.
  */
 export function pickMatchingOption(res: QuoteMultiResponse, expectedHotels: string[]): PickedOption {
   const options = (res.opciones ?? []).filter(o => typeof o.precio_pp_final === 'number')
-  if (options.length === 0) return { option: null, matched: false }
+  const unknown = expectedHotels.length === 0
+  if (options.length === 0) return { option: null, match: unknown ? 'unknown' : 'missing' }
   const cheapest = (list: QuoteOption[]) => [...list].sort((a, b) => (a.precio_pp_final ?? Infinity) - (b.precio_pp_final ?? Infinity))[0]
-  if (expectedHotels.length === 0) return { option: cheapest(options), matched: false }
+  if (unknown) return { option: cheapest(options), match: 'unknown' }
   const matching = options.filter(o => expectedHotels.every(h => optionMentionsHotel(o, h)))
-  if (matching.length > 0) return { option: cheapest(matching), matched: true }
-  return { option: cheapest(options), matched: false }
+  if (matching.length > 0) return { option: cheapest(matching), match: 'matched' }
+  return { option: cheapest(options), match: 'missing' }
 }
