@@ -1,7 +1,8 @@
 import { evaluatePackage, type GuardAd, type GuardDecision, type GuardInsights, type GuardInput, type GuardLink, type GuardPackage, type GuardSettings, type GuardSibling } from './rules'
 import { applyDecision } from './apply'
 import { loadPackageLinks, type PackageLink } from '@/lib/cupos/links'
-import { getIntegrationStatus } from '@/lib/jobs/integrations'
+import { getIntegrationStatus, setIntegrationStatus } from '@/lib/jobs/integrations'
+import { checkMetaHealth } from '@/lib/meta-ads/health'
 import { isoWeekLabel } from '@/lib/tendencias/config'
 import type { Db } from '@/lib/jobs/types'
 
@@ -94,7 +95,17 @@ function toGuardLinks(links: PackageLink[] | undefined): GuardLink[] {
  * costo por conversación no se compara con el umbral (que está en USD).
  */
 async function loadFx(db: Db, meta: Awaited<ReturnType<typeof getIntegrationStatus>>): Promise<{ currency: string; rate: number | null }> {
-  const currency = String((meta?.details as { account?: { currency?: string } } | null)?.account?.currency ?? process.env.META_ACCOUNT_CURRENCY ?? 'USD').toUpperCase()
+  let currency = (meta?.details as { account?: { currency?: string } } | null)?.account?.currency ?? process.env.META_ACCOUNT_CURRENCY ?? null
+  if (!currency) {
+    // Nadie guardó la moneda todavía: una llamada a Meta y queda persistida.
+    const health = await checkMetaHealth()
+    if (health.account?.currency) {
+      currency = health.account.currency
+      await setIntegrationStatus(db, 'meta', { status: health.status, tokenExpiresAt: health.expiresAt, details: { account: health.account, tokenType: health.tokenType, missingScopes: health.missingScopes } })
+    }
+  }
+  if (!currency) return { currency: 'desconocida', rate: null }
+  currency = currency.toUpperCase()
   if (currency === 'USD') return { currency, rate: 1 }
   if (currency !== 'ARS') return { currency, rate: null }
   const { data } = await db.from('demand_signals_weekly').select('metadata').eq('source', 'bcra_fx').eq('destination_code', '*').order('week_label', { ascending: false }).limit(1).maybeSingle()
