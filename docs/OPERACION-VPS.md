@@ -124,9 +124,14 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 
 Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`
 a las 01:00 UTC vía `enqueue?schedule=hourly` → `flights.sweep`, lane `cotizador`, prioridad 4), kill
-switch `automation.flights_sweep`, presupuesto `cotizador_probe` (2500/día). Env nuevas en
-`/opt/hub/.env.local`: `NEXT_PUBLIC_VUELOS_BASE_URL`, `VUELOS_PUBLIC_HOST`, `SIVIAJO_BASE_URL`,
-`NEXT_PUBLIC_GTM_ID`. nginx de referencia: `ops/nginx/vuelos.siviajo.com.conf` (ya instalado en
+switch `automation.flights_sweep`, presupuesto `cotizador_probe` (2500/día). Una hora antes corre el
+estimador de Sabre (`flights.estimate.plan` a las 00:00 UTC → `flights.estimate`, lane `sabre`, uno por
+vez, sin ventana horaria), que elige qué fechas confirma el barrido: kill switch `automation.sabre_calls`,
+presupuesto `sabre` (1500 búsquedas/día). Env nuevas en `/opt/hub/.env.local`:
+`NEXT_PUBLIC_VUELOS_BASE_URL`, `VUELOS_PUBLIC_HOST`, `SIVIAJO_BASE_URL`, `NEXT_PUBLIC_GTM_ID` y las cinco
+del estimador — `SABRE_USERNAME`, `SABRE_PASSWORD`, `SABRE_PCC`, `SABRE_CLIENT_ID`, `SABRE_CLIENT_SECRET`
+(opcionales `SABRE_DOMAIN` y `SABRE_SOAP_URL`); si falta alguna, los jobs del estimador terminan `skipped`
+y el barrido sigue con fechas fijas. nginx de referencia: `ops/nginx/vuelos.siviajo.com.conf` (ya instalado en
 `/etc/nginx/sites-enabled/`; falta certbot, requiere que el DNS del dominio apunte acá). Doc completa,
 con el procedimiento de cutover del DNS: `docs/VUELOS-BARATOS.md`.
 
@@ -134,7 +139,8 @@ con el procedimiento de cutover del DNS: `docs/VUELOS-BARATOS.md`.
 
 - `CRON_SECRET`: cambiarlo en `/opt/hub/.env.local` **y** en `/opt/hub-cron/.env.cron`, después `pm2 restart hub`.
 - `HUB_API_KEY`: también la usa el bot del CRM (`/api/bot/packages`): coordinar con el equipo del CRM.
-- Token de Meta, `SERPAPI_API_KEY`, credenciales del RDS del CRM: sólo en `/opt/hub/.env.local`.
+- Token de Meta, `SERPAPI_API_KEY`, credenciales del RDS del CRM y las `SABRE_*`: sólo en
+  `/opt/hub/.env.local`.
 
 ## Bases
 

@@ -13,6 +13,10 @@ usa siviajo.com) con pares de fechas realistas y guarda cada observación en `fl
 (`source = 'cotizador_probe'`, `route_id` apuntando a la ruta sondeada). Las páginas públicas sólo leen
 agregados de esa tabla, nunca cotizan en vivo.
 
+Desde el estimador (ver [Estimador Sabre](#estimador-sabre)) el barrido no elige las fechas a ciegas:
+**Sabre elige, siviajo confirma**. Una hora antes, Sabre estima el mes entero y el barrido gasta sus
+sondas en los pares más baratos. El precio que se publica sigue saliendo **siempre** de una sonda real.
+
 - **Ventana de vigencia**: una observación sirve para mostrar precio hasta 48 h después
   (`OBSERVATION_WINDOW_HOURS` en `src/lib/vuelos-baratos/config.ts`). Pasado ese tiempo, esa fecha
   desaparece de la grilla hasta la próxima sonda.
@@ -31,20 +35,29 @@ agregados de esa tabla, nunca cotizan en vivo.
   defecto) y `active` (si aparece en la landing). Seed inicial: 11 destinos (MIA, MAD, RIO, FLO, PUJ,
   CUN, SCL, NYC, BCN, ROE, MCO); en producción hoy hay 5 activos: **MIA, MAD, RIO, PUJ, CUN**.
 - **`flight_landing_routes`**: origen × destino, con la configuración del freno look-to-book —
-  `stay_nights` (noches a sondear), `weekdays` (días ISO en los que se busca salida), `probes_per_month`
-  (cuántos pares de fechas por mes, default 8) y `months_ahead` (default 12). `active` decide si esa ruta
-  entra al barrido de la noche. Hoy sólo las rutas BUE de los 5 destinos activos están `active = true`;
-  el resto (incluidas las de Córdoba/Rosario/Mendoza) está creado pero apagado.
-- Migración: `supabase/migrations/20260921_vuelos_baratos.sql` (idempotente, ya aplicada en producción).
+  `stay_nights` (noches a sondear), `weekdays` (días ISO en los que se busca salida), `scan_per_month`
+  (pares que estima Sabre por mes, default 8), `confirm_per_month` (de ésos, cuántos confirma el barrido,
+  default 3), `probes_per_month` (el plan de respaldo cuando no hay estimaciones, default 8) y
+  `months_ahead` (default 12). `active` decide si esa ruta entra al barrido de la noche. Hoy sólo las
+  rutas BUE de los 5 destinos activos están `active = true`; el resto (incluidas las de
+  Córdoba/Rosario/Mendoza) está creado pero apagado.
+- **`flight_fare_estimates`**: una fila por ruta + par de fechas con lo que estimó Sabre (`price_pp`,
+  `airline_code`, escalas y los ≤5 itinerarios en `itineraries`). Es un **upsert** por
+  `(route_id, depart_date, return_date, source)`: la estimación de esta noche pisa la de anoche, no es
+  una serie histórica. **Nunca se publica como precio confirmado.**
+- Migraciones: `supabase/migrations/20260921_vuelos_baratos.sql` (idempotente, ya aplicada en producción).
   También agrega a `flight_price_probes` las columnas `route_id`, `status`, `options`, `fare_family`,
   `checked_bag`, `carry_on`, `airline_code`, `stops_back`, `duration_back_minutes`, `adults`,
-  `elapsed_ms`, `error`.
+  `elapsed_ms`, `error`. Y `20260923_flight_estimates.sql` (también aplicada): `flight_fare_estimates`,
+  `scan_per_month` / `confirm_per_month`, el flag `automation.sabre_calls` y el presupuesto `sabre`.
 
 ## Jobs
 
 | Job | Lane | Prioridad | Qué hace |
 |---|---|---|---|
-| `flights.sweep.plan` | `default` | — | Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleSweepJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes. No sondea nada. |
+| `flights.estimate.plan` | `default` | — | 00:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × grupo de 2 meses. No llama a Sabre. |
+| `flights.estimate` | `sabre` | 5 | Abre **una** sesión SOAP y pide un BFM por par de fechas (`scan_per_month` por mes); guarda las estimaciones (`runEstimate`). |
+| `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre. No sondea nada. |
 | `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
 
 - `flights.sweep.plan` se dispara una vez por noche a las **01:00 UTC** (22:00 ART), desde
@@ -58,8 +71,9 @@ agregados de esa tabla, nunca cotizan en vivo.
   minutos, así que una tanda más grande no llegaría a terminar.
 - **Dedupe**: la clave de encolado combina ruta + mes + día, así un mismo disparo (o un reintento del
   cron) no duplica jobs de la misma noche.
-- Handlers: `src/lib/jobs/handlers/flights-sweep-plan.ts` y `flights-sweep.ts`. Lógica de fechas y
-  tandas: `src/lib/vuelos-baratos/sweep.ts` (pura, sin red ni DB, para poder testear con dobles).
+- Handlers: `src/lib/jobs/handlers/flights-sweep-plan.ts`, `flights-sweep.ts`, `flights-estimate-plan.ts`
+  y `flights-estimate.ts`. Lógica de fechas y tandas: `src/lib/vuelos-baratos/sweep.ts` y `estimate.ts`
+  (puras, sin red ni DB, para poder testear con dobles — una búsqueda de Sabre se cobra).
 
 Depurar: `SELECT id, kind, status, attempts, last_error FROM hub_jobs WHERE kind LIKE 'flights.%' ORDER BY id DESC LIMIT 30;`
 
@@ -71,6 +85,11 @@ Depurar: `SELECT id, kind, status, attempts, last_error FROM hub_jobs WHERE kind
 - Presupuesto `cotizador_probe` en `provider_budgets`: **2500 sondas/día**, 50.000/mes. Al agotarse, el job
   en curso corta y termina `skipped` con "presupuesto agotado (N/M pares sondeados)"; el resto queda para
   la noche siguiente (no se pierde, `flights.sweep.plan` lo vuelve a encolar).
+- `system_flags.automation.sabre_calls`: kill switch del estimador. Apagado (o sin las `SABRE_*`), tanto
+  `flights.estimate.plan` como `flights.estimate` terminan `skipped` y **el barrido sigue andando** con
+  las fechas fijas de cada ruta.
+- Presupuesto `sabre`: **1500 búsquedas/día**, 30.000/mes (una unidad = una transacción BFM). Al agotarse,
+  el job corta y termina `skipped`; lo estimado hasta ahí queda guardado.
 
 ## Bot: `POST /flights/probe`
 
@@ -86,6 +105,58 @@ BUE→MIA: ~15 s.
 
 También expone `POST /flights/resolve` (`resolveDestination`) para traducir un texto libre ("Miami",
 "FLN") al código de destino TC — sirve para dar de alta rutas nuevas sin adivinar códigos a mano.
+
+## Estimador Sabre
+
+**Qué hace**: cada noche a las **00:00 UTC**, una hora antes del barrido, `flights.estimate.plan` encola
+un `flights.estimate` por ruta activa × grupo de 2 meses. Cada job abre **una** sesión SOAP contra Sabre
+y le pide un `BargainFinderMax` por par de fechas (`scan_per_month` pares por mes, con las mismas
+estadías y días de salida que usa el barrido). Cada respuesta se guarda en `flight_fare_estimates`.
+A la **01:00 UTC**, `flights.sweep.plan` lee las estimaciones vigentes (`ESTIMATE_WINDOW_HOURS`, 30 h) y,
+por ruta y mes, encola sondas para los **`confirm_per_month` pares más baratos** que estimó Sabre. El
+`result` del plan dice cuántos meses salieron de estimaciones (`monthsFromEstimates`) y cuántos de fechas
+fijas (`monthsFixed`), y cada job lleva `source: 'estimate' | 'fixed'` en el payload.
+
+**Por qué así** (verificado en vivo contra el PCC propio, 2026-09-10 — ver el comentario de cabecera de
+`src/lib/sabre/client.ts`):
+
+- El **REST de Sabre está deshabilitado** para estas credenciales (403). Sólo SOAP contra
+  `https://webservices.platform.sabre.com`.
+- `BargainFinderMax_ADRQ` (fechas alternativas en una sola llamada) responde "No service / adapter": hay
+  que pedir **par de fechas por par de fechas**, y por eso el estimador es secuencial y va en su propio
+  lane (`sabre`, concurrencia 1, sin ventana horaria).
+- Las sesiones son un recurso escaso (el PCC tiene cupo) y expiran a los 15 minutos: `createSabreShopper`
+  abre una sola por job, la renueva sola y la cierra al terminar.
+- BFM **no manda `ElapsedTime`**: `duration_out_minutes` / `duration_back_minutes` quedan en `null`. No se
+  calculan por diferencia de horarios (son horas locales de husos distintos).
+
+**Cupos por ruta**: `scan_per_month` (0–62, default 8) es cuántas fechas mira Sabre por mes — en 0 la ruta
+no se estima y el barrido usa `probes_per_month`. `confirm_per_month` (1–31, default 3) es cuántas de ésas
+se cotizan de verdad en siviajo.com. Si Sabre devolvió menos pares que el cupo, el barrido completa con
+sus fechas fijas sin repetir combinaciones.
+
+**Costos por ruta y noche**: `scan_per_month × meses` transacciones BFM en el PCC propio (`6U9L`) +
+`confirm_per_month × meses` sondas del cotizador. Con las 5 rutas activas y los defaults (8 / 3, 12
+meses): **≈ 480 BFM + 180 sondas por noche** — contra las 480 sondas de antes, o sea **la misma cobertura
+con un 62 % menos de tráfico contra el motor de reservas**.
+
+**Códigos**: Sabre trabaja con IATA, no con los códigos de destino de Travel Compositor. Los orígenes se
+mapean en `ORIGINS` (`src/lib/vuelos-baratos/config.ts`): BUE→`BUE`, CRD→`COR`, RO6→`ROS`, MEZ→`MDZ`. El
+destino sale de `iata_display ?? tc_code` (MIA, MAD, GIG, FLN, PUJ, CUN, SCL, JFK, BCN, FCO, MCO). Si
+Sabre rechaza un código, no vuelve como "sin vuelos" sino como `error`: el job termina fallado en
+`/automatizacion` (con `errors` en su `result`), queda un aviso por par en `/logs` y la ruta se queda con
+la estimación vieja en `/producto/vuelos-baratos`. Se arregla cargando `iata_display` en el destino.
+
+**Si Sabre falla, no pasa nada grave**: sin estimaciones vigentes (flag apagado, credenciales caídas,
+presupuesto agotado, ruta con `scan_per_month = 0`) el barrido vuelve al plan fijo de siempre
+(`probes_per_month` pares por mes). Un error de credenciales corta el job entero sin reintento (seguir
+pidiendo no lo arregla); una caída de red o del host de Sabre sí se reintenta.
+
+**En la landing**: un mes sin sonda vigente pero con estimación muestra `≈ US$ X` en gris, con el título
+"Estimado con Sabre, se confirma en siviajo.com". El H1, la tabla de fechas y el JSON-LD usan **sólo**
+precios confirmados.
+
+Depurar: `SELECT route_id, depart_date, return_date, price_pp, airline_code, observed_at FROM flight_fare_estimates ORDER BY observed_at DESC LIMIT 20;`
 
 ## Deep link a siviajo.com
 
@@ -113,6 +184,8 @@ Siempre lleva UTM (`withUtm`): `utm_source=vuelos`, `utm_medium`, `utm_campaign`
 | `SIVIAJO_BASE_URL` | `/opt/hub/.env.local` | `https://www.siviajo.com` (base del deep link; **no** lleva prefijo `NEXT_PUBLIC_`: el buscador la recibe como prop de server component, así un override del `.env` no se ignora en el cliente) |
 | `NEXT_PUBLIC_GTM_ID` | `/opt/hub/.env.local` | GTM de la landing (tracking de clicks/conversión) |
 | `COTIZADOR_URL` / `COTIZADOR_API_KEY` | `/opt/hub/.env.local` | Ya existían (Fase 3); las reusa `probeFlights` |
+| `SABRE_USERNAME`, `SABRE_PASSWORD`, `SABRE_PCC`, `SABRE_CLIENT_ID`, `SABRE_CLIENT_SECRET` | `/opt/hub/.env.local` | Credenciales del estimador (obligatorias las cinco: sin alguna, `isSabreConfigured()` es `false` y los jobs terminan `skipped`) |
+| `SABRE_DOMAIN` / `SABRE_SOAP_URL` | `/opt/hub/.env.local` | Opcionales: `DEFAULT` y `https://webservices.platform.sabre.com` |
 
 Las tres primeras ya están agregadas en `/opt/hub/.env.local` del VPS de HUB.
 
@@ -131,8 +204,13 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
    código roto).
 2. **Activar ruta**: toggle con confirmación (activa el barrido nocturno para esa ruta desde la próxima
    noche) — pide confirmar porque suma sondas al presupuesto diario.
-3. **Sondas/mes**: editable por ruta (`probes_per_month`), es el dial fino del freno look-to-book.
-4. **"Barrer ahora"**: encola un `flights.sweep` manual (prioridad de UI, no espera a la ventana nocturna)
+3. **Sabre/mes** y **Confirmar/mes**: editables por ruta (`scan_per_month`, `confirm_per_month`) — cuántas
+   fechas mira el estimador y cuántas se confirman de verdad. **Sondas/mes** (`probes_per_month`) es el
+   plan de respaldo para cuando no hay estimaciones. Los tres son el dial fino del freno look-to-book.
+4. **"Estimar ahora"**: encola un `flights.estimate` manual de 2 meses (el lane `sabre` no tiene ventana
+   horaria, así que corre en el próximo tick). Cada par es una búsqueda que se cobra: por eso son 2 meses
+   y no los 12 de la ruta. Comparte la clave de dedupe con el plan nocturno.
+5. **"Barrer ahora"**: encola un `flights.sweep` manual (prioridad de UI, no espera a la ventana nocturna)
    para probar una ruta recién activada sin esperar 24 h. Comparte la clave de dedupe con el plan
    nocturno (ruta + mes + día), así que **después de las 01:00 UTC dedupea contra los jobs de esa noche**:
    devuelve los que ya estaban encolados (`deduped: true`) en vez de duplicar sondas — la ventana no se
@@ -141,12 +219,12 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
 ## Cómo escalar con cuidado
 
 El barrido nocturno es tráfico real contra el motor de reservas: hay que cuidar el ratio
-look-to-book (sondas vs. reservas de verdad) para no verse como abuso. Alcance actual: **5 rutas × 12
-meses × 8 sondas/mes ≈ 480 sondas/noche** (~1,5 h de las 9 h de ventana del lane `cotizador`). La escala
-plena planificada es de **~2.000 sondas/noche**. Para llegar ahí: activar rutas de a poco (no todas de
-una), mirar `cotizador_probe` en `provider_budgets` y `external_calls` (tasa de error/timeout) antes de
-sumar la próxima, y preferir subir `probes_per_month` de rutas que ya andan bien antes que activar rutas
-nuevas.
+look-to-book (sondas vs. reservas de verdad) para no verse como abuso. Con el estimador, el alcance es
+**5 rutas × 12 meses × 3 confirmaciones ≈ 180 sondas/noche** (más 480 búsquedas BFM, que no tocan
+siviajo.com). La escala plena planificada es de **~2.000 sondas/noche**. Para llegar ahí: activar rutas de
+a poco (no todas de una), mirar `cotizador_probe` y `sabre` en `provider_budgets` y `external_calls` (tasa
+de error/timeout) antes de sumar la próxima, y preferir subir `scan_per_month` (que sale barato) antes que
+`confirm_per_month` de rutas que ya andan bien.
 
 ## Cutover del DNS
 
@@ -181,9 +259,10 @@ Sin `BASE`, apunta a `http://localhost:3001` (para probar contra HUB directo, an
 
 ## Pendiente
 
-- **Spike Sabre** como estimador de precio (sin pasar por el cotizador): faltan las credenciales
-  `SABRE_*`, que viven en `/opt/vuelos/backend/.env` del VPS de vuelos (`181.215.135.113`), no en el de
-  HUB. Serviría sólo para **ida** (Sabre no da paquetes ida/vuelta con la misma facilidad).
+- **Calibrar el estimador**: falta medir cuánto se parece la estimación de Sabre al precio que después
+  confirma siviajo.com (el error relativo por ruta) para saber si conviene subir `scan_per_month` o bajar
+  `confirm_per_month`. Los datos ya están: `flight_fare_estimates` y `flight_price_probes` comparten
+  `route_id` + par de fechas.
 - **Observaciones de calidad de dato**: hoy sólo hay sondas del cotizador. Falta cruzar con clicks reales
   de la landing (qué precio vio el usuario que después reservó) y con el CRM (conversión real por
   destino/ruta) para saber si el precio mostrado predice bien lo que después se cotiza.
