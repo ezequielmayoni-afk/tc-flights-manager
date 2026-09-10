@@ -62,6 +62,8 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
       return [
         // Fase 8: crm.rollup (lane crm, ventana 05:00–09:00 UTC)
         { kind: 'tc.reconcile', payload: { at: day }, dedupeKey: `tc.reconcile:${day}` },
+        // Monitoreo de precio de los paquetes publicados (antes: tc-requote-bot a las 03:00 UTC)
+        { kind: 'package.requote.plan', payload: { day }, dedupeKey: `package.requote.plan:${day}` },
       ]
     case 'weekly': {
       // Fase 13: competencia.run

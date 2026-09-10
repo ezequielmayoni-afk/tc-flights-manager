@@ -23,3 +23,12 @@ export async function getPriceChangeThresholdPctCached(): Promise<number> {
   cached = { value, at: Date.now() }
   return value
 }
+
+export const DEFAULT_REQUOTE_VARIANCE_THRESHOLD_PCT = 10
+
+/** Suba máxima del precio recotizado sobre el objetivo antes de pedir revisión manual (el bot viejo usaba 10 %). */
+export async function getRequoteVarianceThresholdPct(db: Db): Promise<number> {
+  const { data } = await db.from('notification_settings').select('requote_variance_threshold_pct').eq('id', 1).maybeSingle()
+  const value = Number((data as { requote_variance_threshold_pct?: number | null } | null)?.requote_variance_threshold_pct)
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_REQUOTE_VARIANCE_THRESHOLD_PCT
+}

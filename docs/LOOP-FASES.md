@@ -194,6 +194,11 @@ Arranca en sombra; nunca pausa el último anuncio activo de un paquete sin human
 
 ## Fase 10 — Recotización con fecha alternativa · ⏳
 
+**Adelanto (2026-09-10)**: el monitoreo nocturno de precio ya no lo hace el tc-requote-bot (Playwright, sesión de agente
+bloqueada por la verificación por email) sino el job `package.requote` con el cotizador, sin sesión: misma combinación
+del paquete, misma regla del 10 %, mismos campos. Lo que se perdió es "Actualizar y guardar idea" (vuelve con la
+Fase 6 por JSF). Ver `docs/OPERACION-VPS.md`, sección "Monitoreo de precio".
+
 Cuando el bot marca "cotización manual" por suba de precio, HUB busca una fecha en la misma temporada
 con aéreo más barato, recotiza y propone. Aceptar aplica la fecha en siviajo.com.
 

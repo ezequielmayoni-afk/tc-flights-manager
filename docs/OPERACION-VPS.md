@@ -13,8 +13,8 @@ Es el runtime real de todo: HUB **no** corre en Vercel (`vercel.json` era decora
 | `backend`, `invoice-bot`, `video-downloader` | — / — / 8096 | `/opt/*` | Otros servicios; no forman parte del loop. |
 | — | :8095 | nginx | App de video (`auth_request`). |
 
-`/root/tc-requote-bot` no es un proceso: lo invoca el cron a las 03:00 UTC y HUB lo spawnea bajo demanda
-(recotización, subida de SEO). Repo: `github.com/ezequielmayoni-afk/tc-requote-bot`; copia local en `~/tc-requote-bot`.
+`/root/tc-requote-bot` no es un proceso: HUB lo spawnea bajo demanda sólo para la subida de SEO. Su recotización
+nocturna (cron de las 03:00 UTC) se retiró el 2026-09-10: la hace el job `package.requote` (ver "Monitoreo de precio"). Repo: `github.com/ezequielmayoni-afk/tc-requote-bot`; copia local en `~/tc-requote-bot`.
 
 ## Deploy de HUB
 
@@ -103,6 +103,28 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 - Escrituras en TC (`tc.write`: desactivar, activar, temáticas) van por job con verificación posterior; `activatePackage`
   y `updatePackageThemes` **no están verificados contra TC**: la primera prueba la autoriza Ezequiel.
 - Depurar: `SELECT rule, action, status, reason FROM ad_decisions ORDER BY id DESC LIMIT 30;`
+
+## Monitoreo de precio de paquetes publicados (desde 2026-09-10, por el cotizador)
+
+- Reemplaza al `tc-requote-bot` (Playwright con sesión de agente en siviajo.com, que la verificación por email
+  dejó sin poder entrar). La línea de las 03:00 salió del crontab; el código del bot queda en `/root/tc-requote-bot`
+  sólo por su modo de subida de SEO.
+- `enqueue?schedule=nightly` encola `package.requote.plan` → un `package.requote` por paquete con
+  `monitor_enabled` y `tc_active` (los de cupo se saltean: el aéreo es de contrato) → `package.requote.notify`
+  manda a Slack el resumen de los que quedaron en revisión manual (uno por 24 h).
+- Cada `package.requote` le pide al cotizador la misma combinación que vende el paquete (origen del vuelo,
+  fecha, un tramo por hotel con destino, noches, régimen y hotel, pasajeros, directo si el paquete vuela
+  directo; `src/lib/requote/package-request.ts`), guarda la llamada en `quote_runs` (`purpose = requote`) y
+  compara el precio de la opción que trae el mismo hotel contra `target_price` (o el precio actual):
+  sube más que `notification_settings.requote_variance_threshold_pct` (10 %) → `needs_manual`; si no →
+  `completed`; si el hotel no aparece en la búsqueda → `needs_manual` con el motivo. Todo queda en
+  `packages.requote_note`/`requote_source` y en `package_requote_logs` (`source = cotizador`).
+- Lo que ya no pasa: "Actualizar y guardar idea" en siviajo.com. Si el precio bajó más que el umbral, la nota
+  lo dice y la idea se actualiza a mano (o por JSF en la Fase 6).
+- "Recotizar ahora" en `/packages` (`POST /api/requote/run`) encola los mismos jobs con prioridad manual y va
+  mostrando el avance; cada paquete tarda ~1 min porque el lane `cotizador` corre de a uno.
+- Depurar: `SELECT id, tc_package_id, requote_status, requote_price, requote_variance_pct, requote_note, last_requote_at FROM packages WHERE monitor_enabled ORDER BY last_requote_at DESC;`
+  y `SELECT * FROM package_requote_logs ORDER BY checked_at DESC LIMIT 20;`.
 
 ## Producto: perfiles e ideas (Fase 3 del loop)
 

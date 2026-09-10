@@ -16,5 +16,5 @@ PATH=/usr/local/bin:/usr/bin:/bin
 0 8 * * 1    /opt/hub-cron/hub-cron.sh "enqueue?schedule=weekly"   # tendencias, competencia, auditoría de perfiles (lunes 05:00 ART)
 
 # ── Bots existentes, sin cambios ──────────────────────────────────────────
-0 3 * * *    cd /root/tc-requote-bot && /usr/bin/node dist/index.js --mode=cron >> /var/log/tc-requote-bot.log 2>&1
+# tc-requote-bot (Playwright) retirado el 2026-09-10: el monitoreo de precio lo hace el job package.requote (enqueue nightly)
 10 5 * * *   cd /opt/cotizador-nacional && .venv/bin/python ops/scrape-paquetes.py >> /var/log/scrape-paquetes.log 2>&1

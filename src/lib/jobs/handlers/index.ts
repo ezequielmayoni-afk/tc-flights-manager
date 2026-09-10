@@ -12,6 +12,9 @@ import { tcReconcileHandler } from './tc-reconcile'
 import { healthCheckHandler } from './health-check'
 import { healthDigestHandler } from './health-digest'
 import { ideaProbeHandler } from './idea-probe'
+import { packageRequoteHandler } from './package-requote'
+import { packageRequotePlanHandler } from './package-requote-plan'
+import { packageRequoteNotifyHandler } from './package-requote-notify'
 import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
 import { flightsSweepPlanHandler } from './flights-sweep-plan'
@@ -41,6 +44,9 @@ const HANDLERS: HandlerDefinition[] = [
   healthDigestHandler,
   // Fase 3 — Producto
   ideaProbeHandler,
+  packageRequoteHandler,
+  packageRequotePlanHandler,
+  packageRequoteNotifyHandler,
   ideaQuoteHandler,
   profileAuditHandler,
   // Vuelos baratos (vuelos.siviajo.com)

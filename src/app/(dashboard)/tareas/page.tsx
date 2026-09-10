@@ -33,6 +33,7 @@ async function getPackagesNeedingRequote(): Promise<PackageNeedingRequote[]> {
       needs_manual_since,
       manual_quote_completed_at,
       requote_status,
+      requote_note,
       air_cost,
       land_cost,
       adults_count,

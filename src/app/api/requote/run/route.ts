@@ -1,291 +1,127 @@
 import { NextResponse } from 'next/server'
-import { spawn } from 'child_process'
-import path from 'path'
 import { checkAndSendManualQuoteNotifications } from '@/lib/notifications/manual-quote'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
+import { getCupoPackageIds } from '@/lib/packages/cupo'
+import { enqueueJob } from '@/lib/jobs/queue'
+import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 
+export const dynamic = 'force-dynamic'
+export const maxDuration = 3600
+
+/** Cada cuánto se mira la cola mientras el cotizador trabaja. */
+const POLL_MS = 4000
+/** Tope de espera del stream: 18 paquetes × ~75 s entran de sobra. */
+const MAX_WAIT_MS = 40 * 60 * 1000
+
+interface JobRow { id: number; status: string; payload: { packageId?: number }; result: Record<string, unknown> | null; last_error: string | null }
 
 /**
- * POST /api/requote/run
- * Execute the requote bot and stream progress via SSE
+ * POST /api/requote/run — recotiza ahora los paquetes monitoreados con el
+ * cotizador (job `package.requote`, prioridad manual) y va contando el
+ * avance por SSE, con los mismos eventos que leía la tabla cuando esto
+ * lanzaba el tc-requote-bot de Playwright.
  *
- * Body (optional): { packageIds: number[] }
- * If packageIds is provided, only those packages will be processed
- * If not provided, the bot will process all pending packages (batch mode for cron)
+ * Body opcional: { packageIds: number[] }. Sin ids, todos los monitoreados.
  */
 export async function POST(request: Request) {
-  const { authorized } = await checkSectionAccess('requote')
+  const { authorized, user } = await checkSectionAccess('requote')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
-  // Parse optional packageIds from request body
-  let packageIds: number[] | null = null
+  let packageIds: number[] = []
   try {
     const body = await request.json()
-    if (body.packageIds && Array.isArray(body.packageIds) && body.packageIds.length > 0) {
-      packageIds = body.packageIds
-    }
+    if (Array.isArray(body?.packageIds)) packageIds = body.packageIds.map(Number).filter((n: number) => Number.isInteger(n) && n > 0)
   } catch {
-    // No body or invalid JSON - that's fine, will run in batch mode
+    // sin body: todos los monitoreados
   }
 
-  // In production (VPS), use absolute path; in dev, use relative
-  const isProduction = process.env.NODE_ENV === 'production'
-  const botPath = isProduction
-    ? '/root/tc-requote-bot'
-    : path.resolve(process.cwd(), '../tc-requote-bot')
+  try {
+    const db = createAdminClient()
+    let query = db.from('packages').select('id, tc_package_id, title').eq('monitor_enabled', true).eq('tc_active', true).order('id')
+    if (packageIds.length > 0) query = query.in('id', packageIds)
+    const { data } = await query
+    const rows = (data ?? []) as Array<{ id: number; tc_package_id: number; title: string }>
+    const cupos = await getCupoPackageIds(db, rows.map(r => r.id))
+    const targets = rows.filter(r => !cupos.has(r.id))
+    const byId = new Map(targets.map(r => [r.id, r]))
 
-  console.log('[Requote Run] Starting bot at:', botPath, '(production:', isProduction, ')')
-  if (packageIds) {
-    console.log('[Requote Run] Specific package IDs:', packageIds.join(', '))
-  } else {
-    console.log('[Requote Run] Running in batch mode (all pending packages)')
-  }
+    const encoder = new TextEncoder()
+    const stream = new TransformStream()
+    const writer = stream.writable.getWriter()
+    const send = async (type: string, payload: Record<string, unknown>) => { await writer.write(encoder.encode(`data: ${JSON.stringify({ type, ...payload })}\n\n`)) }
 
-  // Create a TransformStream to stream data to the client
-  const encoder = new TextEncoder()
-  const stream = new TransformStream()
-  const writer = stream.writable.getWriter()
+    const run = async () => {
+      const startedAt = Date.now()
+      try {
+        if (targets.length === 0) {
+          await send('status', { message: cupos.size > 0 ? 'Sólo hay paquetes de cupo: el aéreo de contrato no se recotiza' : 'No hay paquetes monitoreados', stage: 'no_packages' })
+          await send('complete', { success: true, summary: { processed: 0, success: 0, errors: 0, needsManual: 0, autoUpdated: 0, noChange: 0, duration: '0s', packages: [] } })
+          return
+        }
+        const jobIds: number[] = []
+        for (const r of targets) {
+          const dedupeKey = `package.requote:manual:${r.id}`
+          const res = await enqueueJob(db, { kind: 'package.requote', payload: { packageId: r.id, trigger: 'manual' }, priority: MANUAL_PRIORITY, dedupeKey, entityType: 'package', entityId: r.id, createdBy: user?.email ?? 'ui' })
+          if (res.id !== null) { jobIds.push(res.id); continue }
+          // Ya había uno en cola para este paquete (doble clic): se sigue ese.
+          const { data: existing } = await db.from('hub_jobs').select('id').eq('dedupe_key', dedupeKey).in('status', ['queued', 'running']).order('id', { ascending: false }).limit(1).maybeSingle()
+          const existingId = (existing as { id: number } | null)?.id
+          if (existingId) jobIds.push(existingId)
+        }
+        await send('status', { message: `${targets.length} paquete(s) en la cola del cotizador${cupos.size > 0 ? ` (${cupos.size} de cupo salteados)` : ''}. Cada uno tarda alrededor de un minuto.`, stage: 'queued', total: targets.length })
 
-  const sendEvent = async (type: string, data: unknown) => {
-    const message = `data: ${JSON.stringify({ type, ...data as object })}\n\n`
-    await writer.write(encoder.encode(message))
-  }
-
-  // Start the bot process
-  const runBot = async () => {
-    try {
-      await sendEvent('status', { message: 'Iniciando bot...', stage: 'init' })
-
-      const summary = {
-        processed: 0,
-        success: 0,
-        errors: 0,
-        needsManual: 0,
-        autoUpdated: 0,
-        noChange: 0,
-        duration: '0s',
-        packages: [] as { id: number; tcId: number; title: string; status: string; variance?: string }[],
-      }
-
-      let currentPackage: { id: number; tcId: number; title: string; status: string; variance?: string } | null = null
-
-      // Force headless mode for server execution
-      const env = { ...process.env, HEADLESS: 'true' }
-
-      // In production use compiled JS, in dev use tsx
-      const command = isProduction ? 'node' : 'npx'
-      let args = isProduction ? ['dist/index.js'] : ['tsx', 'src/index.ts']
-
-      // If specific package IDs provided, pass them as argument
-      if (packageIds && packageIds.length > 0) {
-        args = [...args, `--package-ids=${packageIds.join(',')}`]
-      }
-
-      console.log('[Requote Run] Running:', command, args.join(' '))
-
-      const child = spawn(command, args, {
-        cwd: botPath,
-        env,
-        shell: true,
-      })
-
-      child.stdout.on('data', async (data) => {
-        const lines = data.toString().split('\n')
-        for (const line of lines) {
-          if (!line.trim()) continue
-
-          // Parse different stages
-          if (line.includes('Navigating to siviajo.com') || line.includes('Navigating to www.siviajo.com')) {
-            await sendEvent('status', { message: 'Navegando a www.siviajo.com...', stage: 'login' })
-          } else if (line.includes('Login successful')) {
-            await sendEvent('status', { message: 'Login exitoso', stage: 'logged_in' })
-          } else if (line.includes('Found') && line.includes('packages to check')) {
-            const match = line.match(/Found (\d+) packages/)
-            if (match) {
-              await sendEvent('status', {
-                message: `Encontrados ${match[1]} paquetes para verificar`,
-                stage: 'found_packages',
-                total: parseInt(match[1])
-              })
+        const summary = { processed: 0, success: 0, errors: 0, needsManual: 0, autoUpdated: 0, noChange: 0, duration: '0s', packages: [] as Array<{ id: number; tcId: number; title: string; status: string; variance?: string }> }
+        const seenRunning = new Set<number>()
+        const finished = new Set<number>()
+        while (finished.size < jobIds.length && Date.now() - startedAt < MAX_WAIT_MS) {
+          await new Promise(r => setTimeout(r, POLL_MS))
+          const { data: jobs } = await db.from('hub_jobs').select('id, status, payload, result, last_error').in('id', jobIds)
+          for (const job of (jobs ?? []) as JobRow[]) {
+            const pkg = byId.get(Number(job.payload?.packageId))
+            if (!pkg) continue
+            if (job.status === 'running' && !seenRunning.has(job.id)) {
+              seenRunning.add(job.id)
+              await send('package_start', { id: pkg.id, tcId: pkg.tc_package_id })
+              await send('package_info', { id: pkg.id, title: pkg.title })
+              await send('package_status', { message: 'Cotizando la misma combinación en siviajo.com…' })
             }
-          } else if (line.includes('No packages to check')) {
-            await sendEvent('status', { message: 'No hay paquetes pendientes', stage: 'no_packages' })
-          } else if (line.includes('Checking package')) {
-            const match = line.match(/package (\d+) \(TC: (\d+)\)/)
-            if (match) {
-              currentPackage = {
-                id: parseInt(match[1]),
-                tcId: parseInt(match[2]),
-                title: '',
-                status: 'checking',
-              }
-              await sendEvent('package_start', {
-                id: currentPackage.id,
-                tcId: currentPackage.tcId,
-                message: `Verificando paquete ${match[2]}...`
-              })
-            }
-          } else if (line.includes('[Bot] Title:') && currentPackage) {
-            currentPackage.title = line.replace('[Bot] Title:', '').trim()
-            await sendEvent('package_info', {
-              id: currentPackage.id,
-              title: currentPackage.title
-            })
-          } else if (line.includes('Navigating to package page')) {
-            await sendEvent('package_status', { message: 'Abriendo página del paquete...' })
-          } else if (line.includes('Found "reservar | ver fechas"')) {
-            await sendEvent('package_status', { message: 'Haciendo clic en "Reservar"...' })
-          } else if (line.includes('Found "buscar" button')) {
-            await sendEvent('package_status', { message: 'Buscando disponibilidad...' })
-          } else if (line.includes('Waiting for search results')) {
-            await sendEvent('package_status', { message: 'Esperando resultados...' })
-          } else if (line.includes('Extracting price')) {
-            await sendEvent('package_status', { message: 'Extrayendo precio...' })
-          } else if (line.includes('Variance:') && currentPackage) {
-            const match = line.match(/Variance:\s+([\d.+-]+%)/)
-            if (match) {
-              currentPackage.variance = match[1]
-              await sendEvent('package_variance', {
-                id: currentPackage.id,
-                variance: match[1]
-              })
-            }
-          } else if (line.includes('NEEDS MANUAL REVIEW') && currentPackage) {
-            currentPackage.status = 'needs_manual'
-            summary.needsManual++
-            summary.packages.push({ ...currentPackage })
-            await sendEvent('package_done', {
-              id: currentPackage.id,
-              status: 'needs_manual',
-              title: currentPackage.title,
-              variance: currentPackage.variance,
-              message: 'Requiere revisión manual'
-            })
-            // Notifications are sent in batch when bot finishes
-          } else if (line.includes('clicking "Actualizar y guardar idea"') && currentPackage) {
-            await sendEvent('package_status', { message: 'Actualizando precio...' })
-          } else if (line.includes('Package updated successfully') && currentPackage) {
-            currentPackage.status = 'updated'
-            summary.autoUpdated++
-            summary.packages.push({ ...currentPackage })
-            await sendEvent('package_done', {
-              id: currentPackage.id,
-              status: 'updated',
-              title: currentPackage.title,
-              variance: currentPackage.variance,
-              message: 'Actualizado correctamente'
-            })
-          } else if (line.includes('TC refresh:')) {
-            await sendEvent('package_status', { message: 'Sincronizando con TC...' })
-          } else if (line.includes('Waiting') && line.includes('before next package')) {
-            await sendEvent('package_status', { message: 'Esperando antes del siguiente...' })
-          } else if (line.includes('Processed:')) {
-            const match = line.match(/Processed:\s+(\d+)/)
-            if (match) summary.processed = parseInt(match[1])
-          } else if (line.includes('Success:')) {
-            const match = line.match(/Success:\s+(\d+)/)
-            if (match) summary.success = parseInt(match[1])
-          } else if (line.includes('Errors:') && !line.includes('errorDetails')) {
-            const match = line.match(/Errors:\s+(\d+)/)
-            if (match) summary.errors = parseInt(match[1])
-          } else if (line.includes('Duration:')) {
-            const match = line.match(/Duration:\s+([\d.]+s)/)
-            if (match) summary.duration = match[1]
-          } else if (line.includes('Browser closed')) {
-            await sendEvent('status', { message: 'Cerrando navegador...', stage: 'closing' })
+            if (finished.has(job.id) || !['done', 'failed', 'skipped', 'cancelled'].includes(job.status)) continue
+            finished.add(job.id)
+            summary.processed++
+            const r = job.result ?? {}
+            const variancePct = typeof r.variancePct === 'number' ? r.variancePct : null
+            const variance = variancePct === null ? undefined : `${variancePct > 0 ? '+' : ''}${variancePct.toFixed(1)}%`
+            let status = 'error'
+            let message = job.last_error ?? String(r.note ?? '')
+            if (job.status === 'done' && r.skipped) { status = 'skipped'; message = String(r.skipped) }
+            else if (job.status === 'done' && r.status === 'needs_manual') { status = 'needs_manual'; summary.needsManual++; summary.success++ }
+            else if (job.status === 'done' && r.status === 'completed') { status = 'completed'; summary.noChange++; summary.success++ }
+            else if (job.status === 'skipped') { status = 'skipped' }
+            else summary.errors++
+            if (variance) await send('package_variance', { id: pkg.id, variance })
+            summary.packages.push({ id: pkg.id, tcId: pkg.tc_package_id, title: pkg.title, status, variance })
+            await send('package_done', { id: pkg.id, status, title: pkg.title, variance, message })
           }
         }
-      })
-
-      child.stderr.on('data', async (data) => {
-        const line = data.toString().trim()
-        if (line && !line.includes('dotenv')) {
-          console.error('[Bot Error]', line)
+        summary.duration = `${Math.round((Date.now() - startedAt) / 1000)}s`
+        const pending = jobIds.length - finished.size
+        if (pending > 0) await send('status', { message: `${pending} paquete(s) siguen en la cola; el resultado queda en la tabla cuando terminen`, stage: 'timeout' })
+        if (summary.needsManual > 0) {
+          try { await checkAndSendManualQuoteNotifications() } catch (err) { console.error('[Requote Run] notificación', err) }
         }
-      })
-
-      await new Promise<void>((resolve) => {
-        child.on('close', async (code) => {
-          console.log('[Requote Run] Bot finished with code:', code)
-
-          // Send notifications for all packages with needs_manual status
-          if (summary.needsManual > 0) {
-            try {
-              console.log('[Requote Run] Sending notifications for manual quote packages...')
-              const notifResult = await checkAndSendManualQuoteNotifications()
-              console.log(`[Requote Run] Notifications sent: ${notifResult.sent || 0}`)
-            } catch (notifError) {
-              console.error('[Requote Run] Error sending batch notifications:', notifError)
-            }
-          }
-
-          await sendEvent('complete', {
-            success: code === 0,
-            summary
-          })
-          resolve()
-        })
-
-        child.on('error', async (err) => {
-          console.error('[Requote Run] Failed to start bot:', err)
-          await sendEvent('error', { message: `Error: ${err.message}` })
-          resolve()
-        })
-
-        // Timeout after 10 minutes
-        setTimeout(async () => {
-          child.kill()
-          await sendEvent('error', { message: 'Timeout: el bot tardó más de 10 minutos' })
-          resolve()
-        }, 10 * 60 * 1000)
-      })
-    } catch (error) {
-      await sendEvent('error', {
-        message: error instanceof Error ? error.message : 'Error desconocido'
-      })
-    } finally {
-      await writer.close()
+        await send('complete', { success: true, summary })
+      } catch (err) {
+        await send('error', { message: err instanceof Error ? err.message : 'Error al recotizar' })
+      } finally {
+        await writer.close()
+      }
     }
-  }
+    void run()
 
-  // Start the bot in background
-  runBot()
-
-  // Return the stream as SSE
-  return new Response(stream.readable, {
-    headers: {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    },
-  })
-}
-
-/**
- * GET /api/requote/run
- * Check how many packages are pending
- */
-export async function GET() {
-  const { authorized } = await checkSectionAccess('requote')
-  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
-
-
-  const supabase = createAdminClient()
-
-  const { data: pending, error } = await supabase
-    .from('packages')
-    .select('id, tc_package_id, title')
-    .eq('requote_status', 'pending')
-    .eq('monitor_enabled', true)
-
-  if (error) {
+    return new Response(stream.readable, { headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' } })
+  } catch (error) {
     return errorResponse(error)
   }
-
-  return NextResponse.json({
-    pendingCount: pending?.length || 0,
-    packages: pending || [],
-  })
 }

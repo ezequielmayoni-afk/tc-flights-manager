@@ -54,6 +54,7 @@ type PackageNeedingRequote = {
   needs_manual_since: string | null
   manual_quote_completed_at: string | null
   requote_status: string | null
+  requote_note?: string | null
   air_cost: number | null
   land_cost: number | null
   adults_count: number
@@ -494,6 +495,7 @@ export function RequoteTable({ packages }: RequoteTableProps) {
                 {/* Fecha Recot. */}
                 <TableCell className="text-xs">
                   {pkg.last_requote_at ? formatDate(pkg.last_requote_at) : '-'}
+                  {pkg.requote_note && <span className="mt-0.5 block max-w-[260px] whitespace-normal text-[11px] leading-snug text-muted-foreground" title={pkg.requote_note}>{pkg.requote_note}</span>}
                 </TableCell>
 
                 {/* Monitoreo - Variación y Fecha */}
