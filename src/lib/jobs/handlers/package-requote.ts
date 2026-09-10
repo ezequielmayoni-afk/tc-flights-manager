@@ -1,5 +1,7 @@
 import { quoteMulti, type QuoteMultiResponse } from '@/lib/cotizador/client'
 import { getCupoPackageIds } from '@/lib/packages/cupo'
+import { importPackageHotels } from '@/lib/packages/import'
+import { getPackageDetail } from '@/lib/travelcompositor/client'
 import { getRequoteVarianceThresholdPct } from '@/lib/packages/thresholds'
 import { summarizeQuote } from '@/lib/producto/idea-builder'
 import { evaluateRequote } from '@/lib/requote/evaluate'
@@ -61,7 +63,22 @@ export const packageRequoteHandler: HandlerDefinition = {
       return { ok: true, result: { packageId, skipped: 'sin monitoreo o dado de baja' } }
     }
 
-    const build = buildPackageQuoteRequest(pkg)
+    // Hoteles importados sin nombre (TC no lo mandaba en su momento): se
+    // vuelven a traer del detalle de TC antes de cotizar, para poder comparar
+    // contra el mismo hotel y no contra "el más barato".
+    let build = buildPackageQuoteRequest(pkg)
+    if (build.ok && build.expectedHotels.length === 0 && pkg.hotels.length > 0) {
+      try {
+        await importPackageHotels(db, packageId, await getPackageDetail(pkg.tc_package_id), pkg.adults_count ?? 2, pkg.children_count ?? 0)
+        const refreshed = await loadPackage(db, packageId)
+        if (refreshed) {
+          build = buildPackageQuoteRequest(refreshed)
+          await log(`${label}: hoteles reimportados de TC (${refreshed.hotels.map(h => h.hotel_name ?? 'sin nombre').join(' + ')})`, { packageId })
+        }
+      } catch (err) {
+        await log(`${label}: no se pudieron reimportar los hoteles de TC: ${err instanceof Error ? err.message : String(err)}`, { packageId }, 'warning')
+      }
+    }
     if (!build.ok) {
       await db.from('packages').update({ requote_note: build.reason, requote_source: 'cotizador', last_requote_at: now }).eq('id', packageId)
       await db.from('package_requote_logs').insert({ package_id: packageId, previous_price: pkg.row.target_price ?? pkg.row.current_price_per_pax, new_price: null, variance_pct: null, action_taken: 'skipped', error_message: build.reason, source: 'cotizador' })
