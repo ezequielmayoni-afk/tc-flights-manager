@@ -53,7 +53,8 @@ export interface TrendAlertRow {
   source: string | null
   data: Record<string, unknown>
   acknowledged: boolean
-  action_taken: 'idea_created' | 'dismissed' | null
+  action_taken: 'idea_created' | 'dismissed' | 'superseded' | null
+  dedupe_key: string | null
   acknowledged_by: string | null
   acknowledged_at: string | null
   idea_id: number | null

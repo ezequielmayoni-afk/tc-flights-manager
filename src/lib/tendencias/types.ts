@@ -57,6 +57,8 @@ export interface TrendAlert {
   description: string
   source: string
   data: Record<string, unknown>
+  /** Una alerta por condición: mientras exista una abierta con esta clave no se repite. */
+  dedupeKey: string
 }
 
 /** Lo que se busca y de lo que se habla, a nivel corrida (no por destino). */

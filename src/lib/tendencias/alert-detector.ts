@@ -30,6 +30,7 @@ export function detectAlerts(destinations: TrendDestination[]): TrendAlert[] {
           matchingPackageCount: dest.matchingPackageCount,
           destinationSlug: dest.destinationSlug,
         },
+        dedupeKey: `demand_spike:${dest.destinationSlug}`,
       })
     }
 
@@ -48,6 +49,7 @@ export function detectAlerts(destinations: TrendDestination[]): TrendAlert[] {
           destinationSlug: dest.destinationSlug,
           buyQueries: dest.relatedQueries.filter(q => q.intent === 'buy').map(q => q.query).slice(0, 5),
         },
+        dedupeKey: `competitor_gap:${dest.destinationSlug}`,
       })
     }
 
@@ -65,6 +67,7 @@ export function detectAlerts(destinations: TrendDestination[]): TrendAlert[] {
           matchingPackageCount: dest.matchingPackageCount,
           destinationSlug: dest.destinationSlug,
         },
+        dedupeKey: `demand_drop:${dest.destinationSlug}`,
       })
     }
   }
@@ -102,6 +105,7 @@ export function detectRisingQueryAlerts(lists: GenericRelatedList[], destination
           : `La búsqueda "${r.query}" está creciendo en Argentina y no tenés paquetes de ${dest.destination}.`,
         source: 'google_related',
         data: { query: r.query, value: r.value, seed: list.seed, destinationSlug: dest.destinationSlug, trendScore: dest.trendScore, hasPackages: dest.hasPackages },
+        dedupeKey: `rising_query:${dest.destinationSlug}:${r.query}`,
       })
     }
   }
