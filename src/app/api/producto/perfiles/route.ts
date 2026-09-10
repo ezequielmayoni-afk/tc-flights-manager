@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 import { logEvent } from '@/lib/logs'
-import { createProfile, deleteProfile, findProfileByText, loadProfiles, type NewProfileInput } from '@/lib/producto/profiles'
+import { createProfile, deleteProfile, findProfileByText, loadProfiles, TRENDS_PROFILE_NOTE, type NewProfileInput } from '@/lib/producto/profiles'
+import { resolveDestination } from '@/lib/cotizador/client'
 
 export const dynamic = 'force-dynamic'
 
@@ -38,8 +39,27 @@ export async function POST(request: NextRequest) {
     const body = await request.json() as NewProfileInput
     if (!body.name?.trim() || !body.family) return NextResponse.json({ error: 'name y family son obligatorios' }, { status: 400 })
     const db = createAdminClient()
-    const profile = await createProfile(db, { ...body, created_by: user?.email ?? null, created_from: body.created_from ?? 'tendencias' })
-    await logEvent(db, { source: 'automation', action: 'profile.created', message: `Perfil ${profile.code} (${profile.name}) creado desde ${body.created_from ?? 'tendencias'}${profile.review_pending ? ', pendiente de revisión' : ''}`, details: { code: profile.code } }, user ? { id: user.id, email: user.email } : null)
+    // Sin código de destino de TC la idea se cotiza por nombre (homónimos) y el
+    // link "Abrir búsqueda en siviajo.com" sale sin destino: el buscador cae al
+    // home sin avisar. Se resuelve contra el autocomplete de TC vía cotizador;
+    // si falla, el perfil queda igual y el código se carga a mano en Perfiles.
+    let tcNote: string | null = null
+    if (!body.tc_destination_code?.trim()) {
+      try {
+        const r = await resolveDestination(db, body.name.trim())
+        if (r.status === 'ok') {
+          body.tc_destination_code = r.code
+          tcNote = `Código de TC resuelto automáticamente: ${r.code} (${r.label}). Verificá que sea el destino correcto.`
+        }
+      } catch (err) {
+        console.warn('[perfiles] no se pudo resolver el código de TC', err instanceof Error ? err.message : err)
+      }
+    }
+    const createdFrom = body.created_from ?? 'tendencias'
+    const baseNote = body.notes ?? (createdFrom === 'tendencias' ? TRENDS_PROFILE_NOTE : null)
+    const notes = tcNote ? [baseNote, tcNote].filter(Boolean).join(' ') : baseNote
+    const profile = await createProfile(db, { ...body, notes, created_by: user?.email ?? null, created_from: createdFrom })
+    await logEvent(db, { source: 'automation', action: 'profile.created', message: `Perfil ${profile.code} (${profile.name}) creado desde ${body.created_from ?? 'tendencias'}${profile.review_pending ? ', pendiente de revisión' : ''}${profile.tc_destination_code ? ` · TC ${profile.tc_destination_code}` : ' · SIN código de TC'}`, details: { code: profile.code, tc_destination_code: profile.tc_destination_code } }, user ? { id: user.id, email: user.email } : null)
     return NextResponse.json({ ok: true, profile })
   } catch (error) {
     return errorResponse(error)

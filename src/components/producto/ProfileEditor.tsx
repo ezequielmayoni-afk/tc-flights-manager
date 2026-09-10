@@ -33,6 +33,26 @@ export function ProfileEditor({ initial, mode, onClose }: { initial: ProfileForm
   const [airlinesText, setAirlinesText] = useState(JSON.stringify(initial.airlines_by_origin ?? {}, null, 0))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [resolving, setResolving] = useState(false)
+  const [resolvedLabel, setResolvedLabel] = useState<string | null>(null)
+
+  /** Pide al cotizador el código de destino de TC para el nombre (mismo autocomplete que siviajo.com). */
+  async function resolveTc() {
+    if (!v.name.trim()) return setError('Poné el nombre del destino primero')
+    setResolving(true); setError(null); setResolvedLabel(null)
+    try {
+      const res = await fetch('/api/vuelos-baratos/resolve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: v.name.trim() }) })
+      const body = await res.json() as { status?: string; code?: string; label?: string; motivo?: string; error?: string }
+      if (!res.ok) throw new Error(body.error ?? 'No se pudo resolver')
+      if (body.status !== 'ok' || !body.code) throw new Error(body.motivo ?? `TC no reconoce "${v.name}"`)
+      setV(prev => ({ ...prev, tc_destination_code: body.code! }))
+      setResolvedLabel(`${body.code} = ${body.label ?? body.code}`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo resolver')
+    } finally {
+      setResolving(false)
+    }
+  }
 
   async function save() {
     setBusy(true); setError(null)
@@ -69,7 +89,16 @@ export function ProfileEditor({ initial, mode, onClose }: { initial: ProfileForm
           {field('Familia', <select className={inputCls} value={v.family} onChange={e => setV({ ...v, family: e.target.value })}>{FAMILIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>)}
           {field('Alias (coma)', <input className={inputCls} value={v.aliases.join(', ')} onChange={e => setV({ ...v, aliases: list(e.target.value) })} />, 2)}
           {field('Slug en Tendencias', <input className={inputCls} value={v.trend_slug ?? ''} placeholder="punta-cana" onChange={e => setV({ ...v, trend_slug: e.target.value || null })} />)}
-          {field('Código destino TC', <input className={inputCls} value={v.tc_destination_code ?? ''} placeholder="PUJ" onChange={e => setV({ ...v, tc_destination_code: e.target.value || null })} />)}
+          {field('Código destino TC', (
+            <>
+              <div className="mt-1 flex gap-1">
+                <input className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900" value={v.tc_destination_code ?? ''} placeholder="PUJ, SAI-123…" onChange={e => setV({ ...v, tc_destination_code: e.target.value || null })} />
+                <button type="button" onClick={resolveTc} disabled={resolving} className="whitespace-nowrap rounded-md border border-gray-300 bg-white px-2 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50" title="Busca el código en Travel Compositor a partir del nombre">{resolving ? '…' : 'Resolver en TC'}</button>
+              </div>
+              {resolvedLabel && <span className="text-[11px] text-emerald-700">{resolvedLabel}</span>}
+              {!v.tc_destination_code && <span className="text-[11px] text-amber-700">Sin código, las ideas se cotizan por nombre y el link a siviajo.com sale sin destino.</span>}
+            </>
+          ))}
           {field('Aeropuerto (IATA)', <input className={inputCls} value={v.iata_airport ?? ''} maxLength={3} onChange={e => setV({ ...v, iata_airport: e.target.value.toUpperCase() || null })} />)}
           {field('Cotizador', <select className={inputCls} value={v.cotizador_instance} onChange={e => setV({ ...v, cotizador_instance: e.target.value })}><option value="emisivo">Emisivo (siviajo.com)</option><option value="nacional">Nacional (cabotaje)</option></select>)}
           {field('Régimen obligatorio', <select className={inputCls} value={v.regimen_required ?? ''} onChange={e => setV({ ...v, regimen_required: e.target.value || null })}><option value="">Libre</option>{REGIMENES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>)}

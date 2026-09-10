@@ -80,6 +80,9 @@ export function findProfileByText<T extends DestinationProfile & { trend_slug: s
   return profiles.find(p => matches(p.name) || p.aliases.some(matches) || (p.trend_slug ? matches(p.trend_slug) : false)) ?? null
 }
 
+/** Nota con la que nace un perfil creado al vuelo desde Tendencias. */
+export const TRENDS_PROFILE_NOTE = 'Creado desde Tendencias: revisar régimen, noches, temporada y umbral de escala.'
+
 export interface NewProfileInput {
   name: string
   code?: string | null
@@ -157,7 +160,7 @@ export async function createProfile(db: Db, input: NewProfileInput): Promise<Des
     review_pending: fromTrends,
     created_from: input.created_from ?? 'tendencias',
     created_by: input.created_by ?? null,
-    notes: input.notes ?? (fromTrends ? 'Creado desde Tendencias: revisar régimen, noches, temporada y umbral de escala.' : null),
+    notes: input.notes ?? (fromTrends ? TRENDS_PROFILE_NOTE : null),
   }
   const { data, error } = await db.from('destination_profiles').insert(row).select('*').single()
   if (error || !data) throw new Error(`No se pudo crear el perfil: ${error?.message ?? 'sin datos'}`)

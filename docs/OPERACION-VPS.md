@@ -111,6 +111,15 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
   falla con 409 si el perfil tiene ideas o una landing de vuelos baratos, y desvincula los paquetes que lo
   tenían asignado). `profile.audit` corre los lunes y asigna `destination_profile_code`, `family`, `is_cupo` y
   `profile_violations` a los paquetes activos.
+- **`tc_destination_code` es obligatorio en la práctica**: sin él la idea se cotiza por nombre (homónimos: "San
+  Andrés" puede caer en San Andrés Cholula, México) y el link "Abrir búsqueda en siviajo.com" sale sin destino, con
+  lo que el buscador cae al home sin error. Los códigos de TC pueden llevar sufijo (`SAI-123` San Andrés, `MBJ-1`
+  Montego Bay, `NRT-1` Tokio, `PAN-1` Ciudad de Panamá, `SJO-10` San José, `SVD-1` Salvador, `MV-3` Malé, `BAI`
+  Bali, `OGI` Maragogi). Se resuelven con `POST /api/vuelos-baratos/resolve` (cotizador `/flights/resolve`, el
+  mismo autocomplete de siviajo.com); el alta desde Tendencias lo hace sola y el editor de Perfiles tiene
+  "Resolver en TC". Ojo con lo que devuelve TC para textos ambiguos: "Panamá" → Panama City Beach (Florida),
+  "Tokyo" → Tokyo Disneyland, "Jamaica" → nodo país sin aeropuerto. El 2026-09-10 se completaron los 20 perfiles
+  del seed que no tenían código.
 - Ideas (`package_ideas`): `/producto/ideas`. `idea.probe` (lane `vuelos`, sólo si `VUELOS_URL` está configurada:
   matrix de vuelos-siviajo para el mes) → `idea.quote` (lane `cotizador`, ventana nocturna salvo manual): valida
   contra el perfil, cotiza con `POST /quote-multi` (fecha flexible por mes) y, si salió con escala y el destino tiene

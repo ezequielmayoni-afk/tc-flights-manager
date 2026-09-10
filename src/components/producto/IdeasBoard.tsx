@@ -241,6 +241,11 @@ export function IdeasBoard({ profiles }: { profiles: ProfileOption[] }) {
                                 Abrir búsqueda en siviajo.com
                               </a>
                               {q?.hotelUrl && <a href={q.hotelUrl} target="_blank" rel="noopener noreferrer" className="rounded-md border border-gray-300 bg-white px-2.5 py-1 text-xs text-gray-700 hover:bg-gray-100">Ver hotel cotizado</a>}
+                              {!prof?.tc_destination_code && (
+                                <span className="self-center text-[11px] text-amber-700">
+                                  El perfil {i.destination_code} no tiene código de destino de TC: siviajo.com abre sin destino. <a href="/producto/perfiles" className="underline">Completalo en Perfiles</a>.
+                                </span>
+                              )}
                             </div>
                           )
                         })()}
