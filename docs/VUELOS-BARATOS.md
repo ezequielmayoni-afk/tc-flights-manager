@@ -3,8 +3,8 @@
 Réplica de TurismoCity corriendo sobre el motor de siviajo.com. Landing pública de "vuelos baratos a
 &lt;destino&gt;" (grilla por mes, filtros de escalas/estadía, buscador) que vive **dentro de HUB**, no es
 una app aparte. Fase 1 (commit `905fd17`) está en `main` y deployada en producción (`hub.siviajo.com`,
-VPS `148.230.72.17`, PM2 `hub` :3001). El dominio público `vuelos.siviajo.com` todavía no apunta acá:
-ver [Cutover del DNS](#cutover-del-dns).
+VPS `148.230.72.17`, PM2 `hub` :3001). El dominio público `vuelos.siviajo.com` **ya apunta acá**
+(cutover hecho el 2026-09-10): ver [Cutover del DNS](#cutover-del-dns).
 
 ## Cómo funciona el dato
 
@@ -46,11 +46,16 @@ el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que 
   `airline_code`, escalas y los ≤5 itinerarios en `itineraries`). Es un **upsert** por
   `(route_id, depart_date, return_date, source)`: la estimación de esta noche pisa la de anoche, no es
   una serie histórica. **Nunca se publica como precio confirmado.**
+- **`gsc_page_stats` / `gsc_url_status` / `gsc_sitemap_status`**: la copia local de lo que responde
+  Search Console — clics e impresiones por página y día (upsert por `site + date + page`), la última
+  inspección de cada URL y el estado del sitemap. Ver [Search Console](#search-console).
 - Migraciones: `supabase/migrations/20260921_vuelos_baratos.sql` (idempotente, ya aplicada en producción).
   También agrega a `flight_price_probes` las columnas `route_id`, `status`, `options`, `fare_family`,
   `checked_bag`, `carry_on`, `airline_code`, `stops_back`, `duration_back_minutes`, `adults`,
   `elapsed_ms`, `error`. Y `20260923_flight_estimates.sql` (también aplicada): `flight_fare_estimates`,
-  `scan_per_month` / `confirm_per_month`, el flag `automation.sabre_calls` y el presupuesto `sabre`.
+  `scan_per_month` / `confirm_per_month`, el flag `automation.sabre_calls` y el presupuesto `sabre`. Y
+  `20260925_gsc_vuelos.sql`: las tres tablas `gsc_*` (el flag `automation.gsc_writes` y el presupuesto
+  `gsc` ya venían del kernel).
 
 ## Jobs
 
@@ -60,6 +65,7 @@ el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que 
 | `flights.estimate` | `sabre` | 5 | Abre **una** sesión SOAP y pide un BFM por par de fechas (`scan_per_month` por mes); guarda las estimaciones (`runEstimate`). |
 | `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre. No sondea nada. |
 | `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
+| `gsc.vuelos_sync` | `gsc` | — | Diario. Reenvía el sitemap a Search Console, trae clics/impresiones por página e inspecciona hasta 20 URLs (`runVuelosGscSync`). |
 
 - `flights.sweep.plan` se dispara una vez por noche a las **01:00 UTC** (22:00 ART), desde
   `enqueue?schedule=hourly` (`SWEEP_ENQUEUE_HOUR_UTC` en `config.ts`) — el mismo cron horario que ya
@@ -72,11 +78,14 @@ el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que 
   minutos, así que una tanda más grande no llegaría a terminar.
 - **Dedupe**: la clave de encolado combina ruta + mes + día, así un mismo disparo (o un reintento del
   cron) no duplica jobs de la misma noche.
-- Handlers: `src/lib/jobs/handlers/flights-sweep-plan.ts`, `flights-sweep.ts`, `flights-estimate-plan.ts`
-  y `flights-estimate.ts`. Lógica de fechas y tandas: `src/lib/vuelos-baratos/sweep.ts` y `estimate.ts`
-  (puras, sin red ni DB, para poder testear con dobles — una búsqueda de Sabre se cobra).
+- `gsc.vuelos_sync` se encola desde `enqueue?schedule=daily` (mismo cron que `health.check`), con dedupe
+  por día. El lane `gsc` no tiene ventana horaria y va de a uno.
+- Handlers: `src/lib/jobs/handlers/flights-sweep-plan.ts`, `flights-sweep.ts`, `flights-estimate-plan.ts`,
+  `flights-estimate.ts` y `gsc-vuelos-sync.ts`. Lógica de fechas y tandas: `src/lib/vuelos-baratos/sweep.ts`
+  y `estimate.ts`, y `src/lib/gsc/vuelos-sync.ts` para Search Console (puras, sin red ni DB, para poder
+  testear con dobles — una búsqueda de Sabre se cobra y la cuota de Google es de 100 llamadas por día).
 
-Depurar: `SELECT id, kind, status, attempts, last_error FROM hub_jobs WHERE kind LIKE 'flights.%' ORDER BY id DESC LIMIT 30;`
+Depurar: `SELECT id, kind, status, attempts, last_error FROM hub_jobs WHERE kind LIKE 'flights.%' OR kind = 'gsc.vuelos_sync' ORDER BY id DESC LIMIT 30;`
 
 ## Kill switch y presupuesto
 
@@ -91,6 +100,11 @@ Depurar: `SELECT id, kind, status, attempts, last_error FROM hub_jobs WHERE kind
   las fechas fijas de cada ruta.
 - Presupuesto `sabre`: **1500 búsquedas/día**, 30.000/mes (una unidad = una transacción BFM). Al agotarse,
   el job corta y termina `skipped`; lo estimado hasta ahí queda guardado.
+- `system_flags.automation.gsc_writes`: kill switch de Search Console. Apagado (o sin
+  `GOOGLE_DRIVE_CREDENTIALS`), `gsc.vuelos_sync` termina `skipped` y la card del admin queda con los
+  últimos datos guardados.
+- Presupuesto `gsc`: **100 llamadas/día**, 2000/mes (una unidad = una llamada a la API, también si falla).
+  Una corrida completa gasta ~23 (1 envío + 1 lectura del sitemap + 1 de métricas + 20 inspecciones).
 
 ## Bot: `POST /flights/probe`
 
@@ -205,6 +219,7 @@ Siempre lleva UTM (`withUtm`): `utm_source=vuelos`, `utm_medium`, `utm_campaign`
 | `COTIZADOR_URL` / `COTIZADOR_API_KEY` | `/opt/hub/.env.local` | Ya existían (Fase 3); las reusa `probeFlights` |
 | `SABRE_USERNAME`, `SABRE_PASSWORD`, `SABRE_PCC`, `SABRE_CLIENT_ID`, `SABRE_CLIENT_SECRET` | `/opt/hub/.env.local` | Credenciales del estimador (obligatorias las cinco: sin alguna, `isSabreConfigured()` es `false` y los jobs terminan `skipped`) |
 | `SABRE_DOMAIN` / `SABRE_SOAP_URL` | `/opt/hub/.env.local` | Opcionales: `DEFAULT` y `https://webservices.platform.sabre.com` |
+| `GSC_SITE_URL` | `/opt/hub/.env.local` | Opcional: propiedad de Search Console, default `sc-domain:siviajo.com` (la SA de `GOOGLE_DRIVE_CREDENTIALS` ya tiene permiso) |
 
 Las tres primeras ya están agregadas en `/opt/hub/.env.local` del VPS de HUB.
 
@@ -256,23 +271,55 @@ a poco (no todas de una), mirar `cotizador_probe` y `sabre` en `provider_budgets
 de error/timeout) antes de sumar la próxima, y preferir subir `scan_per_month` (que sale barato) antes que
 `confirm_per_month` de rutas que ya andan bien.
 
+## Search Console
+
+La landing se mide sola contra Google: el job diario `gsc.vuelos_sync` habla con la API de Search Console
+y guarda las respuestas en `gsc_page_stats`, `gsc_url_status` y `gsc_sitemap_status`
+(`supabase/migrations/20260925_gsc_vuelos.sql`).
+
+- **Propiedad**: `sc-domain:siviajo.com`, propiedad de **dominio** — cubre `www.siviajo.com` y
+  `vuelos.siviajo.com` con la misma verificación (por eso la landing no necesita verificarse aparte).
+  Se puede cambiar con `GSC_SITE_URL`.
+- **Credenciales**: la MISMA service account que Drive (`GOOGLE_DRIVE_CREDENTIALS`,
+  `hub-siviajo@hub-siviajo.iam.gserviceaccount.com`), que tiene permiso `siteFullUser` sobre la propiedad,
+  pero **sin `subject`**: la delegación a `emayoni@` no está habilitada para el scope `webmasters`
+  (impersonar da `unauthorized_client`). Cliente: `src/lib/gsc/client.ts`.
+- **Qué hace el job**, en este orden (`src/lib/gsc/vuelos-sync.ts`):
+  1. **Sitemap**: reenvía `https://vuelos.siviajo.com/sitemap.xml` (el envío es idempotente: Google lo
+     vuelve a encolar) y guarda cómo lo ve (`sitemaps.get`).
+  2. **Rendimiento**: `searchanalytics.query` con dimensiones `date` + `page` y filtro
+     `page contains <base pública>`. La primera corrida trae 28 días; después, los últimos 4. Siempre
+     termina **2 días antes de hoy**: Search Console publica con ese retraso y pedir hasta ayer trae filas
+     que después habría que pisar.
+  3. **Indexación**: `urlInspection.index.inspect` de hasta **20 URLs** por corrida (la landing primero y
+     después los destinos activos).
+- **Cómo leer la card** (`/producto/vuelos-baratos`): clics, impresiones, CTR y posición media de los
+  últimos 28 días — el CTR es clics/impresiones del total y la posición va **ponderada por impresiones**,
+  como la calcula Google, no como promedio de días. Abajo, el estado del sitemap ("enviado {fecha} ·
+  pendiente/procesado · N/M URLs indexadas") y la tabla por URL con el veredicto (`Indexada`,
+  `Sin indexar`, `Excluida`), el último rastreo y el tráfico de cada página. El botón **"Sincronizar
+  Search Console"** encola el mismo job a mano (`POST /api/vuelos-baratos/gsc-sync`, dedupe por día).
+- **Cuota**: 100 llamadas/día (presupuesto `gsc`). Una corrida gasta ~23, así que entran la del cron y
+  varias manuales. Si se agota a mitad de camino, el job termina `skipped` y sigue mañana.
+- **Paciencia**: un dominio nuevo tarda **días o semanas** en indexarse. Al principio la inspección
+  devuelve "Google no reconoce esta URL" (`NEUTRAL`) para todo y eso **no es un error**. Lo que acelera
+  el proceso es que le lleguen **enlaces desde `siviajo.com` y desde el blog** (un sitemap enviado sólo
+  le dice a Google que las URLs existen; los enlaces le dicen que valen la pena).
+
 ## Cutover del DNS
 
-`vuelos.siviajo.com` hoy apunta a un VPS **distinto** (`181.215.135.113`, Docker), donde corre la app
-interna `vuelos-siviajo` — sin acceso SSH desde este repo. El cutover es manual, lo hace Ezequiel:
+**Hecho el 2026-09-10.** `vuelos.siviajo.com` apunta a `148.230.72.17` (VPS de HUB), con nginx
+(`ops/nginx/vuelos.siviajo.com.conf`, proxy a :3001 pasando el `Host`) y certificado de Let's Encrypt
+emitido ese mismo día. La app interna `vuelos-siviajo` quedó en `agentes.siviajo.com`
+(`181.215.135.113`, Docker, repo aparte).
 
-1. Crear `agentes.siviajo.com` → `181.215.135.113` y mover ahí la app interna: nginx + certbot +
-   `ALLOWED_ORIGINS`/`NEXT_PUBLIC_API_URL` en su propio repo (fuera de HUB).
-2. Actualizar `VUELOS_URL` en `/opt/hub/.env.local` (VPS de HUB) al host nuevo (`agentes.siviajo.com`) y
-   `pm2 restart hub`. **Hoy `VUELOS_URL` no está definida** — mientras tanto, `idea.probe` de la Fase 3
-   queda `skipped` (no hay VPS de vuelos internos que sondear). Si no se hace este paso después de mover
-   la app, sigue omitido indefinidamente.
-3. nginx + certbot en `148.230.72.17` (VPS de HUB) con `ops/nginx/vuelos.siviajo.com.conf` — **ya
-   instalado y recargado** (`/etc/nginx/sites-enabled/vuelos.siviajo.com`, HTTP, proxy a :3001, pasa
-   `Host`). Falta correr `certbot --nginx -d vuelos.siviajo.com` (pide que el DNS ya apunte acá).
-4. Cambiar el A record de `vuelos.siviajo.com` → `148.230.72.17`.
-5. Verificar: `curl -I https://vuelos.siviajo.com/vuelos-baratos` (200, certificado válido) y correr el
-   smoke (abajo).
+Lo que queda por hacer del lado de HUB: apuntar `VUELOS_URL` en `/opt/hub/.env.local` a
+`https://agentes.siviajo.com` y `pm2 restart hub`. **Hoy `VUELOS_URL` no está definida** y por eso
+`idea.probe` de la Fase 3 termina `skipped` (no hay VPS de vuelos internos que sondear); el barrido de la
+landing no la usa.
+
+Verificar: `curl -I https://vuelos.siviajo.com/vuelos-baratos` (200, certificado válido) y correr el
+smoke (abajo).
 
 ## Smoke
 
