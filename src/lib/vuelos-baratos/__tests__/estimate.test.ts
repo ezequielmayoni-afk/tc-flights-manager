@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { SabreBudgetExhausted, type BfmInput, type BfmItinerary, type BfmResult } from '@/lib/sabre/client'
+import { SabreAuthError, SabreBudgetExhausted, type BfmInput, type BfmItinerary, type BfmResult } from '@/lib/sabre/client'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { ESTIMATE_MONTHS_PER_JOB, ORIGINS, SABRE_MAX_ITINERARIES, originIata } from '../config'
 import { buildEstimateJobs, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate } from '../estimate'
@@ -183,7 +183,9 @@ describe('runEstimate', () => {
 
     const summary = await runEstimate(d, entrada)
 
-    expect(summary).toMatchObject({ pairs: 3, ok: 1, empty: 1, errors: 1, minPrice: 812.34, budgetStopped: false, sabreCalls: 3, fatalError: null })
+    expect(summary).toMatchObject({ pairs: 3, ok: 1, empty: 1, errors: 1, minPrice: 812.34, budgetStopped: false, fatalError: null })
+    // Las llamadas a Sabre las cuenta el shopper (el handler), no el resumen.
+    expect('sabreCalls' in summary).toBe(false)
     expect(heartbeat).toHaveBeenCalledTimes(3)
     // El error de una fecha se avisa, pero no corta la tanda.
     expect(log).toHaveBeenCalledTimes(1)
@@ -240,21 +242,42 @@ describe('runEstimate', () => {
   })
 
   it('un error de credenciales corta el job entero', async () => {
+    // El mensaje sale de la clase real: si `SabreAuthError` cambia de forma,
+    // este test avisa antes de que el estimador se pase la noche abriendo
+    // sesiones que Sabre va a rechazar una por una.
+    const mensaje = new SabreAuthError('USG_AUTHENTICATION_FAILED - Authentication failed').message
     const { deps: d, log } = deps(async () => ({
       status: 'error',
       itineraries: [],
       elapsedMs: 120,
-      error: 'Sabre no abrió la sesión: Authorization failed',
+      error: mensaje,
       retryable: false,
       sessionLost: false,
     }))
 
     const summary = await runEstimate(d, entrada)
 
-    expect(summary.fatalError).toContain('Authorization')
+    expect(summary.fatalError).toBe(mensaje)
     expect(summary.errors).toBe(1)
     expect(d.shop).toHaveBeenCalledTimes(1)
     expect(log).toHaveBeenCalled()
+  })
+
+  it('un fault del BFM que no se reintenta NO corta el job (es cosa de esa fecha)', async () => {
+    // Mismo `retryable: false`, pero es un código de aeropuerto que Sabre no
+    // acepta: las otras fechas de la tanda se estiman igual.
+    const { deps: d } = deps(async (input) =>
+      input.departDate === '2026-12-01'
+        ? { status: 'error', itineraries: [], elapsedMs: 90, error: 'ERR.SWS.HOST: INVALID CITY CODE', retryable: false, sessionLost: false }
+        : ok(700)
+    )
+
+    const summary = await runEstimate(d, entrada)
+
+    expect(summary.fatalError).toBeNull()
+    expect(summary.errors).toBe(1)
+    expect(summary.ok).toBe(2)
+    expect(d.shop).toHaveBeenCalledTimes(3)
   })
 
   it('un origen sin IATA no le pide nada a Sabre', async () => {
@@ -281,7 +304,7 @@ describe('runEstimate', () => {
     const { deps: d } = deps(async () => ok(500))
     const summary = await runEstimate(d, { ...entrada, pairs: [] })
 
-    expect(summary).toMatchObject({ pairs: 0, ok: 0, errors: 0, sabreCalls: 0 })
+    expect(summary).toMatchObject({ pairs: 0, ok: 0, errors: 0 })
     expect(d.shop).not.toHaveBeenCalled()
     expect(d.save).not.toHaveBeenCalled()
   })
@@ -321,6 +344,15 @@ describe('pickPairsToConfirm', () => {
       { depart: '2026-12-11', return: '2026-12-18', nights: 7 },
       { depart: '2026-12-01', return: '2026-12-08', nights: 7 },
     ])
+  })
+
+  it('a igual precio y misma ida, desempata por la vuelta (siempre igual)', () => {
+    const mismoPrecio = [estimacion('2026-12-04', '2026-12-18', 640), estimacion('2026-12-04', '2026-12-11', 640)]
+    const picks = pickPairsToConfirm({ estimates: mismoPrecio, month: '2026-12', confirmPerMonth: 2, today: HOY, minLeadDays: 3 })
+
+    expect(picks.map((p) => p.return)).toEqual(['2026-12-11', '2026-12-18'])
+    // Y no depende del orden en que vengan de la base.
+    expect(pickPairsToConfirm({ estimates: [...mismoPrecio].reverse(), month: '2026-12', confirmPerMonth: 2, today: HOY, minLeadDays: 3 })).toEqual(picks)
   })
 
   it('respeta la anticipación mínima y no mira otros meses', () => {

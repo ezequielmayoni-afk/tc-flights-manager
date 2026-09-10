@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { ProbeResult } from '@/lib/cotizador/client'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { SWEEP_PRIORITY } from '../config'
-import { buildSweepJobs, chunkPairs, probeResultToInsert } from '../sweep'
+import { MAX_PROBES_PER_JOB } from '../config'
+import { buildSweepJobs, chunkPairs, planSweep, probeResultToInsert } from '../sweep'
 import type { DatePair, EstimateRow, LandingDestinationRow, LandingRouteRow } from '../types'
 
 /**
@@ -189,6 +190,44 @@ describe('buildSweepJobs con estimaciones de Sabre', () => {
     expect(pairs).toHaveLength(3)
     expect(pairs[0]).toEqual({ depart: '2026-10-09', return: '2026-10-19', nights: 10 })
     expect(new Set(pairs.map((p) => `${p.depart}|${p.return}`)).size).toBe(3)
+  })
+
+  it('el relleno fijo no repite un par que ya venía de la estimación', () => {
+    // La estimación es, a propósito, el primer par fijo del mes: sin dedupe el
+    // barrido sondearía dos veces la misma combinación de fechas.
+    const fijos = planSweep(ruta(), '2026-10', { today: HOY, day: DIA })
+    const repetido = fijos[0]
+    const estimates = [estimacion(repetido.depart, repetido.return, 610)]
+
+    const octubre = buildSweepJobs({ ...base, estimatesByRoute: new Map([[7, estimates]]) }).find((j) => j.payload!.month === '2026-10')!
+    const pairs = octubre.payload!.pairs as DatePair[]
+
+    expect(pairs).toHaveLength(3)
+    expect(pairs[0]).toEqual(repetido)
+    expect(new Set(pairs.map((p) => `${p.depart}|${p.return}`)).size).toBe(3)
+    // El relleno sigue por el segundo par fijo, no vuelve a ofrecer el primero.
+    expect(pairs.slice(1)).toEqual(fijos.slice(1, 3))
+  })
+
+  it('un cupo de confirmaciones más grande que la tanda se parte en varios jobs', () => {
+    const estimates = Array.from({ length: 14 }, (_, i) =>
+      estimacion(`2026-10-${String(i + 5).padStart(2, '0')}`, `2026-10-${String(i + 12).padStart(2, '0')}`, 500 + i)
+    )
+    const jobs = buildSweepJobs({
+      ...base,
+      routes: [ruta({ confirm_per_month: 12 })],
+      estimatesByRoute: new Map([[7, estimates]]),
+    }).filter((j) => j.payload!.month === '2026-10')
+
+    expect(MAX_PROBES_PER_JOB).toBe(10)
+    expect(jobs.map((j) => (j.payload!.pairs as DatePair[]).length)).toEqual([10, 2])
+    expect(jobs.every((j) => j.payload!.source === 'estimate')).toBe(true)
+    expect(jobs.map((j) => j.payload!.chunk)).toEqual([0, 1])
+    expect(new Set(jobs.map((j) => j.dedupeKey)).size).toBe(2)
+    // Los 12 pares son los 12 más baratos, en orden de precio.
+    expect(jobs.flatMap((j) => (j.payload!.pairs as DatePair[]).map((p) => p.depart))).toEqual(
+      estimates.slice(0, 12).map((e) => e.depart_date)
+    )
   })
 
   it('sin estimaciones vigentes el barrido queda igual que antes', () => {

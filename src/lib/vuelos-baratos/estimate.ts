@@ -30,9 +30,18 @@ export const ESTIMATE_SOURCE = 'sabre_bfm'
 
 /**
  * Un error de credenciales no mejora con el próximo par: corta el job entero.
- * (Una caída de red vuelve como `retryable: true` y sí se sigue intentando.)
+ *
+ * Se mira el texto porque el `BfmResult` no alcanza: `retryable: false` también
+ * lo devuelve un fault del BFM (un código de aeropuerto que Sabre no acepta), y
+ * eso sí es cosa de una ruta sola. Lo que sí es inconfundible es el mensaje de
+ * `SabreAuthError` ("Sabre no abrió la sesión: …"), que es el ÚNICO error de
+ * `createSabreShopper().shop()` que viene de crear la sesión; las variantes en
+ * inglés cubren el faultstring que manda Sabre (AUTHENTICATION FAILED,
+ * "Authorization failed") si llegara por otro camino.
+ *
+ * Una caída de red vuelve como `retryable: true` y sí se sigue intentando.
  */
-const AUTH_ERROR_RE = /authorization|credencial/i
+const AUTH_ERROR_RE = /^Sabre no abrió la sesión|authoriz|authenticat|credenc|credential/i
 
 export interface EstimateDeps {
   shop: (input: BfmInput) => Promise<BfmResult>
@@ -161,7 +170,6 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
     minPrice: null,
     durationMs: 0,
     budgetStopped: false,
-    sabreCalls: 0,
     fatalError: null,
   }
 
@@ -210,7 +218,6 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
         continue
       }
 
-      summary.sabreCalls++
       summary.pairs++
 
       if (res.status === 'ok') {
@@ -290,7 +297,9 @@ export function pickPairsToConfirm(input: PickPairsInput): DatePair[] {
   const desde = addDays(todayIso(today), minLeadDays)
   const candidatas = estimates
     .filter(e => monthOf(e.depart_date) === month && e.depart_date >= desde)
-    .sort((a, b) => a.price_pp - b.price_pp || a.depart_date.localeCompare(b.depart_date))
+    // Desempate completo (precio → ida → vuelta): dos estimaciones al mismo
+    // precio tienen que elegirse igual en cada corrida.
+    .sort((a, b) => a.price_pp - b.price_pp || a.depart_date.localeCompare(b.depart_date) || a.return_date.localeCompare(b.return_date))
 
   const elegidos: DatePair[] = []
   const vistos = new Set<string>()

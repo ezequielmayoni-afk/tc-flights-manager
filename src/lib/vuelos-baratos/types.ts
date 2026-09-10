@@ -171,6 +171,12 @@ export interface ExplorerFilters {
   page: number
 }
 
+/**
+ * El resultado de una tanda de estimaciones. Las búsquedas que se le pidieron a
+ * Sabre (`sabreCalls`) las suma el handler desde el shopper, que es el único
+ * que sabe cuántos pedidos salieron de verdad (un reintento por sesión perdida
+ * cuenta doble).
+ */
 export interface EstimateSummary {
   pairs: number
   ok: number
@@ -179,8 +185,6 @@ export interface EstimateSummary {
   minPrice: number | null
   durationMs: number
   budgetStopped: boolean
-  /** Búsquedas BFM que se le pidieron a Sabre (una por par intentado). */
-  sabreCalls: number
   /**
    * Error que corta el job entero y no se reintenta: credenciales rechazadas o
    * un origen sin IATA mapeado. Seguir pidiendo pares no lo arregla.

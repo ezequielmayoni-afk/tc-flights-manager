@@ -33,7 +33,12 @@ const MAX_PROBE_ROWS = 2000
 const MAX_PROBE_ROWS_MULTI = 5000
 /** Salud: son 3 columnas por sonda, un día entero del barrido entra de sobra. */
 const MAX_HEALTH_ROWS = 20_000
-/** Estimaciones: `scan_per_month` × meses × rutas ≈ 500 por noche. */
+/**
+ * Estimaciones: `scan_per_month` × meses × rutas ≈ 500 por noche y el upsert
+ * pisa las de ayer, así que la tabla vive en el orden de las 1000 filas. 5000
+ * deja margen; si alguna vez se corta, las consultas están ordenadas para que
+ * lo que se pierda sea lo más caro (o lo más viejo), no una ruta entera.
+ */
 const MAX_ESTIMATE_ROWS = 5000
 /** Estimaciones a upsertear por lote (el job trae ≤16, el manual bastante más). */
 const ESTIMATE_BATCH = 100
@@ -422,8 +427,9 @@ export async function getEstimatesForRoutes(db: Db, routeIds: number[], opts: Es
     .in('route_id', routeIds)
     .gte('observed_at', sinceIso(opts.sinceHours ?? ESTIMATE_WINDOW_HOURS))
     .gte('depart_date', opts.fromDate)
-    // Por ruta primero: con el tope global, ordenar sólo por precio dejaría
-    // sin filas a las rutas caras.
+    // Por ruta y después por precio: con el tope global, ordenar sólo por
+    // precio dejaría sin filas a las rutas caras, y dentro de cada ruta lo
+    // primero que entra es lo más barato, que es justo lo que se confirma.
     .order('route_id', { ascending: true })
     .order('price_pp', { ascending: true })
     .limit(MAX_ESTIMATE_ROWS)
@@ -446,6 +452,7 @@ export async function getEstimatesForRoute(db: Db, routeId: number, opts: Estima
     .eq('route_id', routeId)
     .gte('observed_at', sinceIso(opts.sinceHours ?? ESTIMATE_WINDOW_HOURS))
     .gte('depart_date', opts.fromDate)
+    // De la más barata a la más cara: si el tope corta, se pierde lo caro.
     .order('price_pp', { ascending: true })
     .limit(MAX_ESTIMATE_ROWS)
   if (error) throw new Error(`No se pudieron leer las estimaciones de la ruta ${routeId}: ${error.message}`)
@@ -461,6 +468,8 @@ export async function getLastEstimateAtByRoute(db: Db): Promise<Map<number, stri
   const { data, error } = await db
     .from('flight_fare_estimates')
     .select('route_id, observed_at')
+    // De la más nueva a la más vieja: si el tope corta, lo que se pierde es
+    // justamente lo que no cambiaría el máximo de ninguna ruta.
     .order('observed_at', { ascending: false })
     .limit(MAX_ESTIMATE_ROWS)
   if (error) throw new Error(`No se pudieron leer las fechas de las estimaciones: ${error.message}`)
