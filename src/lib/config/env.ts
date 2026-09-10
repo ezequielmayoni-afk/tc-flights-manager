@@ -56,6 +56,23 @@ type OptionalEnvVars = {
   NEXT_PUBLIC_GTM_ID?: string
   /** Motor de reservas al que apuntan los deep links, default https://www.siviajo.com */
   SIVIAJO_BASE_URL?: string
+  /**
+   * Sabre (Fase 3): estimador BargainFinderMax de vuelos.siviajo.com. Solo
+   * SOAP (el REST está deshabilitado para estas credenciales). Sin las cinco
+   * primeras, `isSabreConfigured()` da false y los jobs del estimador quedan
+   * omitidos.
+   */
+  SABRE_USERNAME?: string
+  SABRE_PASSWORD?: string
+  /** Pseudo City Code del PCC propio. */
+  SABRE_PCC?: string
+  /** Van dentro del UsernameToken de SessionCreateRQ, no en un OAuth aparte. */
+  SABRE_CLIENT_ID?: string
+  SABRE_CLIENT_SECRET?: string
+  /** Dominio del UsernameToken; default DEFAULT (es el que autentica). */
+  SABRE_DOMAIN?: string
+  /** Endpoint SOAP, default https://webservices.platform.sabre.com */
+  SABRE_SOAP_URL?: string
 }
 
 const REQUIRED_VARS: (keyof RequiredEnvVars)[] = [
