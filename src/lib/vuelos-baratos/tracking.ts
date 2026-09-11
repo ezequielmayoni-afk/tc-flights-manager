@@ -40,6 +40,15 @@ export const MAX_BEACON_BYTES = 8192
 const CONTENT_TYPE = 'flight_route'
 /** La landing publica siempre en dólares (`precio_pp` del cotizador). */
 const MONEDA = 'USD'
+/**
+ * Tope de un monto que se le manda a Meta (`value`, `item_price`).
+ *
+ * Los montos vienen del navegador y son lo que el algoritmo de Meta usa para
+ * repartir presupuesto: un pasaje de la landing nunca llega a US$ 20.000, así
+ * que arriba de eso (o negativo, o NaN/Infinity) es un payload manipulado y la
+ * clave se omite en vez de ensuciar la optimización.
+ */
+export const MAX_TRACK_VALUE = 20_000
 
 export const trackBeaconSchema = z.object({
   event: z.enum(TRACK_EVENTS),
@@ -64,6 +73,13 @@ export function routeContentId(payload: TrackPayload): string | null {
   if (typeof origin !== 'string' || typeof destination !== 'string') return null
   if (origin === '' || destination === '') return null
   return `${origin}-${destination}`
+}
+
+/** Monto utilizable: número finito entre 0 y `MAX_TRACK_VALUE`; null si no. */
+function monto(valor: TrackValue | undefined): number | null {
+  if (typeof valor !== 'number' || !Number.isFinite(valor)) return null
+  if (valor < 0 || valor > MAX_TRACK_VALUE) return null
+  return valor
 }
 
 /**
@@ -92,7 +108,8 @@ export function metaCustomData(event: MetaTrackEvent, payload: TrackPayload): Re
     data.currency = MONEDA
     // El precio más barato de la ruta es el "valor" de la vista; si la página
     // salió vacía no hay `value` que mandar (un 0 diría otra cosa).
-    if (typeof payload.min_price === 'number') data.value = payload.min_price
+    const minimo = monto(payload.min_price)
+    if (minimo !== null) data.value = minimo
     copiarPresentes(data, payload, ['origin', 'destination'])
     return data
   }
@@ -112,7 +129,7 @@ export function metaCustomData(event: MetaTrackEvent, payload: TrackPayload): Re
   }
 
   const data: Record<string, unknown> = { content_type: CONTENT_TYPE, currency: MONEDA }
-  const precio = typeof payload.price_pp === 'number' ? payload.price_pp : null
+  const precio = monto(payload.price_pp)
   if (id) {
     data.content_ids = [id]
     data.contents = [precio === null ? { id, quantity: 1 } : { id, quantity: 1, item_price: precio }]

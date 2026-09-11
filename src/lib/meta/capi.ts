@@ -28,9 +28,13 @@ export interface MetaServerEvent {
 }
 
 /**
- * El `event_source_url` lo manda el navegador: se conserva sólo si el host es
- * uno de los nuestros, así nadie usa el endpoint para atribuirle a nuestro
- * dataset una visita a otro sitio.
+ * El `event_source_url` lo manda el navegador: se conserva sólo si el host
+ * está en `allowedHosts`, así nadie le atribuye a nuestro dataset una visita a
+ * otro sitio.
+ *
+ * La lista tiene que salir de la configuración del servidor (la base pública),
+ * NUNCA del header `Host` del pedido: ese lo elige quien llama y nginx lo
+ * reenvía tal cual.
  */
 function sourceUrl(raw: string | undefined, allowedHosts: string[]): string | null {
   if (!raw) return null
@@ -99,9 +103,17 @@ function parsearJson(texto: string): RespuestaMeta | null {
   }
 }
 
-/** El token viaja en el body: que no se filtre al log por un mensaje de error. */
+/**
+ * Limpia el mensaje antes de devolverlo.
+ *
+ * El token viaja en el body: que no se filtre al log por un mensaje de error.
+ * Y el texto puede venir de Meta ecoando un valor del payload (que lo elige
+ * quien llama), así que los saltos de línea se aplastan: sin eso se pueden
+ * falsificar líneas enteras en el log de PM2 y en `system_logs`.
+ */
 function sinToken(texto: string, accessToken: string): string {
-  return accessToken ? texto.split(accessToken).join('***') : texto
+  const limpio = texto.replace(/[\r\n]+/g, ' ')
+  return accessToken ? limpio.split(accessToken).join('***') : limpio
 }
 
 /** POST a graph.facebook.com. Nunca lanza; el token no aparece en el error. */

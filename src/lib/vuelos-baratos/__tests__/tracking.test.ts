@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isMetaEvent, metaCustomData, routeContentId, trackBeaconSchema } from '../tracking'
+import { MAX_TRACK_VALUE, isMetaEvent, metaCustomData, routeContentId, trackBeaconSchema } from '../tracking'
 
 // El beacon lo manda el navegador de un visitante anónimo: todo lo que entra
 // al endpoint pasa por este esquema antes de tocar la Conversions API.
@@ -184,6 +184,25 @@ describe('metaCustomData', () => {
     expect('content_ids' in data).toBe(false)
     expect('contents' in data).toBe(false)
     expect(data.value).toBe(500)
+  })
+
+  it('descarta los montos imposibles: el payload lo escribe el navegador', () => {
+    // `value` es lo que Meta usa para repartir presupuesto: un monto inventado
+    // desde afuera no puede llegar al dataset.
+    for (const min_price of [-1, MAX_TRACK_VALUE + 1, Number.POSITIVE_INFINITY, Number.NaN]) {
+      const data = metaCustomData('view_destination', { origin: 'BUE', destination: 'MIA', min_price })
+      expect('value' in data).toBe(false)
+    }
+    expect(metaCustomData('view_destination', { origin: 'BUE', destination: 'MIA', min_price: 0 }).value).toBe(0)
+    expect(
+      metaCustomData('view_destination', { origin: 'BUE', destination: 'MIA', min_price: MAX_TRACK_VALUE }).value
+    ).toBe(MAX_TRACK_VALUE)
+  })
+
+  it('un price_pp fuera de rango no manda value ni item_price', () => {
+    const data = metaCustomData('select_flight', { origin: 'BUE', destination: 'MIA', price_pp: 999_999 })
+    expect('value' in data).toBe(false)
+    expect(data.contents).toEqual([{ id: 'BUE-MIA', quantity: 1 }])
   })
 
   it('nunca deja claves en undefined', () => {

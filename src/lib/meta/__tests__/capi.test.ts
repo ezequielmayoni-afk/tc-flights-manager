@@ -149,6 +149,16 @@ describe('sendMetaEvents', () => {
     expect(resultado.error).not.toContain('TOKEN-DE-PRUEBA')
   })
 
+  it('aplasta los saltos de línea del mensaje (no se falsifican líneas de log)', async () => {
+    const fetchImpl = fetchFalso(400, { error: { message: 'roto\n2026-01-01 [info] todo bien' } })
+    const resultado = await sendMetaEvents([evento], {
+      datasetId: '123',
+      accessToken: 'TOKEN',
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    })
+    expect(resultado.error).toBe('HTTP 400: roto 2026-01-01 [info] todo bien')
+  })
+
   it('un error que no es JSON se recorta', async () => {
     const fetchImpl = vi.fn(async () => new Response('x'.repeat(500), { status: 502 }))
     const resultado = await sendMetaEvents([evento], {
