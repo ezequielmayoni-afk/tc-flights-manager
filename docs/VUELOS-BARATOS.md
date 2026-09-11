@@ -359,10 +359,14 @@ Todos llevan `event_id` (el que dedupea pixel y CAPI) además de los parámetros
 |---|---|---|---|
 | `view_destination` | `view_destination` | `ViewContent` | `slug`, `destination` (código TC), `destination_name`, `origin`, `min_price` |
 | `search_submit` | `search_submit` | `Search` | `origin`, `destination`, `depart`, `return`, `adults`, `children` |
-| `select_flight` | `select_flight` | `SelectFlight` | `origin`, `destination`, `depart`, `return`, `nights`, `price_pp`, `airline`, `month` |
+| `select_flight` | `select_flight` | `SelectFlight` | `origin`, `destination` (código TC), `slug`, `depart`, `return`, `nights`, `price_pp`, `airline`, `month` |
 | `select_month` | `select_month` | — | `slug`, `origin`, `month` (`all` al destildar el chip) |
 | `filter_change` | `filter_change` | — | `slug`, `origin`, `changed` (claves separadas por coma) y el valor nuevo de cada una |
 | `change_origin` | `change_origin` | — | `slug`, `origin` (la ciudad nueva) |
+
+`destination` es **siempre el código de destino de Travel Compositor** (`MIA`), nunca el slug: con
+`origin` arma el `content_ids` de Meta (`BUE-MIA`), que es lo que une los tres eventos de negocio en un
+mismo "producto". El `slug` viaja aparte y sólo se usa en los informes de GA4.
 
 Los **tres de negocio** (`view_destination`, `search_submit`, `select_flight`) son los que van a Meta:
 vista de ruta, búsqueda en el motor y click en "Seleccionar" — el último es lo más parecido a una
@@ -393,10 +397,22 @@ arma del `fbclid` de la URL) y el endpoint agrega IP y user-agent: son los datos
 la conversión cuando el pixel del navegador queda bloqueado.
 
 El endpoint (`src/app/api/vuelos-baratos/track/route.ts`) es público y sin sesión (está en
-`PUBLIC_API_PATHS` del middleware: `sendBeacon` no manda cookies). Responde **siempre 204 sin cuerpo**,
-limita a **120 beacons por IP cada 10 minutos**, rechaza bodies de más de 8 KB y conserva el
-`event_source_url` sólo si el host es nuestro. Si Meta rechaza el evento, queda un `console.warn` siempre
-y, como mucho una vez cada 5 minutos por proceso, un aviso en `/logs` (`meta.capi.error`).
+`PUBLIC_API_PATHS` del middleware: `sendBeacon` no manda cookies). El camino feliz responde **204 sin
+cuerpo**; lo que rechaza sí devuelve código: **403** si el pedido no viene de la landing
+(`Sec-Fetch-Site` tiene que ser `same-origin`/`none` y, si el navegador no lo manda, el `Referer` tiene
+que ser del host público), **413** arriba de 8 KB, **400** si el beacon no pasa el esquema y **429**
+pasados los **120 beacons por IP cada 10 minutos**. La IP sale de `X-Real-IP` (o del **último**
+`X-Forwarded-For`: nginx agrega el suyo al final, el primero lo escribe quien llama) y el limitador tiene
+un techo duro de 5.000 claves con evicción FIFO. El `event_source_url` se conserva sólo si el host es el
+de la base pública — la lista **no** incluye el `Host` del pedido, que lo elige quien llama. Si Meta
+rechaza el evento, queda un `console.warn` siempre y, como mucho una vez cada 5 minutos por proceso, un
+aviso en `/logs` (`meta.capi.error`).
+
+**Riesgo residual asumido**: como cualquier pixel del lado del navegador, el evento lo arma el cliente,
+así que un `curl` con el `Referer` correcto puede inyectar eventos con `fbc` o `event_id` propios. Las
+mitigaciones son las de arriba (origen, tope por IP) más el recorte de los montos: `value` e `item_price`
+se descartan si no son números finitos entre 0 y 20.000, para que nadie le enseñe a Meta un valor de
+conversión inventado.
 
 Sin `META_VUELOS_DATASET_ID` o sin `META_ACCESS_TOKEN` el endpoint responde 204 y no manda nada: la
 landing sigue midiendo en GA4 y la CAPI queda apagada.
@@ -410,8 +426,8 @@ landing sigue midiendo en GA4 y la CAPI queda apagada.
   pantalla a `META_CAPI_TEST_EVENT_CODE` en `/opt/hub/.env.local`, `pm2 restart hub`, navegar la landing y
   mirar que cada evento aparezca **una sola vez** con las dos fuentes ("Navegador y servidor"): si sale
   duplicado, falta el mapeo de `eventID` en la etiqueta del pixel. **Vaciar la variable al terminar.**
-- **Beacon a mano**: `curl -s -o /dev/null -w '%{http_code}' -X POST https://vuelos.siviajo.com/api/vuelos-baratos/track -H 'content-type: application/json' -d '{"event":"view_destination","event_id":"abcdefgh","payload":{"origin":"BUE","destination":"MIA"}}'`
-  → `204`. Un beacon inválido da 400 y pasadas las 120 llamadas, 429.
+- **Beacon a mano** (hace falta el `Referer`, si no son 403): `curl -s -o /dev/null -w '%{http_code}' -X POST https://vuelos.siviajo.com/api/vuelos-baratos/track -H 'content-type: application/json' -H 'Referer: https://vuelos.siviajo.com/vuelos-baratos/miami' -d '{"event":"view_destination","event_id":"abcdefgh","payload":{"origin":"BUE","destination":"MIA"}}'`
+  → `204`. Sin el `Referer`, 403; un beacon inválido, 400; pasadas las 120 llamadas, 429.
 
 ## Pendiente
 
