@@ -118,7 +118,7 @@ export const packageAlternativeDateHandler: HandlerDefinition = {
       await fail(db, packageId, trigger, build.reason, meta)
       return { ok: true, result: { packageId, status: 'failed', reason: build.reason } }
     }
-    const nights = pkg.nights_count ?? build.request.tramos.reduce((n, t) => n + t.noches, 0)
+    const nights = pkg.nights_count ?? build.request.tramos.reduce((n, t) => n + (t.noches ?? 0), 0)
     const originTc = originTcCode(build.request.origen)
     const destTc = build.request.tramos[0].destino.replace(/^Destination::/, '').toUpperCase()
     const adults = build.request.adultos
