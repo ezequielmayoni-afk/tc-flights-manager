@@ -60,6 +60,21 @@ type OptionalEnvVars = {
   VUELOS_PUBLIC_HOST?: string
   /** Contenedor de Google Tag Manager de la landing pública. */
   NEXT_PUBLIC_GTM_ID?: string
+  /**
+   * Contenedor de GTM de la landing, leído en runtime: prevalece sobre
+   * `NEXT_PUBLIC_GTM_ID`, que se inlinea en el build (donde no existe).
+   */
+  GTM_ID?: string
+  /**
+   * Dataset de Meta al que HUB manda los eventos de la landing por Conversions
+   * API. Sin él, `POST /api/vuelos-baratos/track` responde 204 y no manda nada.
+   */
+  META_VUELOS_DATASET_ID?: string
+  /**
+   * Código de "Test events" de Events Manager, para verificar la CAPI sin
+   * ensuciar los datos. Vacío en producción.
+   */
+  META_CAPI_TEST_EVENT_CODE?: string
   /** Motor de reservas al que apuntan los deep links, default https://www.siviajo.com */
   SIVIAJO_BASE_URL?: string
   /**

@@ -15,8 +15,11 @@ const PUBLIC_PREFIXES = ['/vuelos-baratos', '/robots.txt', '/sitemap.xml']
  * La igualdad es a propósito: el resto de `/api/vuelos-baratos` (`resolve`,
  * `routes`, `sweep`) autoriza adentro del handler y tiene que seguir entrando
  * por el camino normal.
+ *
+ * `track` es el beacon de los eventos de la landing: lo manda el navegador de
+ * un visitante anónimo con `sendBeacon`, que no lleva cookies de sesión.
  */
-const PUBLIC_API_PATHS = ['/api/vuelos-baratos/cities']
+const PUBLIC_API_PATHS = ['/api/vuelos-baratos/cities', '/api/vuelos-baratos/track']
 
 // Routes that require admin role (admin or marketing)
 const ADMIN_ROUTES = ['/users']
