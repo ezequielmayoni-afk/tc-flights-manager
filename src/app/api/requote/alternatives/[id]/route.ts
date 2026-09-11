@@ -3,6 +3,8 @@ import { checkSectionAccess, isReadOnlyRole } from '@/lib/auth'
 import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { enqueueJob } from '@/lib/jobs/queue'
+import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,10 +24,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (!Number.isInteger(id) || id <= 0) throw API_ERRORS.BAD_REQUEST('id inválido')
     const body = (await request.json().catch(() => null)) as { action?: unknown; note?: unknown } | null
     const action = body?.action
-    if (action !== 'approve' && action !== 'reject') throw API_ERRORS.BAD_REQUEST('action debe ser approve o reject')
+    if (action !== 'approve' && action !== 'reject' && action !== 'apply' && action !== 'prepare') throw API_ERRORS.BAD_REQUEST('action debe ser approve, reject, apply o prepare')
     const db = createAdminClient()
     const { data: alt } = await db.from('requote_alternatives').select('id, package_id, status, proposed_departure, price_pp, current_price_pp').eq('id', id).maybeSingle()
     if (!alt) throw API_ERRORS.NOT_FOUND(`La propuesta ${id}`)
+    if (action === 'apply' || action === 'prepare') {
+      // Aplicar = el bot en siviajo.com (backoffice + sitio) y después "pasó a sistema" en HUB.
+      if (alt.status !== 'approved') throw API_ERRORS.CONFLICT(`La propuesta está ${alt.status}; hay que aprobarla primero`)
+      const job = await enqueueJob(db, { kind: 'package.apply_alternative', payload: { alternativeId: id, mode: action, packageId: alt.package_id }, priority: MANUAL_PRIORITY, dedupeKey: `package.apply_alternative:${id}`, entityType: 'package', entityId: Number(alt.package_id), createdBy: user?.email ?? 'ui' })
+      await logEvent(db, { source: 'cupos', action: `requote_alternative.${action}_queued`, message: `Fecha alternativa ${alt.proposed_departure}: ${action === 'apply' ? 'aplicar en siviajo.com' : 'ensayo sin guardar'} encolado (job ${job.id ?? 'ya en cola'})`, entityType: 'package', entityId: Number(alt.package_id), details: { alternativeId: id, jobId: job.id } }, user ? { id: user.id, email: user.email } : null)
+      return NextResponse.json({ ok: true, status: alt.status, jobId: job.id, deduped: job.deduped })
+    }
     if (!['proposed', 'approved'].includes(String(alt.status))) throw API_ERRORS.CONFLICT(`La propuesta está ${alt.status}; no se puede cambiar`)
     const status = action === 'approve' ? 'approved' : 'rejected'
     const now = new Date().toISOString()

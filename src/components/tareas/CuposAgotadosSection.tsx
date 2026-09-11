@@ -88,13 +88,15 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
     }
   }
 
-  const decideAlternative = async (alt: CupoAlternative, action: 'approve' | 'reject') => {
+  const decideAlternative = async (alt: CupoAlternative, action: 'approve' | 'reject' | 'apply' | 'prepare') => {
+    if (action === 'apply' && !window.confirm(`¿Aplicar la fecha ${alt.proposedDeparture ? formatDate(alt.proposedDeparture) : ''} en siviajo.com?\n\nEl bot abre el rango de fechas del paquete en el backoffice, rehace la búsqueda con la fecha nueva, elige el aéreo de sistema propuesto, toca "Actualizar y guardar idea" y HUB pasa el paquete a sistema con monitoreo. Tarda 3 a 6 minutos. El ID, la URL y los anuncios no cambian.`)) return
     setAltBusy(alt.id)
     try {
       const res = await fetch(`/api/requote/alternatives/${alt.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'No se pudo guardar')
-      toast.success(action === 'approve' ? 'Fecha aprobada: queda lista para aplicarla en siviajo.com' : 'Propuesta rechazada')
+      toast.success(action === 'approve' ? 'Fecha aprobada: ahora podés ensayarla o aplicarla en siviajo.com' : action === 'reject' ? 'Propuesta rechazada' : action === 'apply' ? 'Aplicando en siviajo.com (3 a 6 minutos); la lista se refresca sola' : 'Ensayo en curso (3 a 6 minutos): no guarda nada, muestra qué saldría')
+      if (action === 'apply' || action === 'prepare') { let ticks = 0; const timer = setInterval(async () => { ticks++; await fetchTasks(); if (ticks >= 24) clearInterval(timer) }, 20000) }
       await fetchTasks()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Error')
@@ -225,12 +227,19 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
                             {pkg.alternative.variancePct !== null && <span className={pkg.alternative.variancePct > 0 ? 'text-red-600' : 'text-emerald-700'}> ({pkg.alternative.variancePct > 0 ? '+' : ''}{pkg.alternative.variancePct}% vs {money(pkg.alternative.currentPricePp)})</span>}
                             {pkg.alternative.hotelMatched === false && <span className="text-amber-700"> · el hotel del paquete no apareció en esa fecha</span>}
                             {pkg.alternative.note && <span className="block text-muted-foreground">{pkg.alternative.note}</span>}
-                            <span className="block text-[11px] text-muted-foreground">Estado: {pkg.alternative.status === 'proposed' ? 'propuesta' : pkg.alternative.status === 'approved' ? 'aprobada, pendiente de aplicar en siviajo.com' : pkg.alternative.status}</span>
+                            <span className="block text-[11px] text-muted-foreground">Estado: {pkg.alternative.status === 'proposed' ? 'propuesta' : pkg.alternative.status === 'approved' ? 'aprobada: ensayala o aplicala en siviajo.com' : pkg.alternative.status === 'applying' ? 'el bot está trabajando en siviajo.com…' : pkg.alternative.status === 'applied' ? 'aplicada en siviajo.com y pasada a sistema' : pkg.alternative.status}</span>
                           </div>
                           <div className="flex gap-1 shrink-0">
                             {pkg.alternative.status === 'proposed' && (
                               <>
                                 <Button size="sm" variant="default" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'approve')}>Aprobar fecha</Button>
+                                <Button size="sm" variant="ghost" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'reject')}>Rechazar</Button>
+                              </>
+                            )}
+                            {pkg.alternative.status === 'approved' && (
+                              <>
+                                <Button size="sm" variant="outline" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'prepare')} title="Hace todo en siviajo.com menos guardar, y deja las fechas como estaban">Ensayar</Button>
+                                <Button size="sm" variant="default" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'apply')} title="Aplica la fecha en siviajo.com y pasa el paquete a sistema">Aplicar en siviajo.com</Button>
                                 <Button size="sm" variant="ghost" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'reject')}>Rechazar</Button>
                               </>
                             )}

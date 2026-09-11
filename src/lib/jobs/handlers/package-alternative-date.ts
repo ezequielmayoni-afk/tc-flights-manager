@@ -48,7 +48,8 @@ async function fail(db: Db, packageId: number, trigger: string, reason: string, 
   await db.from('requote_alternatives').insert({ package_id: packageId, trigger, status: 'failed', reason, ...extra })
 }
 
-const optionIsDirect = (o: ProbeOption) => o.stopsOut === 0 && o.stopsBack === 0
+/** La sonda no siempre trae las escalas de la vuelta: directo = ida sin escalas (misma convención que vuelos.siviajo.com). */
+const optionIsDirect = (o: ProbeOption) => o.stopsOut === 0 && (o.stopsBack === 0 || o.stopsBack === null)
 const optionToCell = (date: string, o: ProbeOption): FareCell => ({ date, pricePerPax: o.pricePp, currency: o.currency || 'USD', direct: optionIsDirect(o), durationMinutes: o.durationOutMin, airline: o.airline || null, flightNumbers: [o.flightOut, o.flightBack].filter(Boolean), stops: o.stopsOut ?? undefined, source: 'cotizador_probe' })
 
 /**
@@ -163,7 +164,7 @@ export const packageAlternativeDateHandler: HandlerDefinition = {
     const pricePp = best.price!
     const currentPrice = pkg.row.target_price ?? pkg.row.current_price_per_pax
     const variancePct = currentPrice ? Math.round(((pricePp - currentPrice) / currentPrice) * 10000) / 100 : null
-    const notes: string[] = [best.ranked.reason]
+    const notes: string[] = [`Aéreo ${s.direct === true ? 'directo' : s.direct === false ? 'con escala' : 'sin confirmar'} en la cotización completa (sondas: ${best.ranked.reason})`]
     if (best.match === 'missing') notes.push(`El hotel ${build.expectedHotels[0] ?? 'del paquete'} no apareció en esa fecha; la opción más cercana fue ${s.hotelName ?? '?'}`)
     if (best.ranked.date === departure) notes.push('La mejor fecha es la misma salida actual, con aéreo de sistema')
     const others = ok.filter(a => a !== best).map(a => `${a.ranked.date}: USD ${a.price}`)
