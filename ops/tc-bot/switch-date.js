@@ -35,7 +35,9 @@ const EXPECTED = Number(args['expected-price'] || 0)
 const TOLERANCE = Number(args.tolerance || 8)
 const PREFER_DIRECT = args['prefer-direct'] !== 'false'
 const SHOTS = String(args.shots || '/tmp/switch-date')
-if (!TC_ID || !/^\d{4}-\d{2}-\d{2}$/.test(DATE)) { console.error('faltan --tc-id y --date=YYYY-MM-DD'); process.exit(2) }
+const RESTORE_START = String(args.start || ''), RESTORE_END = String(args.end || '')
+if (!TC_ID || (MODE !== 'restore' && !/^\d{4}-\d{2}-\d{2}$/.test(DATE))) { console.error('faltan --tc-id y --date=YYYY-MM-DD'); process.exit(2) }
+if (MODE === 'restore' && !/^\d{2}\/\d{2}\/\d{4}$/.test(RESTORE_START)) { console.error('restore: faltan --start=dd/mm/yyyy [--end=dd/mm/yyyy]'); process.exit(2) }
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const t0 = Date.now(); const ts = () => `${((Date.now() - t0) / 1000).toFixed(1)}s`
@@ -73,7 +75,12 @@ async function openPackageEditor(page) {
   const clicked = await page.evaluate(() => { for (const menu of document.querySelectorAll('.ui-menu')) { const st = getComputedStyle(menu); if (st.display !== 'none' && st.visibility !== 'hidden') { const r = menu.getBoundingClientRect(); if (r.width > 0 && r.height > 0) { const ed = menu.querySelector('a[title="Editar"]'); if (ed) { ed.click(); return true } } } } return false })
   if (!clicked) throw new Error('backoffice: no encuentro Editar en el menú Opciones')
   await page.waitForTimeout(4000); await page.waitForLoadState('networkidle').catch(() => {})
-  await page.locator('[id="HolidayPackageEditForm:tabView"] > ul li').filter({ hasText: 'Fechas' }).first().click(); await page.waitForTimeout(2000)
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    await page.locator('[id="HolidayPackageEditForm:tabView"] > ul li').filter({ hasText: 'Fechas' }).first().click({ timeout: 15000 }).catch(() => {})
+    await page.waitForTimeout(2000)
+    if (await page.locator('[id="HolidayPackageEditForm:tabView:startDate_input"]').isVisible().catch(() => false)) return
+  }
+  throw new Error('backoffice: la pestaña Fechas no mostró los campos Desde/Hasta')
 }
 
 const WEEKDAY_INPUT = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
@@ -176,6 +183,13 @@ async function selectFlight(page, wanted, airline, preferDirect) {
     originalDates = await readDates(bo)
     result.backoffice = { before: originalDates }
     log('backoffice: fechas actuales', JSON.stringify(originalDates))
+    if (MODE === 'restore') {
+      await setDatesAndSave(bo, RESTORE_START, RESTORE_END || RESTORE_START, null)
+      result.backoffice.after = { start: RESTORE_START, end: RESTORE_END || RESTORE_START }
+      result.ok = true
+      originalDates = null
+      return
+    }
     const weekday = new Date(`${DATE}T00:00:00Z`).getUTCDay()
     if (MODE === 'plan') {
       notes.push(`plan: se pondría Desde/Hasta = ${dmy(DATE)} y día ${WEEKDAY_INPUT[weekday]}`)
@@ -196,7 +210,7 @@ async function selectFlight(page, wanted, airline, preferDirect) {
     if (MODE === 'plan') {
       notes.push(`plan: la idea pide fecha ${currentDate}; se pondría ${dmy(DATE)} y se buscaría`)
       result.ok = true
-      console.log('RESULT', JSON.stringify(result)); await browser.close(); return
+      return
     }
     await dateInput.click(); await dateInput.press('Control+A'); await dateInput.fill(dmy(DATE)); await dateInput.press('Tab'); await site.waitForTimeout(1500)
     const err = await site.evaluate(() => [...document.querySelectorAll('.ui-message, .ui-messages, [class*="error"]:not(script)')].map(e => e.innerText.replace(/\s+/g, ' ').trim()).filter(t => t && /fecha/i.test(t)).slice(0, 3))
@@ -260,12 +274,16 @@ async function selectFlight(page, wanted, airline, preferDirect) {
   } finally {
     // prepare (o fallo antes de guardar): las fechas del backoffice vuelven a como estaban.
     if (originalDates && MODE !== 'plan' && !(MODE === 'apply' && result.saved)) {
-      try {
-        const bo2 = await ctx.newPage(); await loginBackoffice(bo2); await openPackageEditor(bo2)
-        const wd = null
-        await setDatesAndSave(bo2, originalDates.start, originalDates.end, wd)
-        notes.push(`backoffice: fechas restauradas a ${originalDates.start} → ${originalDates.end}`)
-      } catch (e) { notes.push(`backoffice: NO se pudieron restaurar las fechas (${String(e.message || e).slice(0, 120)}); revisar Desde/Hasta a mano`) }
+      let restored = false
+      for (let attempt = 1; attempt <= 2 && !restored; attempt++) {
+        try {
+          const bo2 = await ctx.newPage(); await loginBackoffice(bo2); await openPackageEditor(bo2)
+          await setDatesAndSave(bo2, originalDates.start, originalDates.end, null)
+          restored = true
+          notes.push(`backoffice: fechas restauradas a ${originalDates.start} → ${originalDates.end}`)
+        } catch (e) { notes.push(`backoffice: intento ${attempt} de restaurar falló (${String(e.message || e).slice(0, 120)})`) }
+      }
+      if (!restored) { result.datesLeftChanged = true; notes.push(`backoffice: NO se pudieron restaurar las fechas: correr --mode=restore --start=${originalDates.start} --end=${originalDates.end}`) }
     }
     console.log('RESULT', JSON.stringify(result))
     await browser.close()

@@ -125,6 +125,11 @@ reemplaza en TC por una tarifa de sistema (quitar "fijo", tarifa similar, actual
 "Pasó a sistema" (tarea de cupos agotados y `/packages`) relee TC, saca el paquete de cupo, libera los vínculos y prende
 el monitoreo con el precio nuevo. El matcher ya no vincula tarifas sin proveedor de contrato a cupos. Falta: que el
 guard sugiera "pasar a sistema" antes que pausar cuando no hay otra salida (queda para cuando retomemos el guard).
+Ese mismo día se sumó la **fecha alternativa en la misma temporada** (job `package.alternative_date` con sondas de
+vuelo por fecha + cotización completa; propuesta en la tarea de cupos agotados) y el bot que la **aplica en
+siviajo.com** (`package.apply_alternative` → `ops/tc-bot/switch-date.js`: fechas en el backoffice, búsqueda como
+agente, aéreo de sistema, "Actualizar y guardar idea", y "pasó a sistema" en HUB). Es la Fase 10 aplicada a cupos.
+Ensayado sin guardar sobre SIV 52574571; la primera aplicación real la decide Ezequiel.
 
 ## Fase 3 — Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización, ideas · 🟡 Desplegada (2026-09-10)
 

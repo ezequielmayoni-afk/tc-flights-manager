@@ -142,6 +142,33 @@ anuncios de Meta con el mismo SIV), el aéreo se cambia por una tarifa de sistem
 3. El import diario también lo reclasifica solo (el aéreo viene sin proveedor de contrato), pero sin el botón no
    se prende el monitoreo ni se liberan los vínculos.
 
+### Fecha alternativa en la misma temporada (2026-09-11)
+
+Antes de reemplazar el vuelo en la misma fecha a cualquier precio, HUB busca la mejor fecha de la misma temporada
+del perfil (`high_season_months`: si la salida era de temporada alta, otra fecha de esa misma alta; enero 17 con
+[1,2,7,12] → enero–febrero del mismo año; en baja, el bloque de meses bajos, recortado a ±31 días si es largo).
+
+- **Propuesta** (`package.alternative_date`, lane cotizador, 3 a 5 min): sondea el aéreo de sistema por fecha
+  (mismo día de la semana que la salida, cada semana de la ventana; reutiliza las sondas de la semana de
+  vuelos.siviajo.com si coinciden ruta y noches, y guarda las nuevas en `flight_price_probes`), aplica la regla
+  directo/escala del perfil por fecha, cotiza el paquete completo (mismos hoteles, noches, pasajeros) en las dos
+  mejores y guarda la mejor en `requote_alternatives` (estado `proposed`). En la tarea de cupos agotados:
+  "Buscar fecha en la temporada" → propuesta con fecha, aéreo, precio y desvío → "Aprobar fecha" / "Rechazar".
+- **Aplicación** (`package.apply_alternative`, lane default, flags `tc_writes` + `jsf_writes`): lanza el bot
+  `ops/tc-bot/switch-date.js` (Playwright; se instala en `/root/tc-requote-bot/` con `ops/install-tc-bot.sh` y
+  usa el `.env` del tc-requote-bot: HUBSIVIAJO). El bot: (1) backoffice `/admin/holidays` → Editar → pestaña
+  Fechas: pone Desde/Hasta en la fecha nueva y tilda su día de la semana, Guardar; (2) el sitio como agente
+  (misma sesión): idea → "reservar | ver fechas" → fecha nueva → Buscar → resumen; si el aéreo no es el propuesto
+  o sigue siendo de contrato, "Edita" del transporte y elige por número de vuelo (si no, directo más barato, o
+  más barato); verifica que no quede "Contract Transport" y que el precio esté dentro del ±8 % de la propuesta;
+  (3) "Actualizar y guardar idea"; (4) HUB `switchPackageToSystem` (reimporta de TC, `is_cupo=false`, vínculos
+  liberados, monitoreo). "Ensayar" (`mode=prepare`) hace 1 y 2, no guarda, y vuelve a dejar Desde/Hasta como
+  estaban; si eso fallara, `node switch-date.js --tc-id=<id> --mode=restore --start=dd/mm/yyyy --end=dd/mm/yyyy`.
+  Capturas en `/tmp/switch-date/<propuesta>/` del VPS.
+- Primera corrida real (2026-09-11, SIV 52574571, cupo Arajet 17/01 agotado): 9 domingos sondeados; mejor 28/02
+  con Arajet directo ida y vuelta, USD 1.731 pp según el cotizador y USD 1.874 en el resumen de TC (el cotizador
+  arma la combinación más barata de hotel y tarifa; TC recotiza la idea guardada).
+
 Regla del matcher (`src/lib/packages/flight-match.ts`): un transporte **sin proveedor** (`supplier_name` null) es
 tarifa de sistema y no se vincula a ningún cupo, aunque sea el mismo vuelo en la misma fecha. Antes HUB vinculaba
 esas tarifas al cupo agotado y el bot del CRM decía "agotado". Verificado el 2026-09-11 sobre los 99 paquetes
