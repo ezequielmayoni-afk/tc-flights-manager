@@ -199,7 +199,8 @@ export function FaresTable({ pairs, total, filters, basePath, originCode, destCo
                         <SelectFlightLink
                           href={href}
                           origin={originCode}
-                          destination={destinationSlug}
+                          destination={destCode}
+                          slug={destinationSlug}
                           depart={pair.depart}
                           returnDate={pair.return}
                           nights={pair.nights}
@@ -240,7 +241,8 @@ export function FaresTable({ pairs, total, filters, basePath, originCode, destCo
                     <SelectFlightLink
                       href={href}
                       origin={originCode}
-                      destination={destinationSlug}
+                      destination={destCode}
+                      slug={destinationSlug}
                       depart={pair.depart}
                       returnDate={pair.return}
                       nights={pair.nights}

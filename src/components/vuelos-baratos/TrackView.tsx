@@ -36,9 +36,17 @@ export function TrackView({ slug, destination, destinationName, origin, minPrice
   const searchParams = useSearchParams()
   const query = searchParams.toString()
 
+  const vistaContada = React.useRef<string | null>(null)
+
   // La vista se cuenta una vez por ruta (destino + ciudad de salida): un
-  // cambio de mes o de filtro es interacción, no una visita nueva.
+  // cambio de mes o de filtro es interacción, no una visita nueva. El ref la
+  // blinda contra un doble montaje del effect —el Strict Mode de desarrollo, o
+  // un re-montaje del subárbol del `<Suspense>`—, que si no manda dos
+  // `ViewContent` con `event_id` distinto y Meta los cuenta separados.
   React.useEffect(() => {
+    const ruta = `${slug}|${origin}`
+    if (vistaContada.current === ruta) return
+    vistaContada.current = ruta
     track('view_destination', {
       slug,
       destination,
@@ -74,11 +82,13 @@ export function TrackView({ slug, destination, destinationName, origin, minPrice
       track('change_origin', { slug, origin: ahora.get('from') ?? DEFAULT_ORIGIN })
       return
     }
+    // El spread va PRIMERO: las claves de la URL las escribe el visitante y no
+    // pueden pisar `slug`, `origin` ni `changed` (`?origin=loquesea`).
     track('filter_change', {
+      ...Object.fromEntries(cambiadas.map(clave => [clave, ahora.get(clave)])),
       slug,
       origin,
       changed: cambiadas.join(','),
-      ...Object.fromEntries(cambiadas.map(clave => [clave, ahora.get(clave)])),
     })
   }, [pathname, query, slug, origin])
 

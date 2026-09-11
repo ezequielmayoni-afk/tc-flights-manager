@@ -6,10 +6,18 @@ import { BOTON_PRIMARIO, BOTON_PRIMARIO_SM } from './ui'
 export interface SelectFlightLinkProps {
   /** Deep link ya armado (con UTM) del lado del servidor. */
   href: string
-  /** Código de la ciudad de salida, para el `dataLayer`. */
+  /** Código de destino de Travel Compositor de la ciudad de salida. */
   origin: string
-  /** Slug del destino, para el `dataLayer`. */
+  /**
+   * Código de destino de Travel Compositor del destino (NO el slug).
+   *
+   * `origin`-`destination` es el `content_ids` con el que Meta une este evento
+   * al `ViewContent` de la página y al `Search` del buscador: si acá viajara
+   * el slug, el embudo quedaría partido en dos productos distintos.
+   */
   destination: string
+  /** Slug de la landing, sólo para los informes de GA4. */
+  slug: string
   depart: string
   returnDate: string
   nights: number
@@ -29,6 +37,7 @@ export function SelectFlightLink({
   href,
   origin,
   destination,
+  slug,
   depart,
   returnDate,
   nights,
@@ -45,6 +54,7 @@ export function SelectFlightLink({
         track('select_flight', {
           origin,
           destination,
+          slug,
           depart,
           return: returnDate,
           nights,
