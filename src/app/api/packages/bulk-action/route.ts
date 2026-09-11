@@ -4,6 +4,7 @@ import { sendSlackMessage, buildCreativeRequestMessage, buildSentToMarketingMess
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCupoPackageIds } from '@/lib/packages/cupo'
 import { expirePackageInTC } from '@/lib/packages/expire'
+import { switchPackageToSystem } from '@/lib/packages/switch-to-system'
 import { enqueueJob } from '@/lib/jobs/queue'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { checkSectionAccess } from '@/lib/auth'
@@ -41,6 +42,7 @@ const ACTION_LABELS: Record<string, { message: string; source: LogSource }> = {
   'design-uncomplete': { message: 'Diseño devuelto a pendiente', source: 'diseño' },
   'creative-uploaded': { message: 'Creativos subidos a Meta', source: 'marketing' },
   'sync-ads-count': { message: 'Recuento de anuncios sincronizado', source: 'marketing' },
+  switch_to_system: { message: 'Pasó de cupo a aéreo de sistema; monitoreo encendido', source: 'cupos' },
 }
 
 export async function POST(request: NextRequest) {
@@ -56,7 +58,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No packages selected' }, { status: 400 })
     }
 
-    if (!['design', 'marketing', 'expired', 'not-visible', 'visible', 'group_departures', 'ungroup_departures', 'delete', 'monitor', 'unmonitor', 'complete-requote', 'run_requote', 'accept-requote', 'design-complete', 'design-uncomplete', 'creative-uploaded', 'sync-ads-count'].includes(action)) {
+    if (!['design', 'marketing', 'expired', 'not-visible', 'visible', 'group_departures', 'ungroup_departures', 'delete', 'monitor', 'unmonitor', 'complete-requote', 'run_requote', 'accept-requote', 'design-complete', 'design-uncomplete', 'creative-uploaded', 'sync-ads-count', 'switch_to_system'].includes(action)) {
       return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
     }
 
@@ -275,6 +277,15 @@ export async function POST(request: NextRequest) {
               })
             }
             break
+          case 'switch_to_system': {
+            // El cambio ya se hizo en TC (sin "fijo", tarifa de sistema, guardado):
+            // HUB relee TC, lo saca de cupo y prende el monitoreo. Si TC sigue
+            // devolviendo el aéreo como contrato, no toca nada y lo dice.
+            const switched = await switchPackageToSystem(db, pkg.id, user ? { id: user.id, email: user.email } : null)
+            results.push({ id: pkg.id, tc_package_id: pkg.tc_package_id, title: pkg.title, status: switched.ok ? 'success' : 'error', error: switched.ok ? undefined : switched.reason })
+            continue
+          }
+
           case 'expired': {
             // La baja vive en @/lib/packages/expire para que sea idéntica acá y
             // en la pantalla de cupos agotados. Como esa función ya escribe en

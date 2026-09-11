@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { checkSectionAccess, isReadOnlyRole } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 import { expirePackageInTC } from '@/lib/packages/expire'
+import { switchPackageToSystem, type SwitchToSystemResult } from '@/lib/packages/switch-to-system'
 import { sendCupoSoldOutNotice } from '@/lib/notifications/cupo-sold-out'
 import { logEvent } from '@/lib/logs'
 import {
@@ -18,6 +19,8 @@ import {
  *  - `deactivate`: da de baja el paquete en TC y avisa a marketing.
  *  - `keep`: lo deja publicado (se le va a cambiar el aéreo) y solo lo marca
  *    revisado para que salga de la lista.
+ *  - `switch_to_system`: el cupo ya se reemplazó en TC por una tarifa de
+ *    sistema; HUB relee TC, saca el paquete de cupo y prende el monitoreo.
  *
  * En los dos casos se guarda cómo estaba el cupo, así que si después se
  * amplía o se liberan lugares y se vuelve a agotar, la tarea reaparece.
@@ -34,9 +37,9 @@ export async function POST(request: NextRequest) {
   try {
     const { flightId, packageId, decision, note } = await request.json()
 
-    if (!flightId || !packageId || !['deactivate', 'keep'].includes(decision)) {
+    if (!flightId || !packageId || !['deactivate', 'keep', 'switch_to_system'].includes(decision)) {
       return NextResponse.json(
-        { error: 'Faltan datos: flightId, packageId y decision (deactivate | keep)' },
+        { error: 'Faltan datos: flightId, packageId y decision (deactivate | keep | switch_to_system)' },
         { status: 400 }
       )
     }
@@ -71,7 +74,11 @@ export async function POST(request: NextRequest) {
     let tcError: string | undefined
     let noticeSkipped: string | undefined
 
-    if (decision === 'deactivate') {
+    let switched: SwitchToSystemResult | null = null
+    if (decision === 'switch_to_system') {
+      switched = await switchPackageToSystem(db, pkg.id, actor)
+      if (!switched.ok) return NextResponse.json({ error: switched.reason }, { status: switched.status })
+    } else if (decision === 'deactivate') {
       const expired = await expirePackageInTC(db, pkg, actor, {
         reason: `cupo agotado (${flightLabel})`,
         flightId: flight.id,
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
       return {
         flight_id: leg.id,
         package_id: pkg.id,
-        decision: decision === 'deactivate' ? 'deactivated' : 'kept_visible',
+        decision: decision === 'deactivate' ? 'deactivated' : decision === 'switch_to_system' ? 'switched_to_system' : 'kept_visible',
         note: note ?? null,
         sold_at_review: legCupos.sold,
         quantity_at_review: legCupos.total,
@@ -145,7 +152,10 @@ export async function POST(request: NextRequest) {
       decision,
       tcError,
       noticeSkipped,
-      message: decision === 'deactivate'
+      switched: switched && switched.ok ? switched : undefined,
+      message: decision === 'switch_to_system' && switched?.ok
+        ? `Pasó a aéreo de sistema${switched.variancePct !== null ? ` (precio ${switched.variancePct > 0 ? '+' : ''}${switched.variancePct}%: USD ${switched.oldPrice} → USD ${switched.newPrice})` : ''}; monitoreo encendido y primera recotización en cola`
+        : decision === 'deactivate'
         ? tcError
           ? `Paquete dado de baja en hub, pero TC falló: ${tcError}`
           : 'Paquete dado de baja y aviso enviado a marketing'

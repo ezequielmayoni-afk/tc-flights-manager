@@ -220,7 +220,8 @@ async function getCupoInfo(packages: PackageWithDestinations[]): Promise<CupoInf
   return info
 }
 
-export default async function PackagesPage() {
+export default async function PackagesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const { q } = await searchParams
   const [packages, stats] = await Promise.all([getPackages(), getStats()])
   const cupoInfo = await getCupoInfo(packages)
 
@@ -264,7 +265,7 @@ export default async function PackagesPage() {
         </div>
 
         <div className="bg-white rounded-lg border">
-          <PackagesTable packages={packages} cupoInfo={cupoInfo} />
+          <PackagesTable packages={packages} cupoInfo={cupoInfo} initialSearch={q ?? ''} />
         </div>
       </div>
     </div>
