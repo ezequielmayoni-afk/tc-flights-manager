@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
@@ -12,6 +13,7 @@ import { MonthChips } from '@/components/vuelos-baratos/MonthChips'
 import { OriginSelect } from '@/components/vuelos-baratos/OriginSelect'
 import { Pagination } from '@/components/vuelos-baratos/Pagination'
 import { SearchBox } from '@/components/vuelos-baratos/SearchBox'
+import { TrackView } from '@/components/vuelos-baratos/TrackView'
 import { OG_BASE } from '@/components/vuelos-baratos/seo'
 import { BOTON_PRIMARIO, CARD, formatUsd } from '@/components/vuelos-baratos/ui'
 import {
@@ -244,6 +246,17 @@ export default async function DestinoPage({ params, searchParams }: PageProps) {
         por persona · ida y vuelta desde {origen.name} · tarifa más baja sin valija despachada · precios encontrados en las
         últimas 48 h{observedAt ? ` · actualizado ${freshnessLabel(observedAt, now)}` : ''}
       </p>
+
+      {/* Next pide Suspense alrededor de `useSearchParams`; no pinta nada. */}
+      <Suspense fallback={null}>
+        <TrackView
+          slug={slug}
+          destination={destination.tc_code}
+          destinationName={destination.name}
+          origin={origen.code}
+          minPrice={overall?.pricePp ?? null}
+        />
+      </Suspense>
 
       <div className="mt-5">
         <SearchBox originCode={origen.code} destination={destination} siviajoBase={siviajoBaseUrl()} />

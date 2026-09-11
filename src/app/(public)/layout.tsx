@@ -22,7 +22,9 @@ export const metadata: Metadata = {
 }
 
 export default function PublicLayout({ children }: { children: React.ReactNode }) {
-  const gtmId = process.env.NEXT_PUBLIC_GTM_ID?.trim()
+  // Las `NEXT_PUBLIC_*` se inlinean en el build (GitHub Actions), donde el
+  // valor no existe; `GTM_ID` se lee en runtime de `/opt/hub/.env.local`.
+  const gtmId = (process.env.GTM_ID ?? process.env.NEXT_PUBLIC_GTM_ID)?.trim()
 
   return (
     <div className="bg-white text-[#393939]">

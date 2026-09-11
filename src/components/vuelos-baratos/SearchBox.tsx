@@ -8,6 +8,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DEFAULT_ORIGIN, ORIGINS } from '@/lib/vuelos-baratos/config'
 import { buildSiviajoFlightUrl, withUtm } from '@/lib/vuelos-baratos/deep-link'
+import { track } from '@/lib/vuelos-baratos/track-client'
 import type { LandingDestinationRow } from '@/lib/vuelos-baratos/types'
 import { CityCombobox, type CityOption } from './CityCombobox'
 import { BOTON_PRIMARIO, CARD, INPUT, ROJO_ERROR } from './ui'
@@ -207,9 +208,10 @@ export function SearchBox({ originCode, destination, siviajoBase }: SearchBoxPro
       return
     }
 
-    window.open(withUtm(url, { campaign: 'buscador', content: `${origen.code}-${destino.code}` }), '_blank', 'noopener')
-    window.dataLayer?.push({
-      event: 'search_submit',
+    // El evento va ANTES del `window.open`: si el navegador bloquea la
+    // pestaña nueva (o la apertura descarga esta página), la búsqueda ya
+    // quedó contada.
+    track('search_submit', {
       origin: origen.code,
       destination: destino.code,
       depart,
@@ -217,6 +219,7 @@ export function SearchBox({ originCode, destination, siviajoBase }: SearchBoxPro
       adults: adultos,
       children: edades.length,
     })
+    window.open(withUtm(url, { campaign: 'buscador', content: `${origen.code}-${destino.code}` }), '_blank', 'noopener')
   }
 
   return (
