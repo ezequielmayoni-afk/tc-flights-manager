@@ -215,7 +215,9 @@ Siempre lleva UTM (`withUtm`): `utm_source=vuelos`, `utm_medium`, `utm_campaign`
 | `NEXT_PUBLIC_VUELOS_BASE_URL` | `/opt/hub/.env.local` | `https://vuelos.siviajo.com` (canonicals, sitemap, JSON-LD de la landing) |
 | `VUELOS_PUBLIC_HOST` | `/opt/hub/.env.local` | `vuelos.siviajo.com` (ver middleware abajo) |
 | `SIVIAJO_BASE_URL` | `/opt/hub/.env.local` | `https://www.siviajo.com` (base del deep link; **no** lleva prefijo `NEXT_PUBLIC_`: el buscador la recibe como prop de server component, así un override del `.env` no se ignora en el cliente) |
-| `NEXT_PUBLIC_GTM_ID` | `/opt/hub/.env.local` | GTM de la landing (tracking de clicks/conversión) |
+| `GTM_ID` | `/opt/hub/.env.local` | Contenedor de GTM de la landing (ver [Tracking](#tracking-gtm--ga4--meta)). Se lee en **runtime**: `NEXT_PUBLIC_GTM_ID` sigue funcionando como fallback, pero se inlinea en el build de GitHub Actions, donde el valor no existe |
+| `META_VUELOS_DATASET_ID` | `/opt/hub/.env.local` | Dataset de Meta al que van los eventos por Conversions API (`1310175447121594`). Sin él, el endpoint del beacon responde 204 y no manda nada |
+| `META_CAPI_TEST_EVENT_CODE` | `/opt/hub/.env.local` | Opcional: código de "Test events" de Events Manager para verificar sin ensuciar los datos. **Vacío en producción** |
 | `COTIZADOR_URL` / `COTIZADOR_API_KEY` | `/opt/hub/.env.local` | Ya existían (Fase 3); las reusa `probeFlights` |
 | `SABRE_USERNAME`, `SABRE_PASSWORD`, `SABRE_PCC`, `SABRE_CLIENT_ID`, `SABRE_CLIENT_SECRET` | `/opt/hub/.env.local` | Credenciales del estimador (obligatorias las cinco: sin alguna, `isSabreConfigured()` es `false` y los jobs terminan `skipped`) |
 | `SABRE_DOMAIN` / `SABRE_SOAP_URL` | `/opt/hub/.env.local` | Opcionales: `DEFAULT` y `https://webservices.platform.sabre.com` |
@@ -226,8 +228,9 @@ Las tres primeras ya están agregadas en `/opt/hub/.env.local` del VPS de HUB.
 **Middleware** (`src/lib/supabase/middleware.ts`): cuando el `Host` del pedido coincide con
 `VUELOS_PUBLIC_HOST`, la raíz (`/`) se reescribe a `/vuelos-baratos` y cualquier otra ruta redirige ahí
 — así el dashboard no queda expuesto en un dominio sin login. `/vuelos-baratos`, `/robots.txt`,
-`/sitemap.xml` y `GET /api/vuelos-baratos/cities` se sirven sin pasar por Supabase (sin sesión que
-refrescar; el autocomplete del buscador pega una consulta por tecla).
+`/sitemap.xml`, `GET /api/vuelos-baratos/cities` y `POST /api/vuelos-baratos/track` se sirven sin pasar
+por Supabase (sin sesión que refrescar; el autocomplete pega una consulta por tecla y el beacon de
+`sendBeacon` ni siquiera manda cookies).
 
 ## Activar un destino o ruta
 
@@ -333,6 +336,82 @@ BASE=https://vuelos.siviajo.com .venv/bin/python scripts/smoke_vuelos_baratos.py
 ```
 
 Sin `BASE`, apunta a `http://localhost:3001` (para probar contra HUB directo, antes del cutover).
+
+## Tracking (GTM + GA4 + Meta)
+
+La landing se mide con **su propio contenedor de Google Tag Manager** (el ID va en `GTM_ID`), que carga
+GA4 y el pixel de Meta. No comparte contenedor con siviajo.com (son dominios distintos con eventos
+distintos), pero **sí comparte la propiedad de GA4**: `G-27Y5RTNZWF`, la misma de siviajo.com, para poder
+seguir a un visitante desde "vuelos baratos a Miami" hasta la reserva. Del lado de Meta, los eventos van
+al dataset **`1310175447121594`** ("00 - WABA General Events"), el mismo al que ya escribe el resto del
+negocio.
+
+El código no toca ni GA4 ni el pixel directamente: todo pasa por `track()`
+(`src/lib/vuelos-baratos/track-client.ts`), que empuja el evento al `dataLayer` y — para los eventos que
+además son de Meta — manda un beacon al servidor. `track()` **nunca lanza**: con GTM apagado o bloqueado
+la landing anda igual.
+
+### Eventos
+
+Todos llevan `event_id` (el que dedupea pixel y CAPI) además de los parámetros de la tabla.
+
+| Evento del `dataLayer` | GA4 | Meta | Parámetros |
+|---|---|---|---|
+| `view_destination` | `view_destination` | `ViewContent` | `slug`, `destination` (código TC), `destination_name`, `origin`, `min_price` |
+| `search_submit` | `search_submit` | `Search` | `origin`, `destination`, `depart`, `return`, `adults`, `children` |
+| `select_flight` | `select_flight` | `SelectFlight` | `origin`, `destination`, `depart`, `return`, `nights`, `price_pp`, `airline`, `month` |
+| `select_month` | `select_month` | — | `slug`, `origin`, `month` (`all` al destildar el chip) |
+| `filter_change` | `filter_change` | — | `slug`, `origin`, `changed` (claves separadas por coma) y el valor nuevo de cada una |
+| `change_origin` | `change_origin` | — | `slug`, `origin` (la ciudad nueva) |
+
+Los **tres de negocio** (`view_destination`, `search_submit`, `select_flight`) son los que van a Meta:
+vista de ruta, búsqueda en el motor y click en "Seleccionar" — el último es lo más parecido a una
+conversión que tiene la landing, porque la reserva ocurre en siviajo.com. Los **tres de interacción**
+(`select_month`, `filter_change`, `change_origin`) quedan sólo en GA4: sirven para saber si el explorador
+de fechas se usa, no para optimizar campañas.
+
+`view_destination`, `select_month`, `filter_change` y `change_origin` los dispara `TrackView`
+(`src/components/vuelos-baratos/TrackView.tsx`) mirando la URL: los filtros de la landing son links y la
+página se re-renderiza entera en el servidor, así que el cambio de `?m=`, `?from=` o `?stops=` es la única
+señal de interacción que hay. La vista se cuenta **una vez por ruta** (destino + ciudad de salida): un
+cambio de mes o de filtro es interacción, no una visita nueva.
+
+### Deduplicación (pixel + CAPI)
+
+Cada evento de Meta se manda **dos veces a propósito**:
+
+1. **Pixel**, desde el navegador, vía GTM. En la etiqueta del pixel hay que mapear **`eventID` al
+   `event_id`** que viene en el `dataLayer` (sin eso Meta cuenta doble).
+2. **Conversions API**, desde el VPS: `track()` manda un beacon
+   (`POST /api/vuelos-baratos/track`, con `navigator.sendBeacon` y `fetch({ keepalive: true })` de
+   respaldo) y el endpoint lo reenvía a `graph.facebook.com` dentro de un `after()` — **después** de
+   responder 204, así el visitante no espera por Meta.
+
+Meta junta los dos por `event_id` + `event_name` y cuenta uno solo. El beacon también lleva **`fbp` y
+`fbc`** (las cookies del pixel; si el pixel todavía no escribió `_fbc` —primer click de una campaña— se
+arma del `fbclid` de la URL) y el endpoint agrega IP y user-agent: son los datos con los que Meta atribuye
+la conversión cuando el pixel del navegador queda bloqueado.
+
+El endpoint (`src/app/api/vuelos-baratos/track/route.ts`) es público y sin sesión (está en
+`PUBLIC_API_PATHS` del middleware: `sendBeacon` no manda cookies). Responde **siempre 204 sin cuerpo**,
+limita a **120 beacons por IP cada 10 minutos**, rechaza bodies de más de 8 KB y conserva el
+`event_source_url` sólo si el host es nuestro. Si Meta rechaza el evento, queda un `console.warn` siempre
+y, como mucho una vez cada 5 minutos por proceso, un aviso en `/logs` (`meta.capi.error`).
+
+Sin `META_VUELOS_DATASET_ID` o sin `META_ACCESS_TOKEN` el endpoint responde 204 y no manda nada: la
+landing sigue midiendo en GA4 y la CAPI queda apagada.
+
+### Cómo verificar
+
+- **GTM / GA4**: Tag Assistant (vista previa del contenedor) sobre `https://vuelos.siviajo.com`. Entrar a
+  un destino, cambiar de mes y tocar "Seleccionar": tienen que verse `view_destination`, `select_month` y
+  `select_flight` con su `event_id`. En GA4, DebugView.
+- **Meta**: Events Manager → dataset `1310175447121594` → **Test events**. Copiar el código de esa
+  pantalla a `META_CAPI_TEST_EVENT_CODE` en `/opt/hub/.env.local`, `pm2 restart hub`, navegar la landing y
+  mirar que cada evento aparezca **una sola vez** con las dos fuentes ("Navegador y servidor"): si sale
+  duplicado, falta el mapeo de `eventID` en la etiqueta del pixel. **Vaciar la variable al terminar.**
+- **Beacon a mano**: `curl -s -o /dev/null -w '%{http_code}' -X POST https://vuelos.siviajo.com/api/vuelos-baratos/track -H 'content-type: application/json' -d '{"event":"view_destination","event_id":"abcdefgh","payload":{"origin":"BUE","destination":"MIA"}}'`
+  → `204`. Un beacon inválido da 400 y pasadas las 120 llamadas, 429.
 
 ## Pendiente
 
