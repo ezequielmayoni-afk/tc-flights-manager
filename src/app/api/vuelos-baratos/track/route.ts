@@ -58,12 +58,28 @@ async function avisar(error: string): Promise<void> {
   }
 }
 
+/** Último 403 de origen avisado por consola (ms); uno por minuto alcanza para ver un falso positivo. */
+let ultimoAviso403 = 0
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   const publicHost = publicBaseUrlObject().host
 
   // Lo más barato primero, y antes de leer el body: un pedido de otra página
-  // (o un script pelado) no llega ni a bufferear.
-  if (!originAllowed(request.headers, publicHost)) return new NextResponse(null, { status: 403 })
+  // (o un script pelado) no llega ni a bufferear. El 403 no se loguea en la
+  // base, pero sí en la consola de PM2 (throttled): un navegador que no manda
+  // `sec-fetch-site` ni `referer` se vería acá, no en Meta.
+  if (!originAllowed(request.headers, publicHost)) {
+    const ahora = Date.now()
+    if (ahora - ultimoAviso403 > 60_000) {
+      ultimoAviso403 = ahora
+      console.warn('[beacon] origen rechazado', {
+        secFetchSite: request.headers.get('sec-fetch-site'),
+        refererHost: (() => { try { return new URL(request.headers.get('referer') ?? '').host } catch { return null } })(),
+        ua: (request.headers.get('user-agent') ?? '').slice(0, 80),
+      })
+    }
+    return new NextResponse(null, { status: 403 })
+  }
 
   // `request.text()` antes que `json()`: así el tope se mide sobre lo que de
   // verdad llegó y un body gigante no pasa por el parser.

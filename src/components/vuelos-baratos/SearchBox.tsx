@@ -214,6 +214,8 @@ export function SearchBox({ originCode, destination, siviajoBase }: SearchBoxPro
     track('search_submit', {
       origin: origen.code,
       destination: destino.code,
+      // La etiqueta de GA4 lo manda como `slug`; null si el destino no tiene landing.
+      slug: destino.landingSlug ?? null,
       depart,
       return: returnDate,
       adults: adultos,
