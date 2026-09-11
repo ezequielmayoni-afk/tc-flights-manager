@@ -301,6 +301,7 @@ async function main() {
       'GA4 - search_submit',
       'search_submit',
       [
+        ['slug', '{{dl - slug}}'],
         ['origin', '{{dl - origin}}'],
         ['destination', '{{dl - destination}}'],
         ['depart', '{{dl - depart}}'],
@@ -318,6 +319,7 @@ async function main() {
       'GA4 - select_flight',
       'select_flight',
       [
+        ['slug', '{{dl - slug}}'],
         ['origin', '{{dl - origin}}'],
         ['destination', '{{dl - destination}}'],
         ['depart', '{{dl - depart}}'],
