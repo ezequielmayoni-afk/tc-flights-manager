@@ -69,6 +69,14 @@ export interface TransportForMatch {
   destination_code: string | null
   departure_date: string | null
   transport_number: string | null
+  /**
+   * Proveedor del transporte en TC. Los aéreos de contrato (cupo) vienen con
+   * proveedor ("Sí, viajo", "Jetsmart"); una tarifa de sistema viene sin él.
+   * `null` = cargado y sin proveedor → no es cupo, no se vincula aunque sea el
+   * mismo vuelo en la misma fecha. `undefined` = el consumidor no pidió la
+   * columna → se matchea como siempre.
+   */
+  supplier_name?: string | null
 }
 
 export interface FlightMatchResult {
@@ -259,6 +267,11 @@ function toResult(entry: IndexedFlight, criteria: MatchCriteria): FlightMatchRes
 
 /** Busca el cupo que corresponde a un tramo de un paquete. */
 export function matchTransport(index: FlightMatchIndex, transport: TransportForMatch): FlightMatchResult | null {
+  // Cuando un cupo agotado se reemplaza por una tarifa de sistema en TC, la
+  // tarifa nueva suele ser el mismo vuelo en la misma fecha: sin esta guarda
+  // HUB lo seguiría tratando como el cupo agotado (bot del CRM "agotado",
+  // guard proponiendo pausar).
+  if (transport.supplier_name === null) return null
   const airline = transport.marketing_airline_code
   if (!airline) return null
 
@@ -355,7 +368,7 @@ export async function findFlightsForPackages(
     loadFlightsForMatch(db),
     db
       .from('package_transports')
-      .select('package_id, marketing_airline_code, origin_code, destination_code, departure_date, transport_number')
+      .select('package_id, marketing_airline_code, origin_code, destination_code, departure_date, transport_number, supplier_name')
       .in('package_id', packageIds),
   ])
 

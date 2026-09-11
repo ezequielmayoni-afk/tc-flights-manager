@@ -149,6 +149,8 @@ interface PackagesTableProps {
   packages: PackageWithDestinations[]
   /** Qué paquetes están armados con cupo propio. Ver getCupoInfo en la página. */
   cupoInfo?: CupoInfoMap
+  /** Texto inicial del buscador (viene de `?q=` en la URL). */
+  initialSearch?: string
 }
 
 type SortField = 'tc_creation_date' | 'tc_package_id' | 'title' | 'date_range_start' | 'flight_departure_date' | 'air_cost' | 'land_cost' | 'agency_fee' | 'current_price_per_pax' | 'status' | 'monitor_enabled' | 'target_price' | 'requote_price' | 'last_requote_at' | 'nights_count'
@@ -401,13 +403,13 @@ function ResizableHeader({
 
 const ITEMS_PER_PAGE_OPTIONS = [10, 25, 50, 100]
 
-export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
+export function PackagesTable({ packages, cupoInfo = {}, initialSearch = '' }: PackagesTableProps) {
   const router = useRouter()
   const { isReadOnly } = useAuth()
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [sortField, setSortField] = useState<SortField | null>('tc_creation_date')
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
-  const [searchText, setSearchText] = useState('')
+  const [searchText, setSearchText] = useState(initialSearch)
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [monitorFilter, setMonitorFilter] = useState<string>('all')
   const [cupoFilter, setCupoFilter] = useState<string>('all')
@@ -820,7 +822,7 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
     }
   }
 
-  const handleBulkAction = async (action: 'design' | 'marketing' | 'expired' | 'not-visible' | 'visible' | 'group_departures' | 'ungroup_departures' | 'delete' | 'monitor' | 'unmonitor' | 'run_requote', extraData?: Record<string, unknown>) => {
+  const handleBulkAction = async (action: 'design' | 'marketing' | 'expired' | 'not-visible' | 'visible' | 'group_departures' | 'ungroup_departures' | 'delete' | 'monitor' | 'unmonitor' | 'run_requote' | 'switch_to_system', extraData?: Record<string, unknown>) => {
     if (selectedIds.size === 0) return
 
     // Handle run_requote separately
@@ -829,6 +831,12 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
       return
     }
 
+    if (action === 'switch_to_system') {
+      const confirmed = window.confirm(
+        `¿Ya cambiaste el aéreo en TC para ${selectedIds.size === 1 ? 'este paquete' : `estos ${selectedIds.size} paquetes`}?\n\nAntes, en el paquete vacacional de siviajo.com: sacale el "fijo" al aéreo, buscá la tarifa de sistema similar, actualizá y guardá.\n\nHUB relee el paquete, lo saca de cupo y prende el monitoreo con el precio nuevo. El ID, la URL y los anuncios no cambian.`
+      )
+      if (!confirmed) return
+    }
     // Confirmation for delete action
     if (action === 'delete') {
       const confirmed = window.confirm(
@@ -870,6 +878,7 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
         monitor: 'activados para monitoreo',
         unmonitor: 'desactivados de monitoreo',
         run_requote: 'marcados para ejecutar monitoreo',
+        switch_to_system: 'pasados de cupo a aéreo de sistema',
       }
 
       if (data.errors > 0) {
@@ -1053,6 +1062,17 @@ export function PackagesTable({ packages, cupoInfo = {} }: PackagesTableProps) {
             >
               {bulkActionLoading === 'group_departures' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
               Agrupar salidas
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleBulkAction('switch_to_system')}
+              disabled={bulkActionLoading !== null}
+              className="gap-2"
+              title="El cupo agotado ya se reemplazó en TC por una tarifa de sistema: sacar de cupo y prender el monitoreo"
+            >
+              {bulkActionLoading === 'switch_to_system' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plane className="h-4 w-4" />}
+              Pasó a sistema
             </Button>
             <Button
               variant="destructive"

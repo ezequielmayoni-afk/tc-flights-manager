@@ -126,6 +126,27 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 - Depurar: `SELECT id, tc_package_id, requote_status, requote_price, requote_variance_pct, requote_note, last_requote_at FROM packages WHERE monitor_enabled ORDER BY last_requote_at DESC;`
   y `SELECT * FROM package_requote_logs ORDER BY checked_at DESC LIMIT 20;`.
 
+## Cupo agotado → aéreo de sistema (desde 2026-09-11)
+
+Cuando un cupo se agota y el paquete tiene que seguir vendiéndose con el mismo ID (indexación en Google,
+anuncios de Meta con el mismo SIV), el aéreo se cambia por una tarifa de sistema. El orden importa:
+
+1. **En TC, a mano**: en el paquete vacacional sacarle el "fijo" al aéreo, buscar la tarifa de sistema similar,
+   actualizar y guardar.
+2. **En HUB**: botón "Pasó a sistema" en la tarea de cupos agotados (`/tareas`) o en la selección de `/packages`.
+   HUB relee el paquete en TC (aéreo, hoteles, destinos, precio). Si TC sigue devolviendo el aéreo como contrato,
+   contesta con el motivo y no toca nada. Si ya es de sistema: `is_cupo = false`, precio y fechas nuevos (con
+   historial de precio y aviso a diseño si estaba en marketing), vínculos con el cupo liberados
+   (`flight_package_links.rejected`, revisión `switched_to_system`), monitoreo encendido con el precio nuevo como
+   objetivo y primera recotización encolada. `packages.switched_to_system_at/by` guardan quién y cuándo.
+3. El import diario también lo reclasifica solo (el aéreo viene sin proveedor de contrato), pero sin el botón no
+   se prende el monitoreo ni se liberan los vínculos.
+
+Regla del matcher (`src/lib/packages/flight-match.ts`): un transporte **sin proveedor** (`supplier_name` null) es
+tarifa de sistema y no se vincula a ningún cupo, aunque sea el mismo vuelo en la misma fecha. Antes HUB vinculaba
+esas tarifas al cupo agotado y el bot del CRM decía "agotado". Verificado el 2026-09-11 sobre los 99 paquetes
+activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de sistema); los 23 reales quedan.
+
 ## Producto: perfiles e ideas (Fase 3 del loop)
 
 - `destination_profiles`: usos y costumbres por destino (régimen obligatorio, noches, categoría, temporada, ventana

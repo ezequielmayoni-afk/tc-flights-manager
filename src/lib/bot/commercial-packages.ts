@@ -38,6 +38,7 @@ interface RawPackageTransport {
   baggage_info: string | null
   checked_baggage: string | null
   cabin_baggage: string | null
+  supplier_name?: string | null
 }
 
 interface RawPackageHotel {
@@ -241,7 +242,8 @@ const COMMERCIAL_PACKAGE_SELECT = `
     destination_name,
     baggage_info,
     checked_baggage,
-    cabin_baggage
+    cabin_baggage,
+    supplier_name
   ),
   package_hotels (
     hotel_name,

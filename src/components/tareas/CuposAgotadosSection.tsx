@@ -36,7 +36,8 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
     fetchTasks()
   }, [fetchTasks])
 
-  const resolve = async (task: CupoAgotadoTask, packageId: number, decision: 'deactivate' | 'keep') => {
+  const resolve = async (task: CupoAgotadoTask, packageId: number, decision: 'deactivate' | 'keep' | 'switch_to_system') => {
+    if (decision === 'switch_to_system' && !window.confirm('¿Ya cambiaste el aéreo en TC?\n\nAntes de tocar esto, en el paquete vacacional de siviajo.com: sacale el "fijo" al aéreo, buscá la tarifa de sistema similar, actualizá y guardá.\n\nHUB va a releer el paquete, sacarlo de cupo y prender el monitoreo con el precio nuevo. El ID, la URL y los anuncios no cambian.')) return
     const key = `${task.flightId}-${packageId}`
     setResolving(key)
     try {
@@ -127,7 +128,7 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
                           {pkg.tcPackageId}
                           <ExternalLink className="h-3 w-3" />
                         </a>
-                        <a href={`/packages/${pkg.packageId}`} className="text-[11px] text-gray-400 hover:underline" title="Ver en HUB">HUB</a>
+                        <a href={`/packages?q=${pkg.tcPackageId}`} className="text-[11px] text-gray-400 hover:underline" title="Ver en HUB">HUB</a>
                         <span className="text-sm truncate">{pkg.title}</span>
                         {pkg.sendToMarketing && (
                           <Badge variant="secondary" className="text-xs">en marketing</Badge>
@@ -163,6 +164,15 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
                       >
                         Mantener visible
                       </Button>
+                      <Button
+                        size="sm"
+                        disabled={busy}
+                        onClick={() => resolve(task, pkg.packageId, 'switch_to_system')}
+                        title="Ya reemplazaste el cupo por una tarifa de sistema en TC: HUB relee el paquete, lo saca de cupo y prende el monitoreo"
+                      >
+                        <Plane className="h-4 w-4 mr-1" />
+                        Pasó a sistema
+                      </Button>
                     </div>
                   </div>
                 )
@@ -172,7 +182,8 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
             <p className="text-xs text-muted-foreground mt-3 flex items-start gap-1">
               <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
               &quot;No visible&quot; desactiva el paquete en TravelCompositor y avisa a marketing para
-              que baje los anuncios. &quot;Mantener visible&quot; solo lo saca de esta lista.
+              que baje los anuncios. &quot;Mantener visible&quot; solo lo saca de esta lista. &quot;Pasó a sistema&quot; es para
+              cuando ya cambiaste el cupo por una tarifa de sistema en TC: conserva ID, URL y anuncios, y prende el monitoreo.
             </p>
           </CardContent>
         </Card>

@@ -120,6 +120,12 @@ queda para excepciones y manda sobre el automático.
 **Necesita de Ezequiel**: autorizar la prueba de `PUT {active:true, visible:true}` y de temáticas sobre
 un paquete de prueba; decidir el flag "ocultar en TC cuando el cupo se agota" (default apagado).
 
+**Cupo agotado → sistema (2026-09-11, pedido de Ezequiel)**: para no perder ID, indexación ni anuncios, el cupo agotado se
+reemplaza en TC por una tarifa de sistema (quitar "fijo", tarifa similar, actualizar y guardar) y en HUB el botón
+"Pasó a sistema" (tarea de cupos agotados y `/packages`) relee TC, saca el paquete de cupo, libera los vínculos y prende
+el monitoreo con el precio nuevo. El matcher ya no vincula tarifas sin proveedor de contrato a cupos. Falta: que el
+guard sugiera "pasar a sistema" antes que pausar cuando no hay otra salida (queda para cuando retomemos el guard).
+
 ## Fase 3 — Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización, ideas · 🟡 Desplegada (2026-09-10)
 
 **Qué hay**: `/producto/perfiles` con 45 destinos cargados con las reglas del consultor (editables en línea);
