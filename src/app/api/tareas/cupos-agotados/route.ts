@@ -12,6 +12,28 @@ import {
   type MatchCriteria,
 } from '@/lib/packages/flight-match'
 
+export interface CupoAlternative {
+  id: number
+  status: 'proposed' | 'approved' | 'applying' | 'applied' | 'rejected' | 'failed' | 'superseded'
+  seasonKind: string | null
+  windowFrom: string | null
+  windowTo: string | null
+  currentDeparture: string | null
+  currentPricePp: number | null
+  proposedDeparture: string | null
+  proposedReturn: string | null
+  pricePp: number | null
+  variancePct: number | null
+  airline: string | null
+  flightNumbers: string[]
+  direct: boolean | null
+  hotelNames: string[]
+  hotelMatched: boolean | null
+  note: string | null
+  reason: string | null
+  createdAt: string
+}
+
 export interface CupoAgotadoPackage {
   packageId: number
   tcPackageId: number
@@ -20,6 +42,10 @@ export interface CupoAgotadoPackage {
   sendToMarketing: boolean | null
   confidence: MatchConfidence
   criteria: MatchCriteria
+  /** Última propuesta de fecha alternativa en la misma temporada, si la hay. */
+  alternative: CupoAlternative | null
+  /** Hay un job buscando fecha ahora mismo. */
+  searching: boolean
 }
 
 export interface CupoAgotadoTask {
@@ -141,6 +167,8 @@ export async function GET() {
             sendToMarketing: pkg.sendToMarketing,
             confidence: pkg.confidence,
             criteria: pkg.criteria,
+            alternative: null,
+            searching: false,
           })
         }
       }
@@ -162,6 +190,23 @@ export async function GET() {
         cupos,
         packages,
       })
+    }
+
+    // Propuestas de fecha alternativa y búsquedas en curso, por paquete.
+    const pkgIds = [...new Set(tasks.flatMap(t => t.packages.map(p => p.packageId)))]
+    if (pkgIds.length > 0) {
+      const [{ data: alts }, { data: jobs }] = await Promise.all([
+        db.from('requote_alternatives').select('id, package_id, status, season_kind, window_from, window_to, current_departure, current_price_pp, proposed_departure, proposed_return, price_pp, variance_pct, airline, flight_numbers, direct, hotel_names, hotel_matched, stopover_note, reason, created_at').in('package_id', pkgIds).in('status', ['proposed', 'approved', 'applying', 'applied', 'failed']).order('created_at', { ascending: false }),
+        db.from('hub_jobs').select('payload').eq('kind', 'package.alternative_date').in('status', ['queued', 'running']),
+      ])
+      const latest = new Map<number, CupoAlternative>()
+      for (const a of (alts ?? []) as Array<Record<string, unknown>>) {
+        const pid = Number(a.package_id)
+        if (latest.has(pid)) continue
+        latest.set(pid, { id: Number(a.id), status: a.status as CupoAlternative['status'], seasonKind: (a.season_kind as string | null) ?? null, windowFrom: (a.window_from as string | null) ?? null, windowTo: (a.window_to as string | null) ?? null, currentDeparture: (a.current_departure as string | null) ?? null, currentPricePp: a.current_price_pp === null ? null : Number(a.current_price_pp), proposedDeparture: (a.proposed_departure as string | null) ?? null, proposedReturn: (a.proposed_return as string | null) ?? null, pricePp: a.price_pp === null ? null : Number(a.price_pp), variancePct: a.variance_pct === null ? null : Number(a.variance_pct), airline: (a.airline as string | null) ?? null, flightNumbers: (a.flight_numbers as string[] | null) ?? [], direct: (a.direct as boolean | null) ?? null, hotelNames: (a.hotel_names as string[] | null) ?? [], hotelMatched: (a.hotel_matched as boolean | null) ?? null, note: (a.stopover_note as string | null) ?? null, reason: (a.reason as string | null) ?? null, createdAt: String(a.created_at) })
+      }
+      const searching = new Set((jobs ?? []).map(j => Number((j as { payload: { packageId?: number } }).payload?.packageId)))
+      for (const t of tasks) for (const p of t.packages) { p.alternative = latest.get(p.packageId) ?? null; p.searching = searching.has(p.packageId) }
     }
 
     return NextResponse.json({

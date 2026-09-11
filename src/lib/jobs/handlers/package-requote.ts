@@ -9,14 +9,17 @@ import { buildPackageQuoteRequest, pickMatchingOption, type PackageForRequote } 
 import { FLAGS } from '../flags'
 import type { Db, HandlerDefinition } from '../types'
 
-interface PackageRow {
+export interface PackageRow {
   id: number; tc_package_id: number; title: string | null; origin_code: string | null; departure_date: string | null; flight_departure_date: string | null
   nights_count: number | null; adults_count: number | null; children_count: number | null; tours_count: number | null
   monitor_enabled: boolean | null; tc_active: boolean | null; target_price: number | null; current_price_per_pax: number | null
   requote_status: string | null; destination_profile_code: string | null
 }
 
-async function loadPackage(db: Db, packageId: number): Promise<PackageForRequote & { row: PackageRow } | null> {
+export type LoadedPackage = PackageForRequote & { row: PackageRow }
+
+/** El paquete con todo lo que hace falta para pedirle al cotizador la misma combinación. */
+export async function loadPackageForRequote(db: Db, packageId: number): Promise<LoadedPackage | null> {
   const { data } = await db.from('packages').select('id, tc_package_id, title, origin_code, departure_date, flight_departure_date, nights_count, adults_count, children_count, tours_count, monitor_enabled, tc_active, target_price, current_price_per_pax, requote_status, destination_profile_code').eq('id', packageId).maybeSingle()
   if (!data) return null
   const row = data as PackageRow
@@ -54,7 +57,7 @@ export const packageRequoteHandler: HandlerDefinition = {
   handler: async ({ db, job, log }) => {
     const packageId = Number(job.payload.packageId)
     if (!packageId) return { ok: false, error: 'payload.packageId obligatorio', retry: false }
-    const pkg = await loadPackage(db, packageId)
+    const pkg = await loadPackageForRequote(db, packageId)
     if (!pkg) return { ok: false, error: `Paquete ${packageId} no existe`, retry: false }
     const now = new Date().toISOString()
     const label = `SIV ${pkg.tc_package_id}`
@@ -70,7 +73,7 @@ export const packageRequoteHandler: HandlerDefinition = {
     if (build.ok && build.expectedHotels.length === 0 && pkg.hotels.length > 0) {
       try {
         await importPackageHotels(db, packageId, await getPackageDetail(pkg.tc_package_id), pkg.adults_count ?? 2, pkg.children_count ?? 0)
-        const refreshed = await loadPackage(db, packageId)
+        const refreshed = await loadPackageForRequote(db, packageId)
         if (refreshed) {
           build = buildPackageQuoteRequest(refreshed)
           await log(`${label}: hoteles reimportados de TC (${refreshed.hotels.map(h => h.hotel_name ?? 'sin nombre').join(' + ')})`, { packageId })

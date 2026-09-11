@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { AlertTriangle, EyeOff, Plane, RefreshCw, ExternalLink, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { CupoAgotadoTask } from '@/app/api/tareas/cupos-agotados/route'
+import type { CupoAgotadoTask, CupoAlternative } from '@/app/api/tareas/cupos-agotados/route'
 
 export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: number) => void }) {
   const [tasks, setTasks] = useState<CupoAgotadoTask[]>([])
@@ -67,6 +67,43 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
 
   const formatDate = (d: string) =>
     new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+
+  const [altBusy, setAltBusy] = useState<number | null>(null)
+
+  /** Pide la mejor fecha de la misma temporada; el cotizador tarda 1 a 3 minutos y la lista se refresca sola. */
+  const searchAlternative = async (packageId: number) => {
+    setAltBusy(packageId)
+    try {
+      const res = await fetch('/api/requote/alternatives', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ packageId, trigger: 'cupo_sold_out' }) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo encolar la búsqueda')
+      toast.success(data.deduped ? 'Ya había una búsqueda en curso' : 'Buscando la mejor fecha de la temporada con el cotizador (1 a 3 minutos)')
+      await fetchTasks()
+      let ticks = 0
+      const timer = setInterval(async () => { ticks++; await fetchTasks(); if (ticks >= 12) clearInterval(timer) }, 20000)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setAltBusy(null)
+    }
+  }
+
+  const decideAlternative = async (alt: CupoAlternative, action: 'approve' | 'reject') => {
+    setAltBusy(alt.id)
+    try {
+      const res = await fetch(`/api/requote/alternatives/${alt.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action }) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'No se pudo guardar')
+      toast.success(action === 'approve' ? 'Fecha aprobada: queda lista para aplicarla en siviajo.com' : 'Propuesta rechazada')
+      await fetchTasks()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error')
+    } finally {
+      setAltBusy(null)
+    }
+  }
+
+  const money = (v: number | null) => v === null ? '?' : `USD ${Math.round(v).toLocaleString('es-AR')}`
 
   if (loading) {
     return (
@@ -173,6 +210,43 @@ export function CuposAgotadosSection({ onCountChange }: { onCountChange?: (n: nu
                         <Plane className="h-4 w-4 mr-1" />
                         Pasó a sistema
                       </Button>
+                    </div>
+
+                    <div className="basis-full mt-2 rounded-md border border-dashed border-gray-200 bg-gray-50/60 px-3 py-2 text-xs">
+                      {pkg.searching ? (
+                        <span className="inline-flex items-center gap-1 text-muted-foreground"><RefreshCw className="h-3 w-3 animate-spin" /> Buscando la mejor fecha de la temporada con el cotizador…</span>
+                      ) : pkg.alternative && pkg.alternative.status !== 'failed' ? (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <span className="font-medium text-gray-800">Fecha alternativa ({pkg.alternative.seasonKind === 'alta' ? 'temporada alta' : 'temporada baja'}):</span>{' '}
+                            sale {pkg.alternative.proposedDeparture ? formatDate(pkg.alternative.proposedDeparture) : '?'}{pkg.alternative.proposedReturn ? ` → ${formatDate(pkg.alternative.proposedReturn)}` : ''}
+                            {' · '}{pkg.alternative.airline ?? 'aéreo ?'} {pkg.alternative.flightNumbers.join('/')} {pkg.alternative.direct === true ? 'directo' : pkg.alternative.direct === false ? 'con escala' : ''}
+                            {' · '}<span className="font-medium">{money(pkg.alternative.pricePp)} pp</span>
+                            {pkg.alternative.variancePct !== null && <span className={pkg.alternative.variancePct > 0 ? 'text-red-600' : 'text-emerald-700'}> ({pkg.alternative.variancePct > 0 ? '+' : ''}{pkg.alternative.variancePct}% vs {money(pkg.alternative.currentPricePp)})</span>}
+                            {pkg.alternative.hotelMatched === false && <span className="text-amber-700"> · el hotel del paquete no apareció en esa fecha</span>}
+                            {pkg.alternative.note && <span className="block text-muted-foreground">{pkg.alternative.note}</span>}
+                            <span className="block text-[11px] text-muted-foreground">Estado: {pkg.alternative.status === 'proposed' ? 'propuesta' : pkg.alternative.status === 'approved' ? 'aprobada, pendiente de aplicar en siviajo.com' : pkg.alternative.status}</span>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            {pkg.alternative.status === 'proposed' && (
+                              <>
+                                <Button size="sm" variant="default" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'approve')}>Aprobar fecha</Button>
+                                <Button size="sm" variant="ghost" disabled={altBusy !== null} onClick={() => decideAlternative(pkg.alternative!, 'reject')}>Rechazar</Button>
+                              </>
+                            )}
+                            <Button size="sm" variant="outline" disabled={altBusy !== null} onClick={() => searchAlternative(pkg.packageId)} title="Volver a cotizar la temporada">Buscar de nuevo</Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-muted-foreground">
+                            {pkg.alternative?.status === 'failed' ? `Sin fecha alternativa: ${pkg.alternative.reason ?? 'el cotizador no devolvió precio'}` : 'Sin fecha alternativa buscada todavía.'}
+                          </span>
+                          <Button size="sm" variant="outline" disabled={altBusy !== null} onClick={() => searchAlternative(pkg.packageId)} title="Le pide al cotizador la mejor fecha de la misma temporada del perfil, con el mismo hotel y pasajeros, con aéreo de sistema">
+                            Buscar fecha en la temporada
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )

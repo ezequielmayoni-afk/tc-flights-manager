@@ -15,6 +15,7 @@ import { ideaProbeHandler } from './idea-probe'
 import { packageRequoteHandler } from './package-requote'
 import { packageRequotePlanHandler } from './package-requote-plan'
 import { packageRequoteNotifyHandler } from './package-requote-notify'
+import { packageAlternativeDateHandler } from './package-alternative-date'
 import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
 import { flightsSweepPlanHandler } from './flights-sweep-plan'
@@ -47,6 +48,7 @@ const HANDLERS: HandlerDefinition[] = [
   packageRequoteHandler,
   packageRequotePlanHandler,
   packageRequoteNotifyHandler,
+  packageAlternativeDateHandler,
   ideaQuoteHandler,
   profileAuditHandler,
   // Vuelos baratos (vuelos.siviajo.com)
