@@ -61,7 +61,7 @@ el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que 
 
 | Job | Lane | Prioridad | Qué hace |
 |---|---|---|---|
-| `flights.estimate.plan` | `default` | — | 23:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × grupo de 3 meses. No llama a Sabre. |
+| `flights.estimate.plan` | `default` | — | 21:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × mes, con `run_after` escalonado a lo largo de 3 h (uno cada 3 min con 5 rutas). No llama a Sabre. |
 | `flights.estimate` | `sabre` | 5 | Abre **una** sesión SOAP y pide un BFM por par de fechas (`scan_per_month` por mes); guarda las estimaciones (`runEstimate`). |
 | `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre. No sondea nada. |
 | `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
@@ -123,11 +123,14 @@ También expone `POST /flights/resolve` (`resolveDestination`) para traducir un 
 
 ## Estimador Sabre
 
-**Qué hace**: cada noche a las **23:00 UTC** (20:00 ART), `flights.estimate.plan` encola un
-`flights.estimate` por ruta activa × grupo de 3 meses. Cada job abre **una** sesión SOAP contra Sabre y
-le pide un `BargainFinderMax` por par de fechas (`scan_per_month` pares por mes — no el mes entero—, con
-las mismas estadías y días de salida que usa el barrido). Cada respuesta se guarda en
-`flight_fare_estimates`.
+**Qué hace**: cada noche a las **21:00 UTC** (18:00 ART), `flights.estimate.plan` encola un
+`flights.estimate` por ruta activa × mes, **repartidos en 3 horas** (`ESTIMATE_SPREAD_MS`: cada job lleva
+su `run_after`, intercalando las rutas por mes para que los meses cercanos de todas se estimen primero).
+Cada job abre **una** sesión SOAP contra Sabre y le pide un `BargainFinderMax` por par de fechas
+(`scan_per_month` pares por mes — no el mes entero—, con las mismas estadías y días de salida que usa el
+barrido), con una pausa de 8 s entre búsquedas (`ESTIMATE_CALL_GAP_MS`). Cada respuesta se guarda en
+`flight_fare_estimates`. Pedido de Ezequiel (2026-09-17): la tanda no debe ser una ráfaga; antes eran
+20 jobs de 24 búsquedas en ~36 min.
 A la **01:00 UTC**, `flights.sweep.plan` lee las estimaciones vigentes (`ESTIMATE_WINDOW_HOURS`, 30 h) y,
 por ruta y mes, encola sondas para los **`confirm_per_month` pares más baratos** que estimó Sabre. El
 `result` del plan dice cuántos meses salieron de estimaciones (`monthsFromEstimates`) y cuántos de fechas
@@ -143,12 +146,13 @@ fijas (`monthsFixed`), y cada job lleva `source: 'estimate' | 'fixed'` en el pay
   lane (`sabre`, concurrencia 1, sin ventana horaria).
 - Las sesiones son un recurso escaso (el PCC tiene cupo) y expiran a los 15 minutos: `createSabreShopper`
   abre una sola por job, la renueva sola y la cierra al terminar.
-- **La tanda tarda**: el runner toma **un job por lane y por tick** (un minuto) y sostiene el lock del
-  lane mientras corre, así que los jobs no se encavalgan: 5 rutas × 12 meses ÷ 3 meses por job = **20
-  jobs ≈ 40 min**. Por eso el plan sale a las 23:00 y no a las 00:00: dos horas de margen antes del
-  barrido. Si se suman rutas hay que rehacer esta cuenta (o los últimos meses caen a fechas fijas, que no
-  rompe nada pero gasta más sondas). El lease del lane es de **20 min** (`leaseSeconds: 1200`): el
-  heartbeat va por par, pero un BFM puede tardar hasta 60 s.
+- **La tanda se reparte**: el runner toma **un job por lane y por tick** (un minuto) y sólo los que ya
+  vencieron su `run_after`: 5 rutas × 12 meses = **60 jobs de 8 búsquedas, uno cada 3 min, de 21:00 a
+  00:00 UTC** (con ~2 s por BFM más 8 s de pausa, cada job dura ~80 s: 2 o 3 búsquedas por minuto). El
+  barrido de la 01:00 encuentra todo guardado. Si se suman rutas, la ventana sigue siendo de 3 h y los
+  jobs se acercan entre sí (con 10 rutas, uno cada 90 s); si la tanda no llega a terminar, los meses que
+  faltan caen a fechas fijas (no rompe nada pero gasta más sondas). El lease del lane es de **20 min**
+  (`leaseSeconds: 1200`): el heartbeat va por par, pero un BFM puede tardar hasta 60 s.
 - BFM **no manda `ElapsedTime`**: `duration_out_minutes` / `duration_back_minutes` quedan en `null`. No se
   calculan por diferencia de horarios (son horas locales de husos distintos).
 
@@ -247,7 +251,8 @@ Desde `/producto/vuelos-baratos` (sección `producto`: admin, marketing y produc
 4. **"Estimar ahora"**: encola un `flights.estimate` manual de 2 meses (el lane `sabre` no tiene ventana
    horaria, así que corre en el próximo tick). Cada par es una búsqueda que se cobra: por eso son 2 meses
    y no los 12 de la ruta. Comparte la clave de dedupe con el plan nocturno (ruta + meses + día), así que
-   después de las 23:00 UTC devuelve los jobs de esa noche en vez de duplicar búsquedas.
+   después de las 21:00 UTC devuelve los jobs de esa noche en vez de duplicar búsquedas (los manuales no
+   esperan: salen sin `run_after`, aunque con la misma pausa entre búsquedas).
 5. **"Barrer ahora"**: encola un `flights.sweep` manual (prioridad de UI, no espera a la ventana nocturna)
    para probar una ruta recién activada sin esperar 24 h. Comparte la clave de dedupe con el plan
    nocturno (ruta + mes + día), así que **después de las 01:00 UTC dedupea contra los jobs de esa noche**:

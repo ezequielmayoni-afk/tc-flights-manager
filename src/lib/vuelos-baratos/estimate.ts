@@ -56,6 +56,12 @@ export interface EstimateDeps {
   heartbeat: () => Promise<void>
   log: JobContext['log']
   now?: () => Date
+  /**
+   * Pausa entre dos búsquedas (ms). Sin valor, no hay pausa: el handler pasa
+   * `ESTIMATE_CALL_GAP_MS`; los tests, nada (o un `sleep` doble).
+   */
+  callGapMs?: number
+  sleep?: (ms: number) => Promise<void>
 }
 
 export interface EstimateInput {
@@ -104,20 +110,32 @@ export interface BuildEstimateJobsInput {
   trigger: 'cron' | 'manual'
   /** Estimar también rutas o destinos apagados (sólo a mano, para probarlos). */
   includeInactive?: boolean
+  /**
+   * Desde cuándo y en cuánto tiempo se reparte la tanda (`run_after`
+   * escalonado). Sin `spreadMs` (a mano) todos los jobs salen ya.
+   */
+  startAt?: Date
+  spreadMs?: number
 }
 
 /**
  * Un `flights.estimate` por ruta activa × grupo de meses.
  *
  * Los meses van de a `ESTIMATE_MONTHS_PER_JOB` porque la sesión de Sabre
- * busca de a un par por vez (~3 s cada uno) y el lease del lane es de 15 min:
- * dos meses de 8 pares entran cómodos.
+ * busca de a un par por vez y el lease del lane es de 20 min: un mes de 8
+ * pares con sus pausas entra cómodo.
+ *
+ * Los jobs se intercalan por mes (el primer mes de cada ruta, después el
+ * segundo, ...) y, con `spreadMs`, se reparten parejos en esa ventana: si la
+ * noche se corta, todas las rutas tienen estimados sus meses más cercanos,
+ * que son los que el barrido confirma primero.
  */
 export function buildEstimateJobs(input: BuildEstimateJobsInput): EnqueueInput[] {
   const porCodigo = new Map(input.destinations.map(d => [d.code, d]))
-  const jobs: EnqueueInput[] = []
+  const porRuta: EnqueueInput[][] = []
 
   for (const route of input.routes) {
+    const jobs: EnqueueInput[] = []
     // scan_per_month 0 = ruta sin estimador: el barrido usa sus pares fijos.
     if (route.scan_per_month <= 0) continue
     if (!route.active && !input.includeInactive) continue
@@ -151,9 +169,30 @@ export function buildEstimateJobs(input: BuildEstimateJobsInput): EnqueueInput[]
         createdBy: input.trigger === 'cron' ? 'flights.estimate.plan' : 'ui',
       })
     }
+    if (jobs.length > 0) porRuta.push(jobs)
   }
 
-  return jobs
+  return spreadJobs(interleave(porRuta), input.startAt, input.spreadMs ?? 0)
+}
+
+/** El k-ésimo job de cada ruta, ruta por ruta, para todo k. */
+function interleave(porRuta: EnqueueInput[][]): EnqueueInput[] {
+  const out: EnqueueInput[] = []
+  const max = Math.max(0, ...porRuta.map(j => j.length))
+  for (let k = 0; k < max; k++) {
+    for (const jobs of porRuta) if (k < jobs.length) out.push(jobs[k])
+  }
+  return out
+}
+
+/**
+ * Reparte los jobs parejos en `spreadMs` desde `startAt`: el primero sale ya y
+ * el último a `spreadMs × (n − 1) / n`. Con 60 jobs en 3 h, uno cada 3 min.
+ */
+export function spreadJobs(jobs: EnqueueInput[], startAt: Date | undefined, spreadMs: number): EnqueueInput[] {
+  if (!startAt || spreadMs <= 0 || jobs.length === 0) return jobs
+  const paso = spreadMs / jobs.length
+  return jobs.map((job, i) => ({ ...job, runAfter: new Date(startAt.getTime() + Math.round(i * paso)) }))
 }
 
 /**
@@ -195,9 +234,14 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
 
   const rows: EstimateInsert[] = []
   let seguidos = 0
+  const gap = deps.callGapMs ?? 0
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)))
 
-  for (const pair of pairs) {
+  for (const [i, pair] of pairs.entries()) {
     if (summary.budgetStopped || summary.stopped) break
+    // La pausa va entre búsquedas, no antes de la primera ni después de la
+    // última: un job de 8 pares son 7 pausas.
+    if (i > 0 && gap > 0) await sleep(gap)
 
     // El heartbeat va en el finally: un par que falló también consumió tiempo
     // del lease, y sin renovarlo el job se reencola solo.

@@ -478,7 +478,7 @@ export default async function VuelosBaratosAdminPage() {
           <h2 className="text-sm font-semibold text-gray-900">Cómo funciona</h2>
           <ul className="mt-2 space-y-1">
             <li>
-              <strong>Sabre elige, siviajo confirma</strong>: a las <strong>23:00 UTC</strong> (20:00 ART) el estimador le pide a Sabre (BFM, PCC propio){' '}
+              <strong>Sabre elige, siviajo confirma</strong>: desde las <strong>21:00 UTC</strong> (18:00 ART), repartido en 3 horas, el estimador le pide a Sabre (BFM, PCC propio){' '}
               <strong>Sabre/mes</strong> pares por ruta y mes; a la <strong>01:00 UTC</strong> el barrido cotiza en siviajo.com los{' '}
               <strong>Confirmar/mes</strong> más baratos de cada mes. La estimación nunca se publica como precio (la landing la muestra como
               &ldquo;≈ US$&rdquo;); el precio de la grilla siempre sale de una sonda real.

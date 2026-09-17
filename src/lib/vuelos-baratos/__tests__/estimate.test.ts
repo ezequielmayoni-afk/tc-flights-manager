@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { SabreAuthError, SabreBudgetExhausted, type BfmInput, type BfmItinerary, type BfmResult } from '@/lib/sabre/client'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
-import { ESTIMATE_MONTHS_PER_JOB, ORIGINS, SABRE_MAX_ITINERARIES, originIata } from '../config'
-import { buildEstimateJobs, destinationIata, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate } from '../estimate'
+import { ESTIMATE_MONTHS_PER_JOB, ESTIMATE_SPREAD_MS, ORIGINS, SABRE_MAX_ITINERARIES, originIata } from '../config'
+import { buildEstimateJobs, destinationIata, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate, spreadJobs } from '../estimate'
 import type { DatePair, EstimateInsert, EstimateRow, LandingDestinationRow, LandingRouteRow } from '../types'
 
 /**
@@ -138,27 +138,48 @@ describe('planEstimate', () => {
 })
 
 describe('buildEstimateJobs', () => {
-  it('agrupa los meses de a dos, con la clave de dedupe exacta', () => {
-    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 6, trigger: 'cron' })
+  it('un job por mes, con la clave de dedupe exacta', () => {
+    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 3, trigger: 'cron' })
 
-    expect(ESTIMATE_MONTHS_PER_JOB).toBe(3)
-    expect(jobs).toHaveLength(2)
+    expect(ESTIMATE_MONTHS_PER_JOB).toBe(1)
+    expect(jobs).toHaveLength(3)
     expect(jobs[0].kind).toBe('flights.estimate')
-    expect(jobs[0].dedupeKey).toBe('flights.estimate:BUE:miami:2026-09+2026-10+2026-11:2026-09-09')
-    expect(jobs[1].dedupeKey).toBe('flights.estimate:BUE:miami:2026-12+2027-01+2027-02:2026-09-09')
+    expect(jobs[0].dedupeKey).toBe('flights.estimate:BUE:miami:2026-09:2026-09-09')
+    expect(jobs[2].dedupeKey).toBe('flights.estimate:BUE:miami:2026-11:2026-09-09')
     expect(jobs[0].entityType).toBe('flight_route')
     expect(jobs[0].entityId).toBe(7)
     expect(jobs[0].maxAttempts).toBe(2)
     expect(jobs[0].createdBy).toBe('flights.estimate.plan')
-    expect(jobs[0].payload).toMatchObject({ routeId: 7, destinationCode: 'MIA', originCode: 'BUE', slug: 'miami', months: ['2026-09', '2026-10', '2026-11'], trigger: 'cron' })
+    expect(jobs[0].payload).toMatchObject({ routeId: 7, destinationCode: 'MIA', originCode: 'BUE', slug: 'miami', months: ['2026-09'], trigger: 'cron' })
     // Las estimaciones tienen que terminar antes de que arranque el barrido.
     expect(jobs.every((j) => (j.priority ?? 0) >= 5)).toBe(true)
     expect((jobs[0].payload!.pairs as DatePair[]).length).toBeGreaterThan(0)
+    // Sin ventana (a mano) todos salen ya.
+    expect(jobs.every((j) => j.runAfter === undefined)).toBe(true)
   })
 
-  it('un mes suelto al final va en su propio job', () => {
-    const jobs = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 4, trigger: 'cron' })
-    expect(jobs.map((j) => j.payload!.months)).toEqual([['2026-09', '2026-10', '2026-11'], ['2026-12']])
+  it('intercala las rutas por mes y reparte la tanda parejo en la ventana', () => {
+    const routes = [ruta(), ruta({ id: 8, destination_code: 'CUN' })]
+    const destinations = [destino(), destino({ code: 'CUN', slug: 'cancun', tc_code: 'CUN', iata_display: 'CUN' })]
+    const inicio = new Date('2026-09-17T21:00:00Z')
+    const jobs = buildEstimateJobs({ routes, destinations, today: HOY, day: DIA, monthsOverride: 3, trigger: 'cron', startAt: inicio, spreadMs: ESTIMATE_SPREAD_MS })
+
+    expect(jobs.map((j) => `${j.payload!.slug}:${(j.payload!.months as string[])[0]}`)).toEqual([
+      'miami:2026-09', 'cancun:2026-09', 'miami:2026-10', 'cancun:2026-10', 'miami:2026-11', 'cancun:2026-11',
+    ])
+    // 6 jobs en 3 h: uno cada 30 min, el primero ya y el último a las 2 h 30.
+    expect(jobs.map((j) => j.runAfter!.toISOString())).toEqual([
+      '2026-09-17T21:00:00.000Z', '2026-09-17T21:30:00.000Z', '2026-09-17T22:00:00.000Z',
+      '2026-09-17T22:30:00.000Z', '2026-09-17T23:00:00.000Z', '2026-09-17T23:30:00.000Z',
+    ])
+  })
+
+  it('60 jobs en 3 h salen uno cada 3 minutos y el último antes de que cierre la ventana', () => {
+    const inicio = new Date('2026-09-17T21:00:00Z')
+    const jobs = spreadJobs(Array.from({ length: 60 }, () => ({ kind: 'flights.estimate', payload: {} })), inicio, ESTIMATE_SPREAD_MS)
+    expect(jobs[1].runAfter!.getTime() - jobs[0].runAfter!.getTime()).toBe(3 * 60_000)
+    expect(jobs[59].runAfter!.toISOString()).toBe('2026-09-17T23:57:00.000Z')
+    expect(spreadJobs([], inicio, ESTIMATE_SPREAD_MS)).toEqual([])
   })
 
   it('saltea rutas con scan_per_month 0, inactivas o sin destino publicado', () => {
@@ -177,12 +198,32 @@ describe('buildEstimateJobs', () => {
       trigger: 'manual',
       includeInactive: true,
     })
-    expect(manuales.map((j) => j.payload!.routeId)).toEqual([9])
+    expect(manuales.map((j) => j.payload!.routeId)).toEqual([9, 9])
+    expect(manuales.map((j) => j.payload!.months)).toEqual([['2026-09'], ['2026-10']])
     expect(manuales[0].createdBy).toBe('ui')
   })
 })
 
 describe('runEstimate', () => {
+  it('espera entre búsquedas, pero no antes de la primera ni después de la última', async () => {
+    const sleep = vi.fn(async () => {})
+    const orden: string[] = []
+    const { deps: d } = deps(async () => {
+      orden.push('shop')
+      return ok(500)
+    })
+    sleep.mockImplementation(async () => {
+      orden.push('sleep')
+    })
+
+    const summary = await runEstimate({ ...d, callGapMs: 8_000, sleep }, entrada)
+
+    expect(summary.ok).toBe(3)
+    expect(sleep).toHaveBeenCalledTimes(2)
+    expect(sleep).toHaveBeenCalledWith(8_000)
+    expect(orden).toEqual(['shop', 'sleep', 'shop', 'sleep', 'shop'])
+  })
+
   it('guarda una fila por par con precio y cuenta vacíos y errores', async () => {
     const respuestas: BfmResult[] = [
       ok(812.34),

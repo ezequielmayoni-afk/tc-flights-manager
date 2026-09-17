@@ -1,5 +1,6 @@
 import { SABRE_PROVIDER, createSabreShopper, isSabreConfigured } from '@/lib/sabre/client'
 import { invalidatePublicCache } from '@/lib/vuelos-baratos/cache'
+import { ESTIMATE_CALL_GAP_MS } from '@/lib/vuelos-baratos/config'
 import { runEstimate } from '@/lib/vuelos-baratos/estimate'
 import { findDestination, parsePairs } from '@/lib/vuelos-baratos/job-payload'
 import { getRoute, upsertEstimates } from '@/lib/vuelos-baratos/queries'
@@ -53,6 +54,8 @@ export const flightsEstimateHandler: HandlerDefinition = {
           save: rows => upsertEstimates(db, rows),
           heartbeat,
           log,
+          // Entre búsquedas se espera: la tanda nocturna no es una ráfaga.
+          callGapMs: ESTIMATE_CALL_GAP_MS,
         },
         { route, destination, pairs, jobId: job.id }
       )
