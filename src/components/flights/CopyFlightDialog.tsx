@@ -333,7 +333,8 @@ export function CopyFlightDialog({ flight, open, onOpenChange, onSuccess }: Copy
             outbound_operational_days: [getDayName(entry.startDate.getDay())],
             return_operational_days: [getDayName(entry.endDate.getDay())],
             option_codes: originalFlight.option_codes,
-            only_holiday_package: originalFlight.only_holiday_package,
+            // La copia es un cupo nuevo: nace con "Solo paquete de vacaciones" destildado, aunque el original lo tuviera.
+            only_holiday_package: false,
             show_in_transport_quotas_landing: originalFlight.show_in_transport_quotas_landing,
             min_child_age: originalFlight.min_child_age,
             max_child_age: originalFlight.max_child_age,

@@ -127,7 +127,8 @@ export function FlightForm({ initialData, airlines, airports, suppliers: initial
       outbound_operational_days: [],
       return_operational_days: [],
       option_codes: [],
-      only_holiday_package: true,
+      // Un cupo nuevo nace vendible como aéreo suelto: "Solo paquete de vacaciones" siempre destildado (pedido de Ezequiel, 2026-09-20).
+      only_holiday_package: false,
       show_in_transport_quotas_landing: true,
       min_child_age: 2,
       max_child_age: 11,

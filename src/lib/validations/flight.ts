@@ -78,7 +78,8 @@ export const flightFormSchema = z.object({
   outbound_operational_days: z.array(z.string()).default([]),
   return_operational_days: z.array(z.string()).default([]),
   option_codes: z.array(z.string()).default([]),
-  only_holiday_package: z.boolean().default(true),
+  // Siempre destildado por defecto: el cupo se vende también como aéreo suelto.
+  only_holiday_package: z.boolean().default(false),
   show_in_transport_quotas_landing: z.boolean().default(true),
 
   // Edades
