@@ -3,8 +3,9 @@
 Documento de seguimiento. Se actualiza al cerrar cada fase. El plan completo, con el detalle
 técnico de cada una, está en `~/.claude/plans/perfecto-ahora-una-vez-abstract-meteor.md`.
 
-**Última actualización: 2026-09-10.** Fases 0 y 1 hechas; Fase 2 desplegada en modo sombra; Fase 3 desplegada,
-en validación.
+**Última actualización: 2026-09-20.** Fases 0 y 1 hechas; Fase 2 en sombra (guard en standby por decisión de Ezequiel);
+Fase 3 desplegada, en validación; de la Fase 10 ya están el monitoreo de precio por el cotizador, la fecha alternativa en
+la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (ensayado, sin primera aplicación real).
 
 ## De un vistazo
 
@@ -12,7 +13,7 @@ en validación.
 |---|---|---|---|
 | 0 | Kernel de jobs, kill switches, crontab sin secretos | ✅ Hecha 2026-09-09 | — |
 | 1 | Tendencias: qué destinos busca el mercado | ✅ Hecha 2026-09-09 | 0 |
-| 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🟡 En sombra desde 2026-09-10 | 0 |
+| 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🟡 En sombra desde 2026-09-10 (standby; "Pasó a sistema" y matcher listos) | 0 |
 | 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | 🟡 Desplegada 2026-09-10, validando | 1 |
 | 4 | Criterio marketing vs web y temáticas | ⏳ | 2, 3 |
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | ⏳ | 4 |
@@ -20,7 +21,7 @@ en validación.
 | 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | ⏳ | 2, 3 |
 | 8 | Tablero paquete × CRM: mensajes, ganadas, perdidas, CPA | ⏳ | 2 |
 | 9 | Autopilot de anuncios: reglas, fatiga → diseño, re-subida | ⏳ | 5, 8 |
-| 10 | Recotización con fecha alternativa | ⏳ | 6 |
+| 10 | Recotización con fecha alternativa | 🟡 Parcial: monitoreo por cotizador (2026-09-10), fecha alternativa + bot para cupos agotados (2026-09-11) | 6 |
 | 11 | Instagram: promocionar posts existentes (opcional) | ⏳ | 5 |
 | 12 | Catálogo de paquetes para retargeting en Meta | ⏳ | 5 |
 | 13 | Competencia: Ad Library de Meta y anuncios de Google | ⏳ | 1 |
