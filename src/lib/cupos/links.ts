@@ -124,3 +124,22 @@ export async function setLinkDecision(db: Db, linkId: number, decision: 'confirm
   const { error } = await db.from('flight_package_links').update(patch).eq('id', linkId)
   if (error) throw new Error(`No se pudo actualizar el vínculo ${linkId}: ${error.message}`)
 }
+
+/**
+ * Vínculo hecho a mano desde el dashboard (grupales y charters sin número de
+ * vuelo, que el matcher no puede armar). Se aplica al vuelo y a su vuelta.
+ */
+export async function createManualLink(db: Db, flightId: number, packageId: number, actor: string | null): Promise<{ flightIds: number[] }> {
+  const { data: flight } = await db.from('flights').select('id, paired_flight_id').eq('id', flightId).maybeSingle()
+  if (!flight) throw new Error(`El vuelo ${flightId} no existe`)
+  const flightIds = [flightId, ...(flight.paired_flight_id ? [Number(flight.paired_flight_id)] : [])]
+  const now = new Date().toISOString()
+  for (const fid of flightIds) {
+    const { error } = await db.from('flight_package_links').upsert({
+      flight_id: fid, package_id: packageId, confidence: 'alta', source: 'manual', confirmed: true, rejected: false,
+      confirmed_by: actor, confirmed_at: now, match_criteria: { manual: true, by: actor }, last_seen_at: now, updated_at: now,
+    }, { onConflict: 'flight_id,package_id' })
+    if (error) throw new Error(error.message)
+  }
+  return { flightIds }
+}

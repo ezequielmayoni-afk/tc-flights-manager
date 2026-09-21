@@ -73,6 +73,8 @@ export interface LinkedPackageInfo {
 
 export interface CupoSummaryPackage {
   id: number
+  /** id de flight_package_links, para rechazar el vínculo desde la pantalla. */
+  linkId: number | null
   tcPackageId: number
   title: string
   /** Estado tal como lo muestra /packages: not_visible | expired | in_marketing | in_design | imported… */
@@ -115,6 +117,8 @@ export interface CupoSummaryInput {
   flights: FlightForMatch[]
   /** package_id → nombres de destino, y flight_id → package_ids vinculados (no rechazados). */
   linkedPackagesByFlight: Map<number, number[]>
+  /** "flightId:packageId" → id del vínculo. */
+  linkIds?: Map<string, number>
   destinationsByPackage: Map<number, string[]>
   packagesById?: Map<number, LinkedPackageInfo>
   profiles?: ProfileForRegion[]
@@ -130,7 +134,7 @@ export function seatStatus(remaining: number, total: number): CupoSummaryRow['st
   return 'ok'
 }
 
-export function buildCupoSummary({ flights, linkedPackagesByFlight, destinationsByPackage, packagesById = new Map(), profiles = [], today }: CupoSummaryInput): CupoSummaryRow[] {
+export function buildCupoSummary({ flights, linkedPackagesByFlight, linkIds = new Map(), destinationsByPackage, packagesById = new Map(), profiles = [], today }: CupoSummaryInput): CupoSummaryRow[] {
   const byId = new Map(flights.map(f => [f.id, f]))
   const rows: CupoSummaryRow[] = []
   for (const f of flights) {
@@ -144,7 +148,7 @@ export function buildCupoSummary({ flights, linkedPackagesByFlight, destinations
     const linkedIds = linkedPackagesByFlight.get(f.id) ?? []
     const packageDestinations = [...new Set(linkedIds.flatMap(pid => destinationsByPackage.get(pid) ?? []))]
     const packages: CupoSummaryPackage[] = linkedIds.map(pid => packagesById.get(pid)).filter((p): p is LinkedPackageInfo => Boolean(p))
-      .map(p => ({ id: p.id, tcPackageId: p.tc_package_id, title: p.title, displayStatus: packageDisplayStatus(p, today) }))
+      .map(p => ({ id: p.id, linkId: linkIds.get(`${f.id}:${p.id}`) ?? null, tcPackageId: p.tc_package_id, title: p.title, displayStatus: packageDisplayStatus(p, today) }))
       .sort((a, b) => a.tcPackageId - b.tcPackageId)
     rows.push({
       flightId: f.id, name: f.name, tcTransportId: f.tc_transport_id, airlineCode: f.airline_code, origin: route.origin, destinationCode: route.destination,

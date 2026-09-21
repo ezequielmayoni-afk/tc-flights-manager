@@ -43,10 +43,11 @@ describe('buildCupoSummary', () => {
         flight({ id: 99, active: false }),
       ],
       linkedPackagesByFlight: new Map([[87, [5]]]), destinationsByPackage: new Map([[5, ['Búzios', 'Rio de Janeiro']]]), today: '2026-09-21',
+      linkIds: new Map([['87:5', 900]]),
       packagesById: new Map([[5, { id: 5, tc_package_id: 52677840, title: 'Río + Búzios', status: 'in_design', send_to_marketing: false, send_to_design: true, date_range_end: '2027-02-13', tc_active: true }]]),
     })
     expect(rows).toHaveLength(1)
-    expect(rows[0].packages).toEqual([{ id: 5, tcPackageId: 52677840, title: 'Río + Búzios', displayStatus: 'in_design' }])
+    expect(rows[0].packages).toEqual([{ id: 5, linkId: 900, tcPackageId: 52677840, title: 'Río + Búzios', displayStatus: 'in_design' }])
     expect(rows[0]).toMatchObject({ flightId: 87, destination: 'Rio de Janeiro + Búzios', region: 'brasil', returnDate: '2027-02-20', remaining: 8, total: 10, status: 'ok', daysToDeparture: 145 })
   })
   it('sin paquete vinculado usa el nombre del aeropuerto y ordena por fecha', () => {

@@ -22,14 +22,16 @@ export async function GET() {
     const flights = await loadFlightsForMatch(db, { activeOnly: true })
     const ids = flights.map(f => f.id)
     const [{ data: links }, { data: profiles }] = await Promise.all([
-      ids.length ? db.from('flight_package_links').select('flight_id, package_id, rejected').in('flight_id', ids) : Promise.resolve({ data: [] as Array<{ flight_id: number; package_id: number; rejected: boolean | null }> }),
+      ids.length ? db.from('flight_package_links').select('id, flight_id, package_id, rejected').in('flight_id', ids) : Promise.resolve({ data: [] as Array<{ id: number; flight_id: number; package_id: number; rejected: boolean | null }> }),
       db.from('destination_profiles').select('name, family, iata_airport'),
     ])
     const linkedPackagesByFlight = new Map<number, number[]>()
-    for (const l of (links ?? []) as Array<{ flight_id: number; package_id: number; rejected: boolean | null }>) {
+    const linkIds = new Map<string, number>()
+    for (const l of (links ?? []) as Array<{ id: number; flight_id: number; package_id: number; rejected: boolean | null }>) {
       if (l.rejected) continue
       if (!linkedPackagesByFlight.has(l.flight_id)) linkedPackagesByFlight.set(l.flight_id, [])
       linkedPackagesByFlight.get(l.flight_id)!.push(l.package_id)
+      linkIds.set(`${l.flight_id}:${l.package_id}`, Number(l.id))
     }
     const packageIds = [...new Set([...linkedPackagesByFlight.values()].flat())]
     const destinationsByPackage = new Map<number, string[]>()
@@ -46,7 +48,7 @@ export async function GET() {
       }
       for (const p of (pkgs ?? []) as LinkedPackageInfo[]) packagesById.set(p.id, p)
     }
-    const rows = buildCupoSummary({ flights, linkedPackagesByFlight, destinationsByPackage, packagesById, profiles: (profiles ?? []) as Array<{ name: string; family: string | null; iata_airport: string | null }>, today })
+    const rows = buildCupoSummary({ flights, linkedPackagesByFlight, linkIds, destinationsByPackage, packagesById, profiles: (profiles ?? []) as Array<{ name: string; family: string | null; iata_airport: string | null }>, today })
     return NextResponse.json({ rows, today } satisfies CuposSummaryResponse)
   } catch (error) {
     return errorResponse(error)

@@ -5,7 +5,8 @@ import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { ExternalLink, Loader2, Plane } from 'lucide-react'
+import { ExternalLink, Link2, Loader2, Plane, X } from 'lucide-react'
+import { toast } from 'sonner'
 import { publicPackageUrl } from '@/lib/packages/public-url'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -39,14 +40,42 @@ export function CuposSummary() {
   const [error, setError] = useState<string | null>(null)
   const [region, setRegion] = useState<CupoRegion | 'all'>('all')
   const [hideSoldOut, setHideSoldOut] = useState(false)
+  const [linking, setLinking] = useState<number | null>(null)
+  const [linkDraft, setLinkDraft] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => {
-    fetch('/api/dashboard/cupos').then(async res => {
+  const load = () => fetch('/api/dashboard/cupos').then(async res => {
+    const data = await res.json()
+    if (!res.ok) { setError(data.error || 'No se pudieron cargar los cupos'); return }
+    setRows(data.rows ?? [])
+  }).catch(() => setError('Error de conexión')).finally(() => setLoading(false))
+
+  useEffect(() => { load() }, [])
+
+  const link = async (flightId: number) => {
+    const tcPackageId = Number(linkDraft.trim())
+    if (!Number.isInteger(tcPackageId) || tcPackageId <= 0) { toast.error('Pegá el ID numérico del paquete (SIV)'); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/dashboard/cupos/link', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flightId, tcPackageId }) })
       const data = await res.json()
-      if (!res.ok) { setError(data.error || 'No se pudieron cargar los cupos'); return }
-      setRows(data.rows ?? [])
-    }).catch(() => setError('Error de conexión')).finally(() => setLoading(false))
-  }, [])
+      if (!res.ok) { toast.error(data.error || 'No se pudo vincular'); return }
+      toast.success(`Vinculado con ${tcPackageId}: ${data.title}`)
+      setLinking(null); setLinkDraft('')
+      await load()
+    } catch { toast.error('Error de conexión') } finally { setBusy(false) }
+  }
+
+  const unlink = async (packageId: number, linkId: number, tcPackageId: number) => {
+    if (!window.confirm(`¿Sacar el vínculo con el paquete ${tcPackageId}?`)) return
+    setBusy(true)
+    try {
+      const res = await fetch(`/api/packages/${packageId}/links`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ linkId, decision: 'reject' }) })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error || 'No se pudo desvincular'); return }
+      await load()
+    } catch { toast.error('Error de conexión') } finally { setBusy(false) }
+  }
 
   const regions = useMemo(() => REGION_ORDER.filter(r => rows.some(x => x.region === r)), [rows])
   const visible = useMemo(() => rows.filter(r => (region === 'all' || r.region === region) && (!hideSoldOut || r.remaining > 0)), [rows, region, hideSoldOut])
@@ -108,22 +137,30 @@ export function CuposSummary() {
                     <TableCell className="whitespace-nowrap text-muted-foreground">{r.returnDate ? fmt(r.returnDate) : '–'}</TableCell>
                     <TableCell className="text-muted-foreground">{r.airlineCode ?? '–'}</TableCell>
                     <TableCell>
-                      {r.packages.length === 0 ? (
-                        <span className="text-xs text-muted-foreground" title="Ningún paquete de siviajo.com está vinculado a este cupo">Sin paquete</span>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          {r.packages.map(p => {
-                            const ps = PKG_STATUS[p.displayStatus] ?? { label: p.displayStatus, cls: 'bg-gray-100 text-gray-700' }
-                            return (
-                              <div key={p.id} className="flex items-center gap-1.5 whitespace-nowrap" title={p.title}>
-                                <Link href={`/packages?q=${p.tcPackageId}`} className="font-mono text-xs hover:underline">{p.tcPackageId}</Link>
-                                <a href={publicPackageUrl(p.tcPackageId, p.title)} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" title="Ver en siviajo.com"><ExternalLink className="h-3 w-3" /></a>
-                                <Badge className={`${ps.cls} text-[10px]`}>{ps.label}</Badge>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-1">
+                        {r.packages.map(p => {
+                          const ps = PKG_STATUS[p.displayStatus] ?? { label: p.displayStatus, cls: 'bg-gray-100 text-gray-700' }
+                          return (
+                            <div key={p.id} className="flex items-center gap-1.5 whitespace-nowrap" title={p.title}>
+                              <Link href={`/packages?q=${p.tcPackageId}`} className="font-mono text-xs hover:underline">{p.tcPackageId}</Link>
+                              <a href={publicPackageUrl(p.tcPackageId, p.title)} target="_blank" rel="noreferrer" className="text-muted-foreground hover:text-foreground" title="Ver en siviajo.com"><ExternalLink className="h-3 w-3" /></a>
+                              <Badge className={`${ps.cls} text-[10px]`}>{ps.label}</Badge>
+                              {p.linkId && <button type="button" onClick={() => unlink(p.id, p.linkId!, p.tcPackageId)} disabled={busy} className="text-muted-foreground hover:text-red-600" title="Sacar el vínculo"><X className="h-3 w-3" /></button>}
+                            </div>
+                          )
+                        })}
+                        {linking === r.flightId ? (
+                          <form className="flex items-center gap-1" onSubmit={e => { e.preventDefault(); link(r.flightId) }}>
+                            <input autoFocus value={linkDraft} onChange={e => setLinkDraft(e.target.value)} placeholder="ID SIV" inputMode="numeric" className="h-6 w-24 rounded border px-1.5 text-xs" />
+                            <button type="submit" disabled={busy} className="text-xs text-blue-600 hover:underline">{busy ? '…' : 'Vincular'}</button>
+                            <button type="button" onClick={() => { setLinking(null); setLinkDraft('') }} className="text-xs text-muted-foreground hover:underline">Cancelar</button>
+                          </form>
+                        ) : (
+                          <button type="button" onClick={() => { setLinking(r.flightId); setLinkDraft('') }} className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground" title={r.packages.length === 0 ? 'Ningún paquete de siviajo.com está vinculado a este cupo: pegá el ID para vincularlo' : 'Vincular otro paquete'}>
+                            <Link2 className="h-3 w-3" />{r.packages.length === 0 ? 'Sin paquete · vincular' : 'Vincular otro'}
+                          </button>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className={`text-right text-lg font-bold tabular-nums ${st.cell}`}>
                       {r.remaining}
