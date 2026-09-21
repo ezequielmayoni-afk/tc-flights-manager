@@ -50,6 +50,8 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
       const digestAt = new Date(`${day}T10:00:00Z`) // 07:00 ART
       return [
         { kind: 'cupo.link_refresh', payload: { at: day }, dedupeKey: `cupo.link_refresh:${day}` },
+        // Fase 4: vía marketing | manual | web por paquete, después del import de las 06:00.
+        { kind: 'marketing.evaluate', payload: { at: day, trigger: 'daily' }, dedupeKey: `marketing.evaluate:${day}` },
         { kind: 'health.check', payload: { at: day }, dedupeKey: `health.check:${day}` },
         { kind: 'health.digest', payload: { at: day }, dedupeKey: `health.digest:${day}`, runAfter: digestAt },
         // Search Console de vuelos.siviajo.com: sitemap, indexación y métricas.

@@ -3,8 +3,8 @@
 Documento de seguimiento. Se actualiza al cerrar cada fase. El plan completo, con el detalle
 técnico de cada una, está en `~/.claude/plans/perfecto-ahora-una-vez-abstract-meteor.md`.
 
-**Última actualización: 2026-09-20.** Fases 0 y 1 hechas; Fase 2 en sombra (guard en standby por decisión de Ezequiel);
-Fase 3 desplegada, en validación; de la Fase 10 ya están el monitoreo de precio por el cotizador, la fecha alternativa en
+**Última actualización: 2026-09-21.** Fases 0 y 1 hechas; Fase 2 en sombra (guard en standby por decisión de Ezequiel);
+Fase 3 desplegada, en validación; Fase 4 desplegada (criterio marketing vs web en semi: el score recomienda, una persona envía a diseño); de la Fase 10 ya están el monitoreo de precio por el cotizador, la fecha alternativa en
 la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (ensayado, sin primera aplicación real).
 
 ## De un vistazo
@@ -15,7 +15,7 @@ la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (en
 | 1 | Tendencias: qué destinos busca el mercado | ✅ Hecha 2026-09-09 | 0 |
 | 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🟡 En sombra desde 2026-09-10 (standby; "Pasó a sistema" y matcher listos) | 0 |
 | 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | 🟡 Desplegada 2026-09-10, validando | 1 |
-| 4 | Criterio marketing vs web y temáticas | ⏳ | 2, 3 |
+| 4 | Criterio marketing vs web y temáticas | 🟡 Desplegada 2026-09-21 (semi: recomienda, no envía sola) | 2, 3 |
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | ⏳ | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
 | 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | ⏳ | 2, 3 |
@@ -161,12 +161,33 @@ de Sabre admite el volumen (una idea ≈ 30 consultas de disponibilidad); decidi
 comparación con Google Flights (Flybondi no está en Sabre); validar el seed de perfiles destino por
 destino; `COTIZADOR_API_KEY` en el VPS.
 
-## Fase 4 — Criterio marketing vs web, temáticas · ⏳
+## Fase 4 — Criterio marketing vs web, temáticas · 🟡 Desplegada (2026-09-21)
 
-Cada paquete importado llega con recomendación fundamentada (marketing / web / manual / excluido) y un
-score con pesos editables; las temáticas se editan en HUB y viajan a TC.
-**Necesita**: calibrar pesos con el dry-run sobre los 122 paquetes; por familia de destino: campaña,
-conjunto plantilla, presupuesto y objetivos.
+Cada paquete activo tiene `marketing_track` (marketing | manual | web | excluded), `marketing_score` y un motivo
+legible. Lo calcula el job `marketing.evaluate` (a diario a las 06:15 UTC después del import, y en el momento cuando
+el import trae paquetes nuevos). En `/tareas` la sección "¿Marketing o sólo web?" lista los recomendados y la zona
+gris; "Enviar a diseño" es la misma acción de siempre (creative request + Slack `#design`) y deja registrada la
+decisión, que el evaluador no pisa. Las temáticas se editan ahí mismo (`themes_local`) y "Enviar a TC" encola
+`tc.write` op `themes` (verificado con GET). Pesos y umbrales en `/packages/marketing/reglas` (tabla
+`marketing_rules`, sin deploy).
+
+**Score** (defaults calibrados el 2026-09-21): cupo con lugares en ventana +25 (riesgo +15) · salida grupal/charter
+de operador +20 · margen (fee/total) ≥ 10 % +15, ≥ 12 % +5 más, < 6 % −20; sin desglose (cupos de contrato) no
+cuenta · oportunidad en Tendencias +15, búsquedas en alza +5, en baja −10 · temporada alta en ventana de compra +10 ·
+ventana de compra caliente +10 · ticket < USD 700 −15 · familia: Caribe +15, Brasil +5, Argentina −10 ·
+canibalización (≥ 3 del destino en marketing) −15 · salida (o fin del rango) a < 21 días −25 · viola el perfil −30 ·
+−100 si baja en TC, vencido, cotización manual o sin precio. ≥ 55 marketing; 20–54 para decidir; < 20 web.
+
+**Dry-run a ciegas sobre los 102 activos** (`scripts/marketing-score-dry-run.ts --blind`): 27 de los 28 que
+Ezequiel puso en marketing quedan en marketing o para decidir (el que no: Búzios temporada baja con 2 lugares y
+ticket USD 565); los 6 que el score manda a marketing y él no había mandado son 4 cupos de verano 2027 sin vender y
+2 salidas grupales, o sea candidatos reales. Acuerdo sobre los decididos: 79 %. Primera evaluación aplicada: 34
+marketing (28 ya estaban + 6 candidatos), 40 para decidir, 25 web, 3 excluidos.
+
+**Falta**: que Ezequiel recorra la lista en `/tareas` y corrija pesos si hace falta; cuatro semanas de acuerdo
+≥ 80 % antes de pensar en `auto_approve`; familias de Meta (campaña, conjunto plantilla, presupuesto) son de la
+Fase 5. Las temáticas escriben en TC con `PUT` verificado: la primera escritura real se hace con Ezequiel mirando
+siviajo.com (mismo checkpoint que la Fase 2).
 
 ## Fase 5 — Lanzamiento en Meta desde HUB · ⏳
 

@@ -4,7 +4,7 @@ import { CreativesReadyPanel } from '@/components/marketing/CreativesReadyPanel'
 import { CreativesRequestedPanel } from '@/components/marketing/CreativesRequestedPanel'
 import { PromptIAButton } from '@/components/marketing/PromptIAButton'
 import Link from 'next/link'
-import { BarChart3, Settings, AlertTriangle, Radio, MessageSquare } from 'lucide-react'
+import { BarChart3, Settings, AlertTriangle, Radio, MessageSquare, SlidersHorizontal } from 'lucide-react'
 
 function getSupabaseClient() {
   return createClient(
@@ -176,6 +176,14 @@ export default async function MarketingPage() {
         </div>
         <div className="flex items-center gap-2">
           <PromptIAButton />
+          <Link
+            href="/packages/marketing/reglas"
+            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
+            title="Criterio marketing vs web: pesos y umbrales del score"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Criterio
+          </Link>
           <Link
             href="/packages/marketing/settings"
             className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"

@@ -203,6 +203,24 @@ activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de 
   `COTIZADOR_NACIONAL_API_KEY`; `VUELOS_URL` cuando vuelos-siviajo esté en el VPS.
 - Depurar: `SELECT id, status, destination_name, month, quoted_price_pp, chosen_departure_date, error FROM package_ideas ORDER BY id DESC LIMIT 20;`
 
+## Criterio marketing vs web (Fase 4 del loop, desde 2026-09-21)
+
+- Job `marketing.evaluate` (lane `default`): lee paquetes activos, cupos (`getCupoPackageIds` + vuelos matcheados),
+  perfiles, la última corrida de Tendencias y cuántos del mismo destino están en marketing; escribe
+  `packages.marketing_track/score/track_reason/score_details/evaluated_at`. Corre en `enqueue?schedule=daily`
+  (06:15 UTC) y lo encola `refresh-packages` cuando importa paquetes nuevos. A mano: botón "Evaluar ahora" en
+  `/tareas` o en `/packages/marketing/reglas` (`POST /api/marketing/evaluate`, prioridad manual).
+- Una vía decidida por una persona (`marketing_track_decided_by` no nulo) no se pisa: el job actualiza score y
+  motivo pero respeta la vía, salvo que el paquete pase a `excluded`.
+- Reglas en `marketing_rules` (fila única). `PATCH /api/marketing/rules` desde la pantalla; `updated_by` queda con el
+  mail. Las migraciones sólo tocan la fila mientras `updated_by` sea NULL.
+- Temáticas: `PUT /api/packages/[id]/themes {themes, push}` guarda `themes_local`; con `push` encola `tc.write` op
+  `themes` (respeta `automation.tc_writes`; verifica con GET y actualiza `themes` + `themes_pushed_at`). El refresh
+  diario sigue releyendo `themes` de TC; `themes_local` no se toca.
+- Depurar: `SELECT tc_package_id, marketing_track, marketing_score, marketing_track_reason FROM packages WHERE tc_active ORDER BY marketing_score DESC NULLS LAST;`
+  y `SELECT * FROM hub_jobs WHERE kind='marketing.evaluate' ORDER BY id DESC LIMIT 5;`. Dry-run local sin escribir:
+  `npx tsx --tsconfig tsconfig.json scripts/marketing-score-dry-run.ts [--blind] [--apply]`.
+
 ## vuelos.siviajo.com
 
 Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`

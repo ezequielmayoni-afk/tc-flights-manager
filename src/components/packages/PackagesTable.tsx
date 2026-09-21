@@ -108,6 +108,8 @@ type PackageWithDestinations = {
   status: string
   send_to_design: boolean
   send_to_marketing: boolean
+  marketing_track?: string | null
+  marketing_score?: number | null
   themes: string[]
   tc_idea_url: string | null
   tc_creation_date: string | null
@@ -1365,6 +1367,13 @@ export function PackagesTable({ packages, cupoInfo = {}, initialSearch = '' }: P
                       <Badge className={statusColors[displayStatus] || statusColors.imported}>
                         {statusLabels[displayStatus] || displayStatus}
                       </Badge>
+                      {!pkg.send_to_marketing && !pkg.send_to_design && (pkg.marketing_track === 'marketing' || pkg.marketing_track === 'manual') && (
+                        <div className="mt-1" title={pkg.marketing_track === 'marketing' ? 'El criterio lo recomienda para marketing' : 'Zona gris del criterio: para decidir en Tareas'}>
+                          <Badge className={`${pkg.marketing_track === 'marketing' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'} text-[10px]`}>
+                            {pkg.marketing_track === 'marketing' ? 'Pautar' : 'Decidir'} {pkg.marketing_score ?? ''}
+                          </Badge>
+                        </div>
+                      )}
                     </TableCell>
 
                     <TableCell className="text-center" style={{ width: columnWidths.monitoreo, minWidth: columnWidths.monitoreo, maxWidth: columnWidths.monitoreo }}>

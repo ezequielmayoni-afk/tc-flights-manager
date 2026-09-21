@@ -3,6 +3,7 @@ import { getPriceChangeThresholdPctCached } from '@/lib/packages/thresholds'
 import { getPackageInfo, getPackageDetail } from '@/lib/travelcompositor/client'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { extractCosts, importNewPackages } from '@/lib/packages/import'
+import { enqueueJob } from '@/lib/jobs/queue'
 import { logEvent } from '@/lib/logs'
 import { authorizeCron } from '@/lib/cron/auth'
 
@@ -160,6 +161,10 @@ export async function GET(request: NextRequest) {
   try {
     newPackages = await importNewPackages(db, { limit: IMPORT_LIMIT, shouldStop: outOfTime })
     console.log(`[Cron] Nuevos en TC: ${newPackages.detected}, importados: ${newPackages.imported}`)
+    if (newPackages.imported > 0) {
+      // Fase 4: los recién importados reciben su vía (marketing | manual | web) sin esperar al job diario.
+      await enqueueJob(db, { kind: 'marketing.evaluate', payload: { trigger: 'new_packages', imported: newPackages.imported }, dedupeKey: `marketing.evaluate:new:${new Date().toISOString().slice(0, 13)}` }).catch(err => console.error('[Cron] no se pudo encolar marketing.evaluate:', err))
+    }
 
     await logEvent(db, {
       source: 'cron',

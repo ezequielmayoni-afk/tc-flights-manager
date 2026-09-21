@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server'
 import { Header } from '@/components/layout/Header'
-import { AlertTriangle, Plane } from 'lucide-react'
+import { AlertTriangle, Megaphone, Plane } from 'lucide-react'
 import { RequoteTable } from '@/components/packages/RequoteTable'
 import { CuposAgotadosSection } from '@/components/tareas/CuposAgotadosSection'
 import { AdDecisionsSection } from '@/components/tareas/AdDecisionsSection'
+import { MarketingCandidatesSection } from '@/components/tareas/MarketingCandidatesSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -74,7 +75,15 @@ export default async function TareasPage() {
       <Header title="Tareas pendientes" />
 
       <div className="flex-1 p-6 space-y-8">
-        {/* Cotización manual */}
+        {/* Criterio marketing vs web (Fase 4) */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Megaphone className="h-5 w-5 text-green-600" />
+            <h2 className="text-lg font-semibold">¿Marketing o sólo web?</h2>
+          </div>
+          <MarketingCandidatesSection />
+        </section>
+
         <section>
           <AdDecisionsSection />
         </section>

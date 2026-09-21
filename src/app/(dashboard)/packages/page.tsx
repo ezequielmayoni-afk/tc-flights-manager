@@ -10,6 +10,8 @@ import type { CupoInfoMap } from '@/types/cupo-info'
 
 type PackageWithDestinations = {
   id: number
+  marketing_track?: string | null
+  marketing_score?: number | null
   tc_package_id: number
   title: string
   large_title: string | null
@@ -126,6 +128,8 @@ async function getPackages(): Promise<PackageWithDestinations[]> {
       requote_variance_pct,
       description_body,
       description_body_fetched_at,
+      marketing_track,
+      marketing_score,
       package_destinations(destination_code, destination_name),
       package_hotels(hotel_name, board_type),
       package_transports(baggage_info, checked_baggage, cabin_baggage)
