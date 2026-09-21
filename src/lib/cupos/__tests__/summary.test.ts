@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildCupoSummary, describeAirport, destinationLabel, seatStatus } from '../summary'
+import { buildCupoSummary, describeAirport, destinationLabel, packageDisplayStatus, seatStatus } from '../summary'
 import type { FlightForMatch } from '@/lib/packages/flight-match'
 
 const flight = (over: Partial<FlightForMatch> & { id: number }): FlightForMatch => ({
@@ -43,13 +43,25 @@ describe('buildCupoSummary', () => {
         flight({ id: 99, active: false }),
       ],
       linkedPackagesByFlight: new Map([[87, [5]]]), destinationsByPackage: new Map([[5, ['Búzios', 'Rio de Janeiro']]]), today: '2026-09-21',
+      packagesById: new Map([[5, { id: 5, tc_package_id: 52677840, title: 'Río + Búzios', status: 'in_design', send_to_marketing: false, send_to_design: true, date_range_end: '2027-02-13', tc_active: true }]]),
     })
     expect(rows).toHaveLength(1)
+    expect(rows[0].packages).toEqual([{ id: 5, tcPackageId: 52677840, title: 'Río + Búzios', displayStatus: 'in_design' }])
     expect(rows[0]).toMatchObject({ flightId: 87, destination: 'Rio de Janeiro + Búzios', region: 'brasil', returnDate: '2027-02-20', remaining: 8, total: 10, status: 'ok', daysToDeparture: 145 })
   })
   it('sin paquete vinculado usa el nombre del aeropuerto y ordena por fecha', () => {
     const rows = buildCupoSummary({ flights: [flight({ id: 2, start_date: '2027-03-01' }), flight({ id: 1, start_date: '2027-01-01', flight_segments: [{ departure_location_code: 'EZE', arrival_location_code: 'PUJ', num_service: null, sort_order: 1 }] })], linkedPackagesByFlight: new Map(), destinationsByPackage: new Map(), today: '2026-09-21' })
     expect(rows.map(r => r.destination)).toEqual(['Punta Cana', 'Rio de Janeiro'])
     expect(rows[0].region).toBe('caribe')
+  })
+
+  it('el estado del paquete sigue la regla de /packages: manual > vencido > marketing > diseño > status', () => {
+    const base = { id: 1, tc_package_id: 1, title: 't', status: 'imported', send_to_marketing: false, send_to_design: false, date_range_end: '2027-01-01', tc_active: true }
+    expect(packageDisplayStatus(base, '2026-09-21')).toBe('imported')
+    expect(packageDisplayStatus({ ...base, send_to_design: true }, '2026-09-21')).toBe('in_design')
+    expect(packageDisplayStatus({ ...base, send_to_marketing: true, send_to_design: true }, '2026-09-21')).toBe('in_marketing')
+    expect(packageDisplayStatus({ ...base, send_to_marketing: true, date_range_end: '2026-01-01' }, '2026-09-21')).toBe('expired')
+    expect(packageDisplayStatus({ ...base, send_to_marketing: true, status: 'not_visible' }, '2026-09-21')).toBe('not_visible')
+    expect(packageDisplayStatus({ ...base, tc_active: false }, '2026-09-21')).toBe('not_visible')
   })
 })

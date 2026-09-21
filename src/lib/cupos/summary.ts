@@ -60,6 +60,35 @@ export function destinationLabel(airport: { name: string; aliases: string[] }, p
   return [airport.name, ...extras].join(' + ')
 }
 
+export interface LinkedPackageInfo {
+  id: number
+  tc_package_id: number
+  title: string
+  status: string | null
+  send_to_marketing: boolean | null
+  send_to_design: boolean | null
+  date_range_end: string | null
+  tc_active: boolean | null
+}
+
+export interface CupoSummaryPackage {
+  id: number
+  tcPackageId: number
+  title: string
+  /** Estado tal como lo muestra /packages: not_visible | expired | in_marketing | in_design | imported… */
+  displayStatus: string
+}
+
+/** Misma regla que la tabla de paquetes: lo decidido a mano gana; después vencido; después los flags. */
+export function packageDisplayStatus(pkg: LinkedPackageInfo, today: string): string {
+  if (pkg.tc_active === false) return 'not_visible'
+  if (pkg.status === 'not_visible' || pkg.status === 'expired') return pkg.status
+  if (pkg.date_range_end && pkg.date_range_end < today) return 'expired'
+  if (pkg.send_to_marketing) return 'in_marketing'
+  if (pkg.send_to_design) return 'in_design'
+  return pkg.status ?? 'imported'
+}
+
 export interface CupoSummaryRow {
   flightId: number
   name: string | null
@@ -70,6 +99,8 @@ export interface CupoSummaryRow {
   destination: string
   /** Destinos de los paquetes vinculados (más precisos que el aeropuerto), si los hay. */
   packageDestinations: string[]
+  /** Paquetes de siviajo.com que usan este cupo, con su estado. */
+  packages: CupoSummaryPackage[]
   region: CupoRegion
   departureDate: string
   returnDate: string | null
@@ -85,6 +116,7 @@ export interface CupoSummaryInput {
   /** package_id → nombres de destino, y flight_id → package_ids vinculados (no rechazados). */
   linkedPackagesByFlight: Map<number, number[]>
   destinationsByPackage: Map<number, string[]>
+  packagesById?: Map<number, LinkedPackageInfo>
   profiles?: ProfileForRegion[]
   today: string
 }
@@ -98,7 +130,7 @@ export function seatStatus(remaining: number, total: number): CupoSummaryRow['st
   return 'ok'
 }
 
-export function buildCupoSummary({ flights, linkedPackagesByFlight, destinationsByPackage, profiles = [], today }: CupoSummaryInput): CupoSummaryRow[] {
+export function buildCupoSummary({ flights, linkedPackagesByFlight, destinationsByPackage, packagesById = new Map(), profiles = [], today }: CupoSummaryInput): CupoSummaryRow[] {
   const byId = new Map(flights.map(f => [f.id, f]))
   const rows: CupoSummaryRow[] = []
   for (const f of flights) {
@@ -109,10 +141,14 @@ export function buildCupoSummary({ flights, linkedPackagesByFlight, destinations
     const cupos = calculateCupos(f.modalities)
     const paired = f.paired_flight_id ? byId.get(f.paired_flight_id) ?? null : null
     const airport = describeAirport(route.destination, profiles)
-    const packageDestinations = [...new Set((linkedPackagesByFlight.get(f.id) ?? []).flatMap(pid => destinationsByPackage.get(pid) ?? []))]
+    const linkedIds = linkedPackagesByFlight.get(f.id) ?? []
+    const packageDestinations = [...new Set(linkedIds.flatMap(pid => destinationsByPackage.get(pid) ?? []))]
+    const packages: CupoSummaryPackage[] = linkedIds.map(pid => packagesById.get(pid)).filter((p): p is LinkedPackageInfo => Boolean(p))
+      .map(p => ({ id: p.id, tcPackageId: p.tc_package_id, title: p.title, displayStatus: packageDisplayStatus(p, today) }))
+      .sort((a, b) => a.tcPackageId - b.tcPackageId)
     rows.push({
       flightId: f.id, name: f.name, tcTransportId: f.tc_transport_id, airlineCode: f.airline_code, origin: route.origin, destinationCode: route.destination,
-      destination: destinationLabel(airport, packageDestinations), packageDestinations, region: airport.region,
+      destination: destinationLabel(airport, packageDestinations), packageDestinations, packages, region: airport.region,
       departureDate: f.start_date, returnDate: paired?.start_date ?? null, daysToDeparture: daysBetween(today, f.start_date),
       total: cupos.total, sold: cupos.sold, remaining: cupos.remaining, status: seatStatus(cupos.remaining, cupos.total),
     })

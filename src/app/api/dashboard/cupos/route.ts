@@ -3,7 +3,7 @@ import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadFlightsForMatch } from '@/lib/packages/flight-match'
-import { buildCupoSummary, type CupoSummaryRow } from '@/lib/cupos/summary'
+import { buildCupoSummary, type CupoSummaryRow, type LinkedPackageInfo } from '@/lib/cupos/summary'
 
 export const dynamic = 'force-dynamic'
 
@@ -33,15 +33,20 @@ export async function GET() {
     }
     const packageIds = [...new Set([...linkedPackagesByFlight.values()].flat())]
     const destinationsByPackage = new Map<number, string[]>()
+    const packagesById = new Map<number, LinkedPackageInfo>()
     if (packageIds.length) {
-      const { data: dests } = await db.from('package_destinations').select('package_id, destination_name, sort_order').in('package_id', packageIds).order('sort_order')
+      const [{ data: dests }, { data: pkgs }] = await Promise.all([
+        db.from('package_destinations').select('package_id, destination_name, sort_order').in('package_id', packageIds).order('sort_order'),
+        db.from('packages').select('id, tc_package_id, title, status, send_to_marketing, send_to_design, date_range_end, tc_active').in('id', packageIds),
+      ])
       for (const d of (dests ?? []) as Array<{ package_id: number; destination_name: string | null; sort_order: number | null }>) {
         if (!d.destination_name) continue
         if (!destinationsByPackage.has(d.package_id)) destinationsByPackage.set(d.package_id, [])
         destinationsByPackage.get(d.package_id)!.push(d.destination_name)
       }
+      for (const p of (pkgs ?? []) as LinkedPackageInfo[]) packagesById.set(p.id, p)
     }
-    const rows = buildCupoSummary({ flights, linkedPackagesByFlight, destinationsByPackage, profiles: (profiles ?? []) as Array<{ name: string; family: string | null; iata_airport: string | null }>, today })
+    const rows = buildCupoSummary({ flights, linkedPackagesByFlight, destinationsByPackage, packagesById, profiles: (profiles ?? []) as Array<{ name: string; family: string | null; iata_airport: string | null }>, today })
     return NextResponse.json({ rows, today } satisfies CuposSummaryResponse)
   } catch (error) {
     return errorResponse(error)
