@@ -137,10 +137,15 @@ export async function POST(request: NextRequest) {
                   c => c.variant === driveCreative.variant && c.aspect_ratio === driveCreative.aspectRatio
                 )
 
-                // Re-upload if: no DB record, empty drive_file_id, or drive_file_id changed
+                // Re-upload if: no DB record, empty drive_file_id, drive_file_id changed,
+                // or the record exists but never got its Meta id (a previous upload failed).
+                const missingMetaId = dbCreative
+                  ? (driveCreative.creativeType === 'VIDEO' ? !dbCreative.meta_video_id : !dbCreative.meta_image_hash)
+                  : false
                 const needsReupload = !dbCreative ||
                   !dbCreative.drive_file_id ||
-                  dbCreative.drive_file_id !== driveCreative.fileId
+                  dbCreative.drive_file_id !== driveCreative.fileId ||
+                  missingMetaId
 
                 if (needsReupload) {
                   sendEvent('creating', {

@@ -152,6 +152,23 @@ export interface DriveCreativeInfo {
   creativeType: CreativeType
 }
 
+/**
+ * Nombre de archivo con el que se sube a Meta. Meta decide el formato por la
+ * extensión del nombre: un video de Drive llamado "4x5" (sin extensión) vuelve
+ * con "The video file you selected is in a format that we don't support"
+ * aunque sea un MP4 H.264 perfecto (caso SIV 60267197, 2026-09-21). Si el
+ * nombre no trae extensión, se le pone la que corresponde al tipo real.
+ */
+export function metaUploadFileName(fileName: string, mimeType: string | null | undefined, creativeType: CreativeType): string {
+  const clean = (fileName || '').trim() || (creativeType === 'VIDEO' ? 'video' : 'image')
+  if (/\.[a-z0-9]{2,5}$/i.test(clean)) return clean
+  const mime = (mimeType || '').toLowerCase()
+  const ext = creativeType === 'VIDEO'
+    ? (mime.includes('quicktime') ? '.mov' : mime.includes('webm') ? '.webm' : '.mp4')
+    : (mime.includes('png') ? '.png' : mime.includes('gif') ? '.gif' : mime.includes('webp') ? '.webp' : '.jpg')
+  return `${clean}${ext}`
+}
+
 export interface UploadResult {
   success: boolean
   variant: number
@@ -329,6 +346,8 @@ export async function uploadCreativeToMeta(
 
     // Validate file before upload
     const validation = validateCreativeFile(fileBuffer, creative.fileName, creative.creativeType)
+    const uploadName = metaUploadFileName(creative.fileName, creative.mimeType, creative.creativeType)
+    if (uploadName !== creative.fileName) console.log(`[Creative Uploader] "${creative.fileName}" se sube a Meta como "${uploadName}" (sin extensión en Drive)`)
     if (!validation.valid) {
       console.error(`[Creative Uploader] Validation failed for ${creative.fileName}: ${validation.error}`)
       return {
@@ -350,7 +369,7 @@ export async function uploadCreativeToMeta(
       // reportamos inicio de subida y luego 100% al terminar.
       onProgress?.(10, 'upload')
       const imageHash = await withRetry(
-        () => metaClient.uploadImage(fileBuffer, creative.fileName),
+        () => metaClient.uploadImage(fileBuffer, uploadName),
         { maxRetries: 3, baseDelayMs: 2000, context: `Upload image ${creative.fileName}` }
       )
       console.log(`[Creative Uploader] Uploaded image, hash: ${imageHash}`)
@@ -367,7 +386,7 @@ export async function uploadCreativeToMeta(
     } else {
       console.log(`[Creative Uploader] Uploading video to Meta...`)
       const videoId = await withRetry(
-        () => metaClient.uploadVideo(fileBuffer, creative.fileName, (p) =>
+        () => metaClient.uploadVideo(fileBuffer, uploadName, (p) =>
           onProgress?.(p, p >= 100 ? 'done' : 'upload')
         ),
         { maxRetries: 3, baseDelayMs: 3000, context: `Upload video ${creative.fileName}` }
