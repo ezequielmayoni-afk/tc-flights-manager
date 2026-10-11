@@ -84,6 +84,10 @@ Bayahibe: el mercado lo busca ~40 % de Punta Cana; queda rango 20–26, es forta
 (Apify/ScrapeCreators, 5–30 USD/mes, zona gris). Volúmenes absolutos: Google Ads Keyword Planner o
 DataForSEO. Ninguno está incluido.
 
+- **2026-10-11, pedido de Ezequiel**: Tendencias es sólo turismo emisivo. Bariloche, Mendoza, Salta, Córdoba, Jujuy, Mar del
+  Plata, Carlos Paz y todo lugar de Argentina quedan fuera del descubrimiento, del ranking, de las alertas y del buzz
+  (`DOMESTIC_SLUGS` en `config.ts`). Primera corrida con el filtro: lunes 2026-10-12.
+
 ## Fase 2 — Guard de marketing, insights por cron, salud de integraciones · 🟡 Desplegada en sombra (2026-09-10)
 
 **Qué hay**: insights de Meta cada hora (estaban congelados desde junio); vínculos cupo↔paquete persistidos y
