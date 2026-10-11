@@ -61,6 +61,7 @@ const STOPWORDS = new Set([
   'avion', 'avión', 'micro', 'bus', 'colectivo', 'tren', 'barco', 'ferry', 'aeropuerto', 'mapa', 'clima', 'queda', 'sargazo', 'tiene',
   'requisitos', 'visa', 'moneda', 'fotos', 'imagenes', 'imágenes', 'opiniones', 'reseñas', 'ubicacion', 'ubicación', 'wikipedia',
   // Lugares de fantasía y no destinos que devuelve YouTube
+  'pelicula', 'película', 'peliculas', 'películas', 'serie', 'series', 'documental', 'libro', 'novela', 'cancion', 'canción',
   'estrellas', 'marte', 'centro', 'tierra', 'inesperado', 'desconocido', 'pasado', 'futuro', 'tiempo', 'infierno', 'cielo', 'espacio',
   // Marcas y agencias
   'despegar', 'almundo', 'avantrip', 'latam', 'aerolineas', 'aerolíneas', 'flybondi', 'jetsmart', 'arajet', 'msc', 'pezzati', 'ati', 'garbarino', 'turismo', 'city', 'oca',

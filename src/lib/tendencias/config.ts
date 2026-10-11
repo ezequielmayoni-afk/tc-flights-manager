@@ -174,6 +174,7 @@ export const DOMESTIC_SLUGS: ReadonlySet<string> = new Set([
   'mar-del-plata', 'villa-gesell', 'pinamar', 'carilo', 'mar-de-las-pampas', 'mar-azul', 'necochea', 'miramar', 'monte-hermoso', 'san-bernardo', 'santa-teresita', 'san-clemente', 'claromeco', 'tandil', 'sierra-de-la-ventana', 'bahia-blanca', 'chascomus', 'lobos', 'lujan', 'san-antonio-de-areco', 'mercedes',
   'ushuaia', 'tierra-del-fuego', 'cerro-castor', 'el-calafate', 'calafate', 'glaciar-perito-moreno', 'perito-moreno', 'el-chalten', 'chalten', 'puerto-madryn', 'peninsula-valdes', 'trelew', 'comodoro-rivadavia', 'rio-gallegos', 'las-grutas', 'patagonia', 'puerto-deseado', 'rio-grande', 'viedma', 'carmen-de-patagones',
   'la-pampa', 'santa-rosa', 'general-pico',
+  'la-costa', 'partido-de-la-costa', 'costa-atlantica', 'costa-argentina', 'el-sur', 'el-norte', 'el-litoral', 'litoral', 'cuyo', 'la-cordillera',
   // No son destinos: transporte y servicios locales que el autocompletado devuelve como lugar
   'buquebus', 'colonia-express', 'retiro', 'terminal-de-omnibus',
 ])

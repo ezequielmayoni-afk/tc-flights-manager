@@ -5,7 +5,7 @@ import { finalizeDiscoveries, registerSuggestion, type Discovered } from '../col
 
 describe('Tendencias es sólo turismo emisivo (2026-10-11)', () => {
   it('isDomestic reconoce lo que está dentro de Argentina, con o sin sufijo', () => {
-    for (const s of ['bariloche', 'san-carlos-de-bariloche', 'mendoza', 'cordoba', 'salta', 'jujuy', 'mar-del-plata', 'villa-gesell', 'ushuaia', 'el-calafate', 'cataratas-del-iguazu', 'carlos-paz', 'buquebus', 'bariloche-2027', 'patagonia-argentina']) expect(isDomestic(s), s).toBe(true)
+    for (const s of ['bariloche', 'san-carlos-de-bariloche', 'mendoza', 'cordoba', 'salta', 'jujuy', 'mar-del-plata', 'villa-gesell', 'ushuaia', 'el-calafate', 'cataratas-del-iguazu', 'carlos-paz', 'buquebus', 'bariloche-2027', 'patagonia-argentina', 'la-costa']) expect(isDomestic(s), s).toBe(true)
     for (const s of ['punta-cana', 'rio-de-janeiro', 'florianopolis', 'madrid', 'punta-del-este', 'santiago-de-chile', 'valle-nevado', 'miami', 'colombia', 'santa-marta']) expect(isDomestic(s), s).toBe(false)
   })
   it('no queda ninguna semilla nacional', () => {
