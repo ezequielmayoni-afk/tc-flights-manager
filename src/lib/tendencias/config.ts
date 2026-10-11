@@ -28,12 +28,8 @@ export const DESTINATION_SEEDS: Record<string, string[]> = {
     'Cusco', 'Machu Picchu', 'Perú', 'Chile', 'Santiago de Chile', 'Bogotá', 'Lima',
     'Uruguay', 'Montevideo', 'Punta del Este',
   ],
-  argentina: [
-    'Bariloche', 'Mendoza', 'Ushuaia', 'Iguazú', 'Córdoba',
-    'Salta', 'El Calafate', 'Mar del Plata', 'Carlos Paz',
-  ],
   ski: [
-    'Valle Nevado', 'Portillo', 'Cerro Catedral', 'Chapelco', 'Aspen',
+    'Valle Nevado', 'Portillo', 'Aspen',
   ],
   exotico: [
     'Tailandia', 'Maldivas', 'Japón', 'Bali', 'Dubai', 'Egipto', 'Marruecos',
@@ -60,9 +56,6 @@ export const DESTINATION_ALIASES: Record<string, string[]> = {
   'estados-unidos': ['miami', 'orlando', 'new-york', 'las-vegas', 'los-angeles', 'walt-disney-world', 'austin', 'chicago', 'san-francisco', 'washington'],
   'espana': ['madrid', 'barcelona', 'sevilla', 'malaga', 'valencia', 'ibiza', 'mallorca', 'tenerife', 'gran-canaria', 'granada', 'bilbao'],
   'canarias': ['tenerife', 'gran-canaria', 'lanzarote', 'fuerteventura'],
-  'cordoba': ['cordoba', 'carlos-paz', 'villa-general-belgrano', 'la-cumbrecita'],
-  'carlos-paz': ['carlos-paz', 'villa-carlos-paz'],
-  'iguazu': ['puerto-iguazu', 'iguazu', 'foz-do-iguacu'],
   'roma': ['rome'],
   'paris': ['paris'],
   'londres': ['london'],
@@ -102,9 +95,6 @@ export const DESTINATION_ALIASES: Record<string, string[]> = {
   'machu-picchu': ['aguas-calientes', 'cusco', 'sacred-valley'],
   'cusco': ['cusco', 'sacred-valley', 'aguas-calientes'],
   'lima': ['lima'],
-  'bariloche': ['san-carlos-de-bariloche', 'bariloche'],
-  'cerro-catedral': ['san-carlos-de-bariloche'],
-  'el-calafate': ['el-calafate'],
   'tailandia': ['bangkok', 'phuket', 'chiang-mai', 'krabi', 'koh-samui'],
   'japon': ['tokyo', 'kyoto', 'osaka', 'hiroshima', 'nagano', 'kobe', 'fukuoka'],
   'egipto': ['cairo', 'luxor', 'aswan', 'edfu', 'hurghada', 'sharm-el-sheikh'],
@@ -141,11 +131,6 @@ export const CANONICAL_SLUGS: Record<string, string> = {
   'walt-disney': 'disney',
   'punta-cana-republica-dominicana': 'punta-cana',
   'republica-dominicana': 'punta-cana',
-  'cataratas-del-iguazu': 'iguazu',
-  'cataratas': 'iguazu',
-  'puerto-iguazu': 'iguazu',
-  'san-carlos-de-bariloche': 'bariloche',
-  'villa-carlos-paz': 'carlos-paz',
   'el-caribe': 'caribe',
   'mexico-cancun': 'cancun',
   'cancun-mexico': 'cancun',
@@ -169,6 +154,48 @@ export const CANONICAL_SLUGS: Record<string, string> = {
   'san-pablo': 'sao-paulo',
   'punta-cana-2026': 'punta-cana',
   'punta-cana-2027': 'punta-cana',
+}
+
+/**
+ * Tendencias mide turismo EMISIVO (pedido de Ezequiel, 2026-10-11): qué busca el
+ * argentino para viajar al exterior. Todo lugar dentro de Argentina queda
+ * afuera del descubrimiento, del ranking y de las alertas, aunque Google lo
+ * sugiera. Slugs canónicos (ver slugify). Las provincias y ciudades grandes
+ * entran porque "paquetes a córdoba" o "viaje a salta" son viajes internos.
+ */
+export const DOMESTIC_SLUGS: ReadonlySet<string> = new Set([
+  'argentina', 'buenos-aires', 'caba', 'capital-federal', 'ciudad-de-buenos-aires', 'la-plata', 'tigre', 'ezeiza', 'aeroparque',
+  'bariloche', 'san-carlos-de-bariloche', 'cerro-catedral', 'villa-la-angostura', 'san-martin-de-los-andes', 'chapelco', 'el-bolson', 'esquel', 'la-hoya', 'villa-traful', 'villa-pehuenia', 'alumine', 'junin-de-los-andes', 'caviahue', 'neuquen',
+  'mendoza', 'san-rafael', 'malargue', 'las-lenas', 'potrerillos', 'uspallata', 'valle-de-uco', 'tupungato',
+  'cordoba', 'carlos-paz', 'villa-carlos-paz', 'villa-general-belgrano', 'la-cumbrecita', 'la-falda', 'cosquin', 'capilla-del-monte', 'alta-gracia', 'mina-clavero', 'nono', 'traslasierra', 'rio-cuarto', 'villa-maria', 'jesus-maria', 'cura-brochero', 'santa-rosa-de-calamuchita', 'los-reartes', 'embalse',
+  'salta', 'cafayate', 'jujuy', 'san-salvador-de-jujuy', 'humahuaca', 'purmamarca', 'tilcara', 'quebrada-de-humahuaca', 'tucuman', 'san-miguel-de-tucuman', 'tafi-del-valle', 'catamarca', 'la-rioja', 'santiago-del-estero', 'termas-de-rio-hondo', 'san-juan', 'san-luis', 'merlo', 'villa-de-merlo',
+  'iguazu', 'puerto-iguazu', 'cataratas', 'cataratas-del-iguazu', 'misiones', 'posadas', 'corrientes', 'esteros-del-ibera', 'ibera', 'chaco', 'resistencia', 'formosa',
+  'rosario', 'santa-fe', 'parana', 'entre-rios', 'colon', 'gualeguaychu', 'federacion', 'concordia', 'villa-elisa',
+  'mar-del-plata', 'villa-gesell', 'pinamar', 'carilo', 'mar-de-las-pampas', 'mar-azul', 'necochea', 'miramar', 'monte-hermoso', 'san-bernardo', 'santa-teresita', 'san-clemente', 'claromeco', 'tandil', 'sierra-de-la-ventana', 'bahia-blanca', 'chascomus', 'lobos', 'lujan', 'san-antonio-de-areco', 'mercedes',
+  'ushuaia', 'tierra-del-fuego', 'cerro-castor', 'el-calafate', 'calafate', 'glaciar-perito-moreno', 'perito-moreno', 'el-chalten', 'chalten', 'puerto-madryn', 'peninsula-valdes', 'trelew', 'comodoro-rivadavia', 'rio-gallegos', 'las-grutas', 'patagonia', 'puerto-deseado', 'rio-grande', 'viedma', 'carmen-de-patagones',
+  'la-pampa', 'santa-rosa', 'general-pico',
+  // No son destinos: transporte y servicios locales que el autocompletado devuelve como lugar
+  'buquebus', 'colonia-express', 'retiro', 'terminal-de-omnibus',
+])
+
+/** True si el destino es dentro de Argentina (o un servicio local): fuera de Tendencias. */
+export function isDomestic(slug: string): boolean {
+  const canonical = CANONICAL_SLUGS[slug] ?? slug
+  if (DOMESTIC_SLUGS.has(canonical)) return true
+  // "bariloche-2027", "villa-gesell-verano", "cataratas-argentina": el nombre viene con un sufijo.
+  return [...DOMESTIC_SLUGS].some(d => d.length >= 5 && (canonical.startsWith(`${d}-`) || canonical.endsWith(`-${d}`)))
+}
+
+/** True si un texto libre ("vuelos a salta", "temporal en bariloche") nombra un lugar de Argentina. */
+export function mentionsDomestic(text: string): boolean {
+  const words = slugify(text).split('-').filter(Boolean)
+  for (let i = 0; i < words.length; i++) {
+    for (let n = 1; n <= 4 && i + n <= words.length; n++) {
+      const window = words.slice(i, i + n).join('-')
+      if (DOMESTIC_SLUGS.has(CANONICAL_SLUGS[window] ?? window)) return true
+    }
+  }
+  return false
 }
 
 export interface SeedDestination {

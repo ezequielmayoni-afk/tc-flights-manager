@@ -1,3 +1,4 @@
+import { mentionsDomestic } from '../config'
 import type { SerpApiClient } from '@/lib/serpapi/client'
 import { matchKnownDestination, type KnownDestinations } from './known'
 import type { CollectorResult, DestinationSignal, TrendingItem } from '../types'
@@ -34,7 +35,8 @@ export function processTrending(raw: RawTrend[], known: KnownDestinations): { it
     return { query: t.query, volume: t.search_volume ?? null, increasePct: t.increase_percentage ?? null, categories, travel, slug, breakdown }
   })
 
-  const relevant = items.filter(i => i.travel || i.slug).sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+  // Turismo emisivo: un tema que nombra un lugar de Argentina no se muestra ni suma.
+  const relevant = items.filter(i => (i.travel || i.slug) && !mentionsDomestic(i.query)).sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
   const byDest = new Map<string, { volume: number; queries: string[] }>()
   for (const item of relevant) {
     // Al score sólo entra la categoría Viajes; un temporal o un evento se muestra pero no suma.

@@ -66,6 +66,12 @@ Disparar un tick a mano: `ssh ... '/opt/hub-cron/hub-cron.sh jobs-tick'`.
 Corre sola los lunes a las 08:00 UTC (`enqueue?schedule=weekly` → jobs `trend.run` y `demand.signals`) o con
 "Correr ahora" en `/producto/tendencias` (sección `producto`: admin, marketing y producto).
 
+- **Sólo turismo emisivo (2026-10-11, pedido de Ezequiel)**: lo que está dentro de Argentina no entra ni al descubrimiento,
+  ni al ranking, ni a las alertas, ni al panel "de qué se habla", aunque Google lo sugiera. Lista `DOMESTIC_SLUGS` +
+  `isDomestic(slug)` / `mentionsDomestic(texto)` en `src/lib/tendencias/config.ts`; se aplica en `finalizeDiscoveries`,
+  `buildKnown`, `processTrending` y en las relacionadas del buzz. Las semillas `argentina` y los centros de ski
+  argentinos se sacaron. Para sumar un lugar nuevo a la exclusión, agregar su slug a la lista (con sufijos tipo
+  `bariloche-2027` ya cubre).
 - `trend.run` (lane `serpapi`, flag `automation.serpapi_calls`, presupuesto `serpapi`): sólo demanda de mercado,
   nada de siviajo.com. (1) Autocomplete de Google con expansión por letra descubre destinos (gratis, ~110
   consultas); (2) consultas relacionadas de "paquetes", "viajes", "vuelos", "vacaciones", "all inclusive",

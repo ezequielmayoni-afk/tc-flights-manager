@@ -112,7 +112,7 @@ export default async function TendenciasPage({ searchParams }: PageProps) {
         <section className="rounded-lg border border-gray-200 bg-white">
           <div className="border-b border-gray-200 px-4 py-3">
             <h2 className="text-sm font-semibold text-gray-900">Destinos {run ? `· ${run.week_label}` : ''}</h2>
-            <p className="text-xs text-gray-500">Cada destino tiene “Crear idea”. Score 0–100 relativo a la corrida: 45 % Google Trends (comparación directa, Argentina, último mes) + 20 % búsquedas relacionadas de “paquetes”, “viajes”, “vuelos”… + 20 % Autocomplete de Google + 10 % YouTube + 5 % tendencias ahora. El momentum compara con la corrida anterior.</p>
+            <p className="text-xs text-gray-500">Sólo turismo emisivo: los destinos dentro de Argentina no entran aunque Google los sugiera. Cada destino tiene “Crear idea”. Score 0–100 relativo a la corrida: 45 % Google Trends (comparación directa, Argentina, último mes) + 20 % búsquedas relacionadas de “paquetes”, “viajes”, “vuelos”… + 20 % Autocomplete de Google + 10 % YouTube + 5 % tendencias ahora. El momentum compara con la corrida anterior.</p>
           </div>
           <TrendsTable destinations={destinations} />
         </section>

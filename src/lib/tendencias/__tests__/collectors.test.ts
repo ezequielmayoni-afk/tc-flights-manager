@@ -104,7 +104,7 @@ describe('registerSuggestion + finalizeDiscoveries', () => {
     const discovered = new Map<string, Discovered>()
     registerSuggestion(discovered, 'viaje a la luna', 'viaje a ', 'viaje a', 1)
     registerSuggestion(discovered, 'viaje a japon', 'viaje a ', 'viaje a', 2)
-    registerSuggestion(discovered, 'viaje a villa traful', 'viaje a ', 'viaje a', 3)
+    registerSuggestion(discovered, 'viaje a bombinhas', 'viaje a ', 'viaje a', 3)
     const signals = finalizeDiscoveries(discovered, buildKnown())
     expect([...signals.keys()]).toEqual(['japon'])
   })
@@ -116,7 +116,7 @@ describe('canonicalizeSlug + isCrowded', () => {
     expect(canonicalizeSlug('la-romana')).toBe('bayahibe')
     expect(canonicalizeSlug('bayahibe-republica-dominicana')).toBe('bayahibe')
     expect(canonicalizeSlug('rio-de-janeiro-brasil')).toBe('rio-de-janeiro')
-    expect(canonicalizeSlug('villa-traful')).toBe('villa-traful')
+    expect(canonicalizeSlug('bombinhas')).toBe('bombinhas')
     expect(canonicalizeSlug('salta')).toBe('salta')
   })
 
@@ -128,12 +128,12 @@ describe('canonicalizeSlug + isCrowded', () => {
 })
 
 describe('matchKnownDestination', () => {
-  const known = buildKnown(new Map([['villa-traful', 'Villa Traful']]))
+  const known = buildKnown(new Map([['bombinhas', 'Bombinhas']]))
   it('reconoce destinos y variantes dentro de un texto', () => {
     expect(matchKnownDestination('paquetes a florianopolis 2026', known)).toBe('florianopolis')
     expect(matchKnownDestination('vuelos a curazao baratos', known)).toBe('curacao')
     expect(matchKnownDestination('paquetes a brasil desde córdoba', known)).toBe('brasil')
-    expect(matchKnownDestination('villa traful', known)).toBe('villa-traful')
+    expect(matchKnownDestination('bombinhas', known)).toBe('bombinhas')
     expect(matchKnownDestination('oca seguimiento de paquetes', known)).toBeNull()
     expect(matchKnownDestination('rio cuarto', known)).toBeNull()
   })
@@ -153,7 +153,7 @@ describe('travel-terms', () => {
     expect(isTravelQuery('travel sale 2026')).toBe(true)
     expect(isTravelQuery('arajet')).toBe(true)
     expect(countsAsTravelDemand('nuestra señora de la asuncion', 'asuncion')).toBe(false)
-    expect(countsAsTravelDemand('villa traful', 'villa-traful')).toBe(true)
+    expect(countsAsTravelDemand('bombinhas', 'bombinhas')).toBe(true)
     expect(countsAsTravelDemand('punta cana 2027', 'punta-cana')).toBe(true)
     expect(countsAsTravelDemand('la habana', 'la-habana')).toBe(true)
     expect(countsAsTravelDemand('paquetes a florianopolis 2026', 'florianopolis')).toBe(true)
@@ -181,16 +181,18 @@ describe('processTrending', () => {
     const { items, destinations } = processTrending([
       { query: 'boca juniors - são paulo', search_volume: 200000, categories: [{ id: 17, name: 'Sports' }] },
       { query: 'aerolineas argentinas paro', search_volume: 20000, categories: [{ id: 19, name: 'Travel and Transportation' }] },
-      { query: 'temporal en bariloche', search_volume: 5000, categories: [{ id: 20, name: 'Climate' }] },
-      { query: 'vuelos a salta', search_volume: 2000, categories: [{ id: 19, name: 'Travel and Transportation' }] },
+      { query: 'temporal en punta cana', search_volume: 5000, categories: [{ id: 20, name: 'Climate' }] },
+      { query: 'vuelos a madrid', search_volume: 2000, categories: [{ id: 19, name: 'Travel and Transportation' }] },
+      { query: 'vuelos a salta', search_volume: 3000, categories: [{ id: 19, name: 'Travel and Transportation' }] }, // nacional: ni se muestra
       { query: 'gimnasia y esgrima - boca juniors', search_volume: 500000, categories: [{ id: 17, name: 'Sports' }], trend_breakdown: ['gimnasia de mendoza'] },
       { query: 'mirtha legrand', search_volume: 100000, categories: [{ id: 4, name: 'Entertainment' }] },
     ], known)
-    expect(items.map(i => i.query)).toEqual(['aerolineas argentinas paro', 'temporal en bariloche', 'vuelos a salta'])
-    // Un temporal se muestra pero no suma al score; un partido ni se muestra.
-    expect(destinations.has('bariloche')).toBe(false)
+    expect(items.map(i => i.query)).toEqual(['aerolineas argentinas paro', 'temporal en punta cana', 'vuelos a madrid'])
+    // Un temporal se muestra pero no suma al score; un partido ni se muestra; lo nacional (Salta) queda afuera.
+    expect(destinations.has('punta-cana')).toBe(false)
     expect(destinations.has('mendoza')).toBe(false)
-    expect(destinations.get('salta')).toMatchObject({ rawScore: 2000, normalizedScore: 100 })
+    expect(destinations.has('salta')).toBe(false)
+    expect(destinations.get('madrid')).toMatchObject({ rawScore: 2000, normalizedScore: 100 })
   })
 })
 

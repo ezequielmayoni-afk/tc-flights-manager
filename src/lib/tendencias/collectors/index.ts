@@ -3,7 +3,7 @@ import { collectGoogleRelated } from './google-related'
 import { collectGoogleTrends } from './serpapi-trends'
 import { collectTrendingNow } from './trending-now'
 import { buildKnown } from './known'
-import { MAX_TRENDS_CANDIDATES, TOP_DISCOVERED_FOR_VALIDATION } from '../config'
+import { MAX_TRENDS_CANDIDATES, TOP_DISCOVERED_FOR_VALIDATION, mentionsDomestic } from '../config'
 import type { CollectorResult, TendenciasContext, TrendBuzz } from '../types'
 
 export interface CollectAllResult {
@@ -90,7 +90,7 @@ export async function collectAll(ctx: TendenciasContext): Promise<CollectAllResu
 
   const buzz: TrendBuzz = {
     trendingNow: trending.items,
-    related: related.lists,
+    related: related.lists.map(l => ({ ...l, top: l.top.filter(q => !mentionsDomestic(q.query)), rising: l.rising.filter(q => !mentionsDomestic(q.query)) })),
     youtube: [...youtube.discovered.values()]
       .filter(d => youtube.destinations.has(d.slug))
       .sort((a, b) => b.weight - a.weight)

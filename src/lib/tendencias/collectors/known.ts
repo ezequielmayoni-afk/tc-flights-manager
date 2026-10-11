@@ -1,4 +1,4 @@
-import { CANONICAL_SLUGS, getAllDestinations, slugify } from '../config'
+import { CANONICAL_SLUGS, getAllDestinations, isDomestic, slugify } from '../config'
 
 /**
  * Destinos "conocidos" en una corrida: las semillas más lo que descubrió el
@@ -23,6 +23,7 @@ export function buildKnown(discovered: Map<string, string> = new Map()): KnownDe
     variants.set(d.slug, d.slug)
   }
   for (const [slug, name] of discovered) {
+    if (isDomestic(slug)) continue // turismo emisivo: lo nacional no entra ni aunque Google lo sugiera
     if (!names.has(slug)) names.set(slug, name)
     variants.set(slug, slug)
   }

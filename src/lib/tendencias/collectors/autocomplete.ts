@@ -1,4 +1,4 @@
-import { CANONICAL_SLUGS, getAllDestinations, slugify } from '../config'
+import { CANONICAL_SLUGS, getAllDestinations, slugify, isDomestic } from '../config'
 import type { CollectorResult, DestinationSignal } from '../types'
 import type { KnownDestinations } from './known'
 
@@ -35,7 +35,7 @@ export const WEB_SEEDS = [
   'paquete todo incluido ', 'todo incluido ', 'all inclusive ', 'paquete turístico ', 'ofertas de viajes ', 'promociones vuelos ',
   'vacaciones julio ', 'vacaciones invierno ', 'vacaciones verano ', 'viaje semana santa ', 'escapada fin de semana ',
   'luna de miel ', 'viaje de egresados ', 'viaje en grupo ', 'crucero ', 'viaje de 15 a ',
-  'viaje al caribe ', 'viaje a europa ', 'viaje a brasil ', 'playas ', 'ski argentina ',
+  'viaje al caribe ', 'viaje a europa ', 'viaje a brasil ', 'playas del caribe ', 'ski en chile ',
 ]
 export const WEB_EXPAND_SEEDS = ['viaje a ', 'paquetes a ', 'vuelos a ']
 
@@ -217,7 +217,7 @@ export function finalizeDiscoveries(discovered: Map<string, Discovered>, known?:
   const seeds = getAllDestinations()
   const seedSlugs = new Set(seeds.map(d => d.slug))
   const seedNames = new Map(seeds.map(d => [d.slug, d.name]))
-  const kept = [...discovered.values()].filter(d => known ? known.names.has(d.slug) : d.placeMentions > 0 || seedSlugs.has(d.slug))
+  const kept = [...discovered.values()].filter(d => !isDomestic(d.slug) && (known ? known.names.has(d.slug) : d.placeMentions > 0 || seedSlugs.has(d.slug)))
   const maxWeight = Math.max(...kept.map(d => d.weight), 0.1)
 
   const destinations = new Map<string, DestinationSignal>()
