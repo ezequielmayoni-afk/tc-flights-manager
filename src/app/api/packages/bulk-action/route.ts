@@ -6,6 +6,7 @@ import { getCupoPackageIds } from '@/lib/packages/cupo'
 import { expirePackageInTC } from '@/lib/packages/expire'
 import { switchPackageToSystem } from '@/lib/packages/switch-to-system'
 import { enqueueJob } from '@/lib/jobs/queue'
+import { maybeEnqueueAutoLaunch } from '@/lib/meta-ads/launch'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { checkSectionAccess } from '@/lib/auth'
 import { errorResponse } from '@/lib/api/errors'
@@ -276,6 +277,7 @@ export async function POST(request: NextRequest) {
                 sent_at: slackResult.ok ? new Date().toISOString() : null,
               })
             }
+            await maybeEnqueueAutoLaunch(db, pkg.id, 'sent_to_marketing').catch(() => null)
             break
           case 'switch_to_system': {
             // El cambio ya se hizo en TC (sin "fijo", tarifa de sistema, guardado):

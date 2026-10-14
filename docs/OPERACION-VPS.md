@@ -227,6 +227,32 @@ activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de 
   y `SELECT * FROM hub_jobs WHERE kind='marketing.evaluate' ORDER BY id DESC LIMIT 5;`. Dry-run local sin escribir:
   `npx tsx --tsconfig tsconfig.json scripts/marketing-score-dry-run.ts [--blind] [--apply]`.
 
+## Lanzamiento en Meta desde HUB (Fase 5 del loop, desde 2026-10-14)
+
+- **Familias** (`marketing_families`, pantalla `/packages/marketing/familias`): por familia de destino, campaña de Meta y
+  conjunto plantilla (se copia segmentación, puja y presupuesto), presupuesto diario opcional (se ignora si la campaña es
+  CBO), objetivos de costo (los usa la Fase 9), máximo de anuncios por conjunto (4) y `auto_launch`. Semilla con las
+  campañas reales: caribe → CBO_CARIBE VENTAS, brasil → CBO_BRASIL VENTAS, europa_exoticos → ABO_EUROPA_Y_EXOTICOS_GRUPALES,
+  eventos → ABO_SPORTS; usa y argentina sin campaña. La familia de un paquete sale de `familyKeyForPackage`
+  (`src/lib/marketing/families.ts`): override `packages.marketing_family` > evento deportivo por título > familia del
+  perfil del destino > grupal sin perfil → europa_exoticos.
+- **Lanzar** (`marketing.launch`, lane `meta`, flag `automation.meta_writes`; `src/lib/meta-ads/launch.ts`): valida el
+  paquete (activo, con precio, sin cotización manual), genera copys si no hay, sube a Meta lo que haya en Drive
+  (`ensure-creatives.ts`, misma lógica que la pantalla), reutiliza o crea el conjunto `DESTINO_MES_SIV_ID` desde la
+  plantilla **en pausa**, crea un anuncio **en pausa** por variante de creativo (4x5 obligatoria, 9x16 opcional) con los
+  copys como textos rotativos y el mensaje de WhatsApp con el SIV, y deja el paquete en `marketing_status = launched` con
+  `meta_launch_adset_id`. Idempotente: no repite anuncios que ya existen en ese conjunto. Aviso a Slack.
+- **Activar** (`marketing.activate`): el clic humano. Prende el conjunto y sus anuncios; `marketing_status = active`.
+- Disparadores: botón "Lanzar en Meta" en `/packages/marketing` (`POST /api/marketing/launch`); con `auto_launch` en la
+  familia, se encola solo al completarse una solicitud de diseño o al "Enviar a marketing". Nunca activa solo.
+- **Copys con voz de marca** (`src/lib/marketing/brand/`, portado de media-os; `src/lib/marketing/copy/`): un copy por
+  ángulo (oferta, emoción, destino, conveniencia, escasez) con Claude Sonnet 5 (fallback Haiku 4.5), control de calidad
+  puro (`qa.ts`: largos, datos inventados de precio/noches/cupos/régimen, voz, engagement bait, políticas) con un
+  reintento por ángulo rechazado. `POST /api/marketing/copy {packageId}`; guarda en `meta_ad_copies` (variant = ángulo,
+  `source = brand_voice_v1:<modelo>`).
+- Depurar: `SELECT tc_package_id, marketing_status, marketing_family, meta_launch_adset_id, launched_at, launch_error FROM packages WHERE launched_at IS NOT NULL ORDER BY launched_at DESC;`
+  y `SELECT * FROM hub_jobs WHERE kind IN ('marketing.launch','marketing.activate') ORDER BY id DESC LIMIT 10;`.
+
 ## vuelos.siviajo.com
 
 Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`

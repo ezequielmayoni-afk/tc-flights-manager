@@ -16,7 +16,7 @@ la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (en
 | 2 | Guard de marketing: pausar anuncios de paquetes vencidos o agotados, insights por cron | 🟡 En sombra desde 2026-09-10 (standby; "Pasó a sistema" y matcher listos) | 0 |
 | 3 | Perfiles de destino, fechas con vuelos-siviajo (Sabre), cotización real, ideas de paquete | 🟡 Desplegada 2026-09-10, validando | 1 |
 | 4 | Criterio marketing vs web y temáticas | 🟡 Desplegada 2026-09-21 (semi: recomienda, no envía sola) | 2, 3 |
-| 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | ⏳ | 4 |
+| 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | 🟡 Desplegada 2026-10-14, sin primer lanzamiento real | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
 | 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | ⏳ | 2, 3 |
 | 8 | Tablero paquete × CRM: mensajes, ganadas, perdidas, CPA | ⏳ | 2 |
@@ -193,7 +193,19 @@ marketing (28 ya estaban + 6 candidatos), 40 para decidir, 25 web, 3 excluidos.
 Fase 5. Las temáticas escriben en TC con `PUT` verificado: la primera escritura real se hace con Ezequiel mirando
 siviajo.com (mismo checkpoint que la Fase 2).
 
-## Fase 5 — Lanzamiento en Meta desde HUB · ⏳
+## Fase 5 — Lanzamiento en Meta desde HUB · 🟡 Desplegada (2026-10-14)
+
+**Qué hay**: familias de destino con campaña y conjunto plantilla (precargadas con las campañas reales), lanzamiento
+como job (conjunto `DESTINO_MES_SIV_ID` desde la plantilla + anuncios en pausa, copys con voz de marca si faltan,
+creativos desde Drive), activación como clic humano, panel "Lanzar en Meta" en `/packages/marketing` y pantalla de
+familias. Motor de copys con la voz de marca de media-os y QA de datos inventados. Detalle operativo en
+`docs/OPERACION-VPS.md`.
+
+**Falta**: primer lanzamiento real con Ezequiel mirando el Ads Manager (confirmar que la plantilla copia bien la
+segmentación y que el mensaje de WhatsApp lleva el SIV); decidir nombre del conjunto y `auto_launch` por familia;
+campaña para USA.
+
+### Plan original
 
 Al terminar diseño, HUB crea el conjunto con el nombre que el CRM ya lee (`FAMILIA_MMM_ID_SIV_<id>`),
 sube creativos, genera copys y deja los anuncios en PAUSADO.

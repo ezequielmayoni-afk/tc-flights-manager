@@ -3,8 +3,9 @@ import { MarketingTable } from '@/components/marketing/MarketingTable'
 import { CreativesReadyPanel } from '@/components/marketing/CreativesReadyPanel'
 import { CreativesRequestedPanel } from '@/components/marketing/CreativesRequestedPanel'
 import { PromptIAButton } from '@/components/marketing/PromptIAButton'
+import { LaunchPanel } from '@/components/marketing/LaunchPanel'
 import Link from 'next/link'
-import { BarChart3, Settings, AlertTriangle, Radio, MessageSquare, SlidersHorizontal } from 'lucide-react'
+import { BarChart3, Settings, AlertTriangle, Radio, MessageSquare, SlidersHorizontal, Layers } from 'lucide-react'
 
 function getSupabaseClient() {
   return createClient(
@@ -177,6 +178,14 @@ export default async function MarketingPage() {
         <div className="flex items-center gap-2">
           <PromptIAButton />
           <Link
+            href="/packages/marketing/familias"
+            className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
+            title="Familias de destino: campaña y conjunto plantilla para lanzar"
+          >
+            <Layers className="h-4 w-4" />
+            Familias
+          </Link>
+          <Link
             href="/packages/marketing/reglas"
             className="inline-flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-muted transition-colors"
             title="Criterio marketing vs web: pesos y umbrales del score"
@@ -215,6 +224,8 @@ export default async function MarketingPage() {
         </div>
       </div>
 
+      {/* Fase 5: lanzar en Meta (conjunto + anuncios en pausa) y activar */}
+      <LaunchPanel />
       {/* Panel de creativos solicitados (resumen + vencimiento 48h) */}
       {requestedRequests && requestedRequests.length > 0 && (
         <CreativesRequestedPanel requests={requestedRequests as any} />

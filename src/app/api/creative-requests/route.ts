@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { maybeEnqueueAutoLaunch } from '@/lib/meta-ads/launch'
 import { createAdminClient } from '@/lib/supabase/admin'
 import {
   sendSlackMessage,
@@ -306,6 +307,8 @@ export async function PATCH(request: NextRequest) {
     // If you need to re-enable, uncomment the block below
     /*
     if (status === 'completed') {
+      // Fase 5: si la familia tiene auto_launch, el lanzamiento en pausa se encola solo.
+      await maybeEnqueueAutoLaunch(db, currentRequest.package_id, 'creative_completed').catch(() => null)
       const { data: settings } = await db
         .from('notification_settings')
         .select('*')

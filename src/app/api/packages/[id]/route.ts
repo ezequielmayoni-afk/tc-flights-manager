@@ -87,6 +87,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       'in_sitemap',
       'requote_status',
       'themes_local',
+      'marketing_family',
       'seo_uploaded_to_tc',
       'title',
       'meta_campaign_id',

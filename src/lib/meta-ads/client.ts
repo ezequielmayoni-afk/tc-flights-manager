@@ -1114,6 +1114,28 @@ export class MetaAdsClient {
     })
   }
 
+  /** Pausa o activa un conjunto (PAUSED | ACTIVE). Los anuncios adentro conservan su propio estado. */
+  async updateAdSetStatus(adsetId: string, status: 'ACTIVE' | 'PAUSED'): Promise<void> {
+    await this.request(`/${adsetId}`, {
+      method: 'POST',
+      body: JSON.stringify({ status }),
+    })
+  }
+
+  /** Cambia el presupuesto diario de un conjunto (centavos de la moneda de la cuenta). Falla si la campaña es CBO. */
+  async updateAdSetDailyBudget(adsetId: string, dailyBudgetCents: number): Promise<void> {
+    await this.request(`/${adsetId}`, {
+      method: 'POST',
+      body: JSON.stringify({ daily_budget: String(dailyBudgetCents) }),
+    })
+  }
+
+  /** Busca un conjunto por nombre exacto dentro de una campaña (para no crear dos veces el mismo). */
+  async findAdSetByName(campaignId: string, name: string): Promise<MetaAPIAdSet | null> {
+    const adsets = await this.getAdSetsByCampaign(campaignId)
+    return adsets.find(a => a.name === name) ?? null
+  }
+
   /**
    * Get ads by AdSet ID - used to sync with our database
    */
