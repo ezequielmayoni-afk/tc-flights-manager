@@ -31,6 +31,7 @@ export interface CupoRequestOption {
   system_price_pp: number | null; system_currency: string | null; system_probed_at: string | null; market_price_pp: number | null
   airline_price_pp: number | null; airline_currency: string | null; airline_notes: string | null; airline_quoted_at: string | null; delta_pct: number | null
   decision_reason: string | null; decided_by: string | null; decided_at: string | null; flight_id: number | null; return_flight_id: number | null; idea_id: number | null; created_at: string; updated_at: string
+  seats_offered?: number | null; deposit_pct?: number | null; deposit_amount_pp?: number | null; deposit_due_date?: string | null; balance_due_date?: string | null; release_date?: string | null; name_list_due_date?: string | null; valid_until?: string | null; cancellation_terms?: string | null; payment_conditions?: string | null; reply_id?: number | null
 }
 
 const iso = (d: Date) => d.toISOString().slice(0, 10)
