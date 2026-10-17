@@ -14,6 +14,7 @@ import { isSabreConfigured } from '@/lib/sabre/client'
 import type { Db } from '@/lib/jobs/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { bestOverall, bestPerPair, freshnessLabel, lastObservedAt } from '@/lib/vuelos-baratos/aggregates'
+import { ttlMemo } from '@/lib/vuelos-baratos/cache'
 import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
 import {
@@ -21,9 +22,11 @@ import {
   countPendingSweepJobs,
   getLastEstimateAtByRoute,
   getRecentProbesForRoutes,
+  getSiteSearchStats,
   getSweepHealth,
   listLandingDestinations,
   listRoutes,
+  type SiteSearchStats,
 } from '@/lib/vuelos-baratos/queries'
 
 export const dynamic = 'force-dynamic'
@@ -37,6 +40,8 @@ const PROVEEDOR_SABRE = 'sabre'
 const PROVEEDOR_GSC = GSC_PROVIDER
 /** Ventana de la card de Search Console (la misma que muestra Google por defecto). */
 const GSC_DAYS = 28
+/** Ventana del panel de búsquedas reales de siviajo.com. */
+const SITE_SEARCH_DAYS = 7
 
 /** El precio se arma acá y no en el cliente: `toLocaleString` no da igual en los dos. */
 function money(value: number | null, currency: string | null): string {
@@ -92,6 +97,28 @@ async function loadGsc(db: Db, base: string): Promise<GscSummary | null> {
   }
 }
 
+/**
+ * Las búsquedas reales que manda la etiqueta de GTM de siviajo.com.
+ *
+ * Con `try`, como Search Console: si la lectura falla, la pantalla de rutas
+ * sigue abriendo. Cinco minutos de memo alcanzan para un panel de 7 días.
+ */
+async function loadSiteSearch(db: Db): Promise<SiteSearchStats | null> {
+  try {
+    return await ttlMemo('site-search:stats', 5 * 60_000, () => getSiteSearchStats(db, { days: SITE_SEARCH_DAYS }))
+  } catch (err) {
+    console.error('[vuelos-baratos] No se pudieron leer las búsquedas de siviajo.com:', err instanceof Error ? err.message : err)
+    return null
+  }
+}
+
+/** Día UTC 'YYYY-MM-DD' como 'vie 17/10'. */
+function diaCorto(day: string): string {
+  const ts = Date.parse(`${day}T00:00:00Z`)
+  if (Number.isNaN(ts)) return day
+  return new Date(ts).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit', timeZone: 'UTC' })
+}
+
 /** Une lo que inspeccionamos con lo que trajo tráfico: una fila por URL. */
 function gscRows(gsc: GscSummary | null, base: string, now: Date): GscUrlRow[] {
   if (!gsc) return []
@@ -130,7 +157,7 @@ async function loadPage() {
 
   const base = publicBaseUrl()
 
-  const [destinations, routes, health, jobs, budget, sabreBudget, estimates24h, lastEstimateAt, flags, gscBudget, gsc] = await Promise.all([
+  const [destinations, routes, health, jobs, budget, sabreBudget, estimates24h, lastEstimateAt, flags, gscBudget, gsc, siteSearch] = await Promise.all([
     listLandingDestinations(db),
     listRoutes(db),
     getSweepHealth(db, HEALTH_HOURS),
@@ -142,6 +169,7 @@ async function loadPage() {
     loadFlags(db),
     getBudgetStatus(db, PROVEEDOR_GSC),
     loadGsc(db, base),
+    loadSiteSearch(db),
   ])
 
   // Los pares vigentes hacen falta para el mínimo y la frescura de cada ruta.
@@ -224,6 +252,7 @@ async function loadPage() {
     gscUnconfigured: !isGscConfigured(),
     gscSite: gscSiteUrl(),
     gscRows: gscRows(gsc, base, now),
+    siteSearch,
     gsc: gsc
       ? {
           clicks: numero(gsc.clicks),
@@ -276,7 +305,10 @@ export default async function VuelosBaratosAdminPage() {
     gscOff,
     gscUnconfigured,
     gscSite,
+    siteSearch,
   } = await loadPage()
+  const busquedas = siteSearch ? siteSearch.perDay.reduce((acc, d) => acc + d.searches, 0) : 0
+  const busquedasConRuta = siteSearch ? siteSearch.perDay.reduce((acc, d) => acc + d.withRoute, 0) : 0
   const publicados = groups.filter(g => g.active).length
   const rutasActivas = groups.reduce((acc, g) => acc + g.routes.filter(r => r.active).length, 0)
 
@@ -472,6 +504,82 @@ export default async function VuelosBaratosAdminPage() {
             Un dominio nuevo tarda días o semanas en indexarse: mientras tanto la inspección dice &ldquo;sin indexar&rdquo; y no es un error.
             Lo que acelera es que le lleguen enlaces desde siviajo.com y el blog.
           </p>
+        </section>
+
+        <section className="rounded-lg border border-gray-200 bg-white">
+          <div className="border-b border-gray-200 px-4 py-3">
+            <h2 className="text-sm font-semibold text-gray-900">Búsquedas reales en siviajo.com ({SITE_SEARCH_DAYS} días)</h2>
+            <p className="text-xs text-gray-500">
+              Cada búsqueda de solo vuelo ida y vuelta en siviajo.com entra como observación. El barrido no vuelve a sondear un par que un
+              viajero vio en las últimas 24 h.
+            </p>
+          </div>
+
+          {siteSearch === null ? (
+            <p className="px-4 py-3 text-xs text-amber-900">No se pudieron leer las búsquedas (mirá la consola de PM2).</p>
+          ) : busquedas === 0 ? (
+            <p className="px-4 py-3 text-xs text-gray-600">Todavía no llegó ninguna búsqueda (la etiqueta de GTM en siviajo.com la manda)</p>
+          ) : (
+            <>
+              <p className="border-b border-gray-200 px-4 py-2 text-xs text-gray-600">
+                <strong>{numero(busquedas)}</strong> búsquedas · <strong>{numero(busquedasConRuta)}</strong> en rutas del catálogo
+              </p>
+              <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+                <div className="overflow-x-auto border-b border-gray-200 lg:border-b-0 lg:border-r">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                        <th className="px-4 py-2 font-medium">Día</th>
+                        <th className="px-4 py-2 font-medium">Búsquedas</th>
+                        <th className="px-4 py-2 font-medium">Con ruta</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {siteSearch.perDay.map(d => (
+                        <tr key={d.day}>
+                          <td className="px-4 py-2 text-gray-600">{diaCorto(d.day)}</td>
+                          <td className="px-4 py-2 tabular-nums text-gray-900">{numero(d.searches)}</td>
+                          <td className="px-4 py-2 tabular-nums text-gray-900">{numero(d.withRoute)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs uppercase tracking-wide text-gray-500">
+                        <th className="px-4 py-2 font-medium">Ruta</th>
+                        <th className="px-4 py-2 font-medium">Búsquedas</th>
+                        <th className="px-4 py-2 font-medium" title="La tarifa ida y vuelta por persona más baja que vio un viajero">
+                          Mínimo
+                        </th>
+                        <th className="px-4 py-2 font-medium">Catálogo</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {siteSearch.topRoutes.map(r => (
+                        <tr key={`${r.origin}|${r.destinationCode}`}>
+                          <td className="px-4 py-2 text-gray-900">
+                            {r.origin} → {r.destinationName ? `${r.destinationName} (${r.destinationCode})` : r.destinationCode}
+                          </td>
+                          <td className="px-4 py-2 tabular-nums text-gray-900">{numero(r.searches)}</td>
+                          <td className="px-4 py-2 tabular-nums text-gray-900">{money(r.minPricePp, 'USD')}</td>
+                          <td className="px-4 py-2">
+                            {r.routeId !== null ? (
+                              <span className="font-medium text-emerald-700">en catálogo</span>
+                            ) : (
+                              <span className="text-gray-500">sin ruta</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
         </section>
 
         <section className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-xs text-gray-600">
