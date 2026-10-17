@@ -78,6 +78,19 @@ export const ESTIMATE_PRIORITY = 5
 export const MAX_PROBES_PER_JOB = 10
 export const PUBLIC_CACHE_TTL_MS = 10 * 60_000
 export const PAGE_SIZE = 30
+
+/** Orígenes que pueden mandar el beacon de búsquedas (la web de siviajo.com). */
+export const SITE_SEARCH_ALLOWED_ORIGINS = ['https://www.siviajo.com', 'https://siviajo.com']
+/** Un beacon real pesa 5–10 KB (40 tarjetas); 64 KB es techo, no objetivo. */
+export const SITE_SEARCH_MAX_BYTES = 64 * 1024
+/** Misma búsqueda (ruta, fechas, pax) repetida en menos de esto es un reload, no otra observación. */
+export const SITE_SEARCH_DEDUPE_MINUTES = 10
+/** Tarjetas más baratas que se guardan en `options`. */
+export const SITE_SEARCH_MAX_OPTIONS = 5
+/** Beacons por IP y ventana: una oficina detrás de un NAT puede buscar mucho. */
+export const SITE_SEARCH_RATE = { max: 600, windowMs: 10 * 60_000, maxKeys: 5_000 }
+/** El barrido no vuelve a sondear un par que un viajero vio hace menos de esto. */
+export const SWEEP_SKIP_OBSERVED_HOURS = 24
 export const SLUG_RE = /^[a-z0-9-]{2,40}$/
 
 export interface Origin {
