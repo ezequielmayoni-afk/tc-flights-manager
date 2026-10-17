@@ -146,13 +146,19 @@ fijas (`monthsFixed`), y cada job lleva `source: 'estimate' | 'fixed'` en el pay
   lane (`sabre`, concurrencia 1, sin ventana horaria).
 - Las sesiones son un recurso escaso (el PCC tiene cupo) y expiran a los 15 minutos: `createSabreShopper`
   abre una sola por job, la renueva sola y la cierra al terminar.
+- **Los meses lejanos rotan** (desde 2026-10-17): los 4 meses más cercanos (`ESTIMATE_NEAR_MONTHS`) se
+  estiman todas las noches; los 8 restantes, una noche de cada tres (`ESTIMATE_FAR_MONTH_EVERY_NIGHTS`,
+  `estimatesTonight()`), rotando por fecha de calendario para que una noche caída no corra la cadencia.
+  Con 5 rutas son **~33 jobs de 8 búsquedas por noche (~270 BFM) en vez de 60 (480)**. Por eso
+  `ESTIMATE_WINDOW_HOURS` es de 102 h (3 noches + margen): el barrido y el chip "≈" usan la última
+  estimación de cada mes aunque tenga hasta tres noches. "Estimar ahora" no rota: estima todo lo pedido.
 - **La tanda se reparte**: el runner toma **un job por lane y por tick** (un minuto) y sólo los que ya
-  vencieron su `run_after`: 5 rutas × 12 meses = **60 jobs de 8 búsquedas, uno cada 3 min, de 21:00 a
-  00:00 UTC** (con ~2 s por BFM más 8 s de pausa, cada job dura ~80 s: 2 o 3 búsquedas por minuto). El
-  barrido de la 01:00 encuentra todo guardado. Si se suman rutas, la ventana sigue siendo de 3 h y los
-  jobs se acercan entre sí (con 10 rutas, uno cada 90 s); si la tanda no llega a terminar, los meses que
-  faltan caen a fechas fijas (no rompe nada pero gasta más sondas). El lease del lane es de **20 min**
-  (`leaseSeconds: 1200`): el heartbeat va por par, pero un BFM puede tardar hasta 60 s.
+  vencieron su `run_after`: los jobs de la noche se encolan con `run_after` escalonado **de 21:00 a
+  00:00 UTC** (con ~2 s por BFM más 8 s de pausa, cada job dura ~80 s). El barrido de la 01:00 encuentra
+  todo guardado. Si se suman rutas, la ventana sigue siendo de 3 h y los jobs se acercan entre sí; si la
+  tanda no llega a terminar, los meses que faltan caen a fechas fijas (no rompe nada pero gasta más
+  sondas). El lease del lane es de **20 min** (`leaseSeconds: 1200`): el heartbeat va por par, pero un
+  BFM puede tardar hasta 60 s.
 - BFM **no manda `ElapsedTime`**: `duration_out_minutes` / `duration_back_minutes` quedan en `null`. No se
   calculan por diferencia de horarios (son horas locales de husos distintos).
 

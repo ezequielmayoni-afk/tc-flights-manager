@@ -2,7 +2,9 @@ import { SabreBudgetExhausted, type BfmInput, type BfmResult } from '@/lib/sabre
 import type { EnqueueInput, JobContext } from '@/lib/jobs/types'
 import {
   DEFAULT_ADULTS,
+  ESTIMATE_FAR_MONTH_EVERY_NIGHTS,
   ESTIMATE_MONTHS_PER_JOB,
+  ESTIMATE_NEAR_MONTHS,
   ESTIMATE_PRIORITY,
   MIN_LEAD_DAYS,
   SABRE_MAX_ITINERARIES,
@@ -86,6 +88,20 @@ export function destinationIata(destination: LandingDestinationRow): string {
   return (destination.iata_display?.trim() || destination.tc_code).trim().toUpperCase()
 }
 
+/**
+ * Si el mes `monthIndex` (0 = el mes de hoy) se estima la noche `day`.
+ *
+ * Los primeros `ESTIMATE_NEAR_MONTHS` van todas las noches; los demás rotan
+ * por noche de calendario: en tres noches seguidas cada mes lejano sale
+ * exactamente una vez, siempre la misma cadencia aunque falle una noche.
+ */
+export function estimatesTonight(monthIndex: number, day: string): boolean {
+  if (monthIndex < ESTIMATE_NEAR_MONTHS) return true
+  const [y, m, d] = day.split('-').map(Number)
+  const noche = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000)
+  return (noche + monthIndex) % ESTIMATE_FAR_MONTH_EVERY_NIGHTS === 0
+}
+
 /** Los pares de un mes que estima Sabre para una ruta. `day` rota los exploradores. */
 export function planEstimate(route: LandingRouteRow, month: string, opts: { today: Date; day: string }): DatePair[] {
   return generateDatePairs({
@@ -145,7 +161,10 @@ export function buildEstimateJobs(input: BuildEstimateJobsInput): EnqueueInput[]
 
     const meses = monthsAhead(input.today, input.monthsOverride ?? route.months_ahead)
     for (let i = 0; i < meses.length; i += ESTIMATE_MONTHS_PER_JOB) {
-      const grupo = meses.slice(i, i + ESTIMATE_MONTHS_PER_JOB)
+      // A mano se estima todo lo pedido (es una prueba); la tanda nocturna
+      // rota los meses lejanos.
+      const grupo = meses.slice(i, i + ESTIMATE_MONTHS_PER_JOB).filter((_, k) => input.trigger !== 'cron' || estimatesTonight(i + k, input.day))
+      if (grupo.length === 0) continue
       const pairs = grupo.flatMap(month => planEstimate(route, month, { today: input.today, day: input.day }))
       // Un mes ya empezado puede no tener ninguna fecha candidata.
       if (pairs.length === 0) continue

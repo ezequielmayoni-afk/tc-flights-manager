@@ -1,14 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { bestPerPair, summarizeDestinations } from '@/lib/vuelos-baratos/aggregates'
 import { ttlMemo } from '@/lib/vuelos-baratos/cache'
-import {
-  DEFAULT_ORIGIN,
-  OBSERVATION_WINDOW_HOURS,
-  ORIGINS,
-  PUBLIC_CACHE_TTL_MS,
-  type Origin,
-  originByCode,
-} from '@/lib/vuelos-baratos/config'
+import { DEFAULT_ORIGIN, ESTIMATE_WINDOW_HOURS, ORIGINS, PUBLIC_CACHE_TTL_MS, originByCode, type Origin } from '@/lib/vuelos-baratos/config'
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
 import { minEstimateByMonth } from '@/lib/vuelos-baratos/estimate'
 import {
@@ -99,9 +92,10 @@ export async function loadDestino(slug: string, originCode: string): Promise<Des
 
     const fromDate = todayIso(new Date())
     const rows = await getRecentProbes(db, route.id, { fromDate })
-    // Las estimaciones de Sabre valen lo mismo que una observación (48 h) y
-    // sólo se usan para los chips de meses todavía sin sonda.
-    const estimates = await getEstimatesForRoute(db, route.id, { sinceHours: OBSERVATION_WINDOW_HOURS, fromDate })
+    // Las estimaciones de Sabre sólo se usan para los chips de meses todavía
+    // sin sonda; los meses lejanos se estiman cada tres noches, así que la
+    // ventana es la de la rotación (ESTIMATE_WINDOW_HOURS), no la de 48 h.
+    const estimates = await getEstimatesForRoute(db, route.id, { sinceHours: ESTIMATE_WINDOW_HOURS, fromDate })
     return { destination, route, pairs: bestPerPair(rows, { fromDate }), estimatedByMonth: minEstimateByMonth(estimates) }
   })
 }

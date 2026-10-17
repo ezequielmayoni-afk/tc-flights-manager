@@ -35,8 +35,21 @@ export const SWEEP_ENQUEUE_HOUR_UTC = 1
 export const ESTIMATE_ENQUEUE_HOUR_UTC = 21
 /** Ventana en la que se reparte la tanda nocturna de Sabre (`run_after` de cada job). */
 export const ESTIMATE_SPREAD_MS = 3 * 60 * 60_000
-/** Una estimación sirve para planificar el barrido de esa noche (y la mañana siguiente). */
-export const ESTIMATE_WINDOW_HOURS = 30
+/**
+ * Meses que Sabre estima todas las noches: los cercanos, donde el precio se
+ * mueve. Los que siguen (hasta `months_ahead`) rotan: cada noche toca un
+ * tercio de ellos (`ESTIMATE_FAR_MONTH_EVERY_NIGHTS`), así que con 5 rutas la
+ * tanda baja de 480 a ~270 búsquedas por noche (pedido de Ezequiel,
+ * 2026-10-17: gastar menos en Sabre sin perder cobertura).
+ */
+export const ESTIMATE_NEAR_MONTHS = 4
+export const ESTIMATE_FAR_MONTH_EVERY_NIGHTS = 3
+/**
+ * Una estimación sirve para planificar (y para el chip "≈" de la landing)
+ * mientras no sea más vieja que la rotación de los meses lejanos: tres
+ * noches más el margen hasta el barrido de la mañana siguiente.
+ */
+export const ESTIMATE_WINDOW_HOURS = ESTIMATE_FAR_MONTH_EVERY_NIGHTS * 24 + 30
 /**
  * Meses por job de estimación: uno. Con 5 rutas × 12 meses son 60 jobs de 8
  * búsquedas, uno cada 3 minutos a lo largo de las 3 h de la tanda.

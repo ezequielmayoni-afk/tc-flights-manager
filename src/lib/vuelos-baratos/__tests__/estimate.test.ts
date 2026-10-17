@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { SabreAuthError, SabreBudgetExhausted, type BfmInput, type BfmItinerary, type BfmResult } from '@/lib/sabre/client'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 import { ESTIMATE_MONTHS_PER_JOB, ESTIMATE_SPREAD_MS, ORIGINS, SABRE_MAX_ITINERARIES, originIata } from '../config'
-import { buildEstimateJobs, destinationIata, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate, spreadJobs } from '../estimate'
+import { buildEstimateJobs, destinationIata, estimatesTonight, minEstimateByMonth, pickPairsToConfirm, planEstimate, runEstimate, spreadJobs } from '../estimate'
 import type { DatePair, EstimateInsert, EstimateRow, LandingDestinationRow, LandingRouteRow } from '../types'
 
 /**
@@ -172,6 +172,23 @@ describe('buildEstimateJobs', () => {
       '2026-09-17T21:00:00.000Z', '2026-09-17T21:30:00.000Z', '2026-09-17T22:00:00.000Z',
       '2026-09-17T22:30:00.000Z', '2026-09-17T23:00:00.000Z', '2026-09-17T23:30:00.000Z',
     ])
+  })
+
+  it('los meses cercanos van todas las noches y cada mes lejano una de cada tres', () => {
+    const noches = ['2026-10-17', '2026-10-18', '2026-10-19']
+    for (const noche of noches) for (let i = 0; i < 4; i++) expect(estimatesTonight(i, noche)).toBe(true)
+    for (let i = 4; i < 12; i++) expect(noches.filter((n) => estimatesTonight(i, n))).toHaveLength(1)
+    // Una noche salteada no corre la cadencia: el día 20 repite lo del 17.
+    for (let i = 0; i < 12; i++) expect(estimatesTonight(i, '2026-10-20')).toBe(estimatesTonight(i, '2026-10-17'))
+  })
+
+  it('la tanda nocturna de 12 meses son los 4 cercanos más dos o tres lejanos; a mano salen los 12', () => {
+    const cron = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 12, trigger: 'cron' })
+    const lejanos = cron.filter((j) => !['2026-09', '2026-10', '2026-11', '2026-12'].includes((j.payload!.months as string[])[0]))
+    expect(cron.length - lejanos.length).toBe(4)
+    expect([2, 3]).toContain(lejanos.length)
+    const manual = buildEstimateJobs({ routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 12, trigger: 'manual' })
+    expect(manual).toHaveLength(12)
   })
 
   it('60 jobs en 3 h salen uno cada 3 minutos y el último antes de que cierre la ventana', () => {
