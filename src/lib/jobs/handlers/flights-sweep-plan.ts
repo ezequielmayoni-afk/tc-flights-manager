@@ -1,5 +1,6 @@
+import { SWEEP_SKIP_OBSERVED_HOURS } from '@/lib/vuelos-baratos/config'
 import { todayIso } from '@/lib/vuelos-baratos/date-pairs'
-import { cancelStaleFlightJobs, getEstimatesForRoutes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
+import { cancelStaleFlightJobs, getEstimatesForRoutes, getObservedPairsForRoutes, listLandingDestinations, listRoutes } from '@/lib/vuelos-baratos/queries'
 import { buildSweepJobs } from '@/lib/vuelos-baratos/sweep'
 import { FLAGS } from '../flags'
 import { enqueueJob } from '../queue'
@@ -39,7 +40,13 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
       routes.map(r => r.id),
       { fromDate: todayIso(today) }
     )
-    const inputs = buildSweepJobs({ routes, destinations, today, day, trigger: 'cron', estimatesByRoute })
+    // Lo que un viajero ya buscó en siviajo.com (o se vio anoche) no se vuelve a sondear.
+    const observedPairs = await getObservedPairsForRoutes(
+      db,
+      routes.map(r => r.id),
+      { sinceHours: SWEEP_SKIP_OBSERVED_HOURS }
+    )
+    const inputs = buildSweepJobs({ routes, destinations, today, day, trigger: 'cron', estimatesByRoute, observedPairs })
 
     // Un mes puede tener varias tandas: se cuenta el mes, no el job.
     const meses = new Map<string, 'estimate' | 'fixed'>()
@@ -57,11 +64,12 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
 
     await log(
       `Vuelos baratos: ${inputs.length - deduped} sondeos encolados para ${routes.length} rutas` +
-        ` (${monthsFromEstimates} meses con estimación de Sabre, ${monthsFixed} con fechas fijas)` +
+        ` (${monthsFromEstimates} meses con estimación de Sabre, ${monthsFixed} con fechas fijas` +
+        `${observedPairs.size ? `, ${observedPairs.size} pares ya observados en ${SWEEP_SKIP_OBSERVED_HOURS} h no se re-sondean` : ''})` +
         `${deduped ? `, ${deduped} ya estaban en cola` : ''}${cancelledStale ? `, ${cancelledStale} de noches anteriores cancelados` : ''}`,
-      { day, routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed }
+      { day, routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed, observedPairs: observedPairs.size }
     )
 
-    return { ok: true, result: { routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed } }
+    return { ok: true, result: { routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed, observedPairs: observedPairs.size } }
   },
 }

@@ -244,6 +244,49 @@ describe('buildSweepJobs con estimaciones de Sabre', () => {
   })
 })
 
+describe('buildSweepJobs con pares ya observados', () => {
+  const base = { routes: [ruta()], destinations: [destino()], today: HOY, day: DIA, monthsOverride: 2, trigger: 'cron' as const }
+  const clave = (p: DatePair, routeId = 7) => `${routeId}|${p.depart}|${p.return}`
+
+  it('un par fijo que ya vio un viajero no se encola', () => {
+    const fijos = planSweep(ruta(), '2026-10', { today: HOY, day: DIA })
+    const visto = fijos[1]
+    const octubre = buildSweepJobs({ ...base, observedPairs: new Set([clave(visto)]) }).find((j) => j.payload!.month === '2026-10')!
+    const pairs = octubre.payload!.pairs as DatePair[]
+
+    expect(pairs).toHaveLength(fijos.length - 1)
+    expect(pairs).not.toContainEqual(visto)
+  })
+
+  it('también salta los pares que venían de la estimación de Sabre', () => {
+    const estimate: EstimateRow = {
+      id: 1, route_id: 7, depart_date: '2026-10-09', return_date: '2026-10-19', price_pp: 610, currency: 'USD', airline_code: 'AA',
+      stops_out: 0, stops_back: 1, duration_out_minutes: null, duration_back_minutes: null, observed_at: '2026-09-09T00:30:00.000Z',
+    }
+    const octubre = buildSweepJobs({
+      ...base,
+      estimatesByRoute: new Map([[7, [estimate]]]),
+      observedPairs: new Set(['7|2026-10-09|2026-10-19']),
+    }).find((j) => j.payload!.month === '2026-10')!
+
+    expect(octubre.payload!.source).toBe('estimate')
+    expect(octubre.payload!.pairs).not.toContainEqual({ depart: '2026-10-09', return: '2026-10-19', nights: 10 })
+  })
+
+  it('un mes con todos sus pares observados no genera job', () => {
+    const fijos = planSweep(ruta(), '2026-10', { today: HOY, day: DIA })
+    const jobs = buildSweepJobs({ ...base, observedPairs: new Set(fijos.map((p) => clave(p))) })
+    expect(jobs.map((j) => j.payload!.month)).toEqual(['2026-09'])
+  })
+
+  it('las claves de otra ruta no afectan y sin observedPairs todo sigue igual', () => {
+    const fijos = planSweep(ruta(), '2026-10', { today: HOY, day: DIA })
+    const deOtraRuta = new Set(fijos.map((p) => clave(p, 99)))
+    expect(buildSweepJobs({ ...base, observedPairs: deOtraRuta })).toEqual(buildSweepJobs(base))
+    expect(buildSweepJobs({ ...base, observedPairs: new Set() })).toEqual(buildSweepJobs(base))
+  })
+})
+
 describe('probeResultToInsert', () => {
   const pair: DatePair = { depart: '2026-12-02', return: '2026-12-09', nights: 7 }
   const AHORA = new Date('2026-09-09T01:30:00.000Z')
