@@ -564,7 +564,11 @@ export async function countEstimatesSince(db: Db, hours = 24): Promise<number> {
   return count ?? 0
 }
 
-/** Pares (ruta, ida, vuelta) con observación ok en las últimas `sinceHours`, de cualquier fuente. */
+/**
+ * Pares (ruta, ida, vuelta) que un viajero buscó en siviajo.com (`source='tc_search'`) con
+ * resultado ok en las últimas `sinceHours`. Sólo búsquedas reales: las sondas propias se
+ * refrescan todas las noches para que el "actualizado hace X h" de la landing siga en ≤24 h.
+ */
 export async function getObservedPairsForRoutes(db: Db, routeIds: number[], opts: { sinceHours: number }): Promise<Set<string>> {
   const pares = new Set<string>()
   if (routeIds.length === 0) return pares
@@ -573,6 +577,7 @@ export async function getObservedPairsForRoutes(db: Db, routeIds: number[], opts
     .from('flight_price_probes')
     .select('route_id, departure_date, return_date')
     .in('route_id', routeIds)
+    .eq('source', 'tc_search')
     .eq('status', 'ok')
     .gte('probed_at', sinceIso(opts.sinceHours))
     .gte('departure_date', todayIso(new Date()))

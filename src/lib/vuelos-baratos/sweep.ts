@@ -76,9 +76,9 @@ export interface BuildSweepJobsInput {
    */
   estimatesByRoute?: Map<number, EstimateRow[]>
   /**
-   * Pares que ya tienen observación fresca (un viajero los buscó en
-   * siviajo.com o el barrido de anoche los vio), con clave
-   * `${route.id}|${depart}|${return}`. No se vuelven a sondear.
+   * Pares que un viajero buscó hace poco en siviajo.com (sólo búsquedas
+   * reales, no las sondas propias), con clave `${route.id}|${depart}|${return}`.
+   * No se vuelven a sondear.
    */
   observedPairs?: Set<string>
 }
@@ -122,8 +122,10 @@ export function buildSweepJobs(input: BuildSweepJobsInput): EnqueueInput[] {
       })
       const source: 'estimate' | 'fixed' = picks.length > 0 ? 'estimate' : 'fixed'
       const candidatos = source === 'fixed' ? planSweep(route, month, { today: input.today, day: input.day }) : completar(picks, route, month, input)
-      // Un par visto por un viajero hace menos de 24 h ya tiene precio fresco:
-      // sondearlo de nuevo es gastar cotizador. Si el mes queda vacío, no hay job.
+      // Un par que un viajero buscó en siviajo.com hace menos de 24 h ya tiene
+      // precio fresco: sondearlo de nuevo es gastar cotizador. Las sondas
+      // propias no cuentan acá (se refrescan todas las noches). Si el mes
+      // queda vacío, no hay job.
       const observados = input.observedPairs
       const pairs = observados ? candidatos.filter(p => !observados.has(`${route.id}|${p.depart}|${p.return}`)) : candidatos
 

@@ -63,7 +63,7 @@ el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que 
 |---|---|---|---|
 | `flights.estimate.plan` | `default` | — | 21:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × mes, con `run_after` escalonado a lo largo de 3 h (uno cada 3 min con 5 rutas). No llama a Sabre. |
 | `flights.estimate` | `sabre` | 5 | Abre **una** sesión SOAP y pide un BFM por par de fechas (`scan_per_month` por mes); guarda las estimaciones (`runEstimate`). |
-| `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre; salta los pares ya observados en las últimas 24 h. No sondea nada. |
+| `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre; salta los pares que un viajero buscó en siviajo.com en las últimas 24 h. No sondea nada. |
 | `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
 | `gsc.vuelos_sync` | `gsc` | — | Diario. Reenvía el sitemap a Search Console, trae clics/impresiones por página e inspecciona hasta 20 URLs (`runVuelosGscSync`). |
 
@@ -314,10 +314,12 @@ que mide el barrido: se guarda como una observación más y el barrido no gasta 
   del destino). Sin ruta queda en null y sólo cuenta para el panel. La misma búsqueda (ruta, fechas,
   adultos) repetida en menos de `SITE_SEARCH_DEDUPE_MINUTES` es un reload y no se vuelve a guardar. Como
   tienen `route_id` y `status='ok'`, la landing las muestra como cualquier otra observación.
-- **El barrido salta lo visto**: `flights.sweep.plan` lee los pares (ruta, ida, vuelta) con observación
-  `ok` de las últimas `SWEEP_SKIP_OBSERVED_HOURS` (24 h, de cualquier fuente) y `buildSweepJobs` los saca
+- **El barrido salta lo visto**: `flights.sweep.plan` lee los pares (ruta, ida, vuelta) con búsqueda
+  real (`source='tc_search'`) `ok` de las últimas `SWEEP_SKIP_OBSERVED_HOURS` (24 h) y `buildSweepJobs` los saca
   tanto de los pares fijos como de los que eligió Sabre; un mes que queda sin pares no genera job. El
-  log y el resultado del job cuentan `observedPairs`. "Barrer ahora" (manual) no salta nada.
+  log y el resultado del job cuentan `observedPairs`. Las sondas propias no cuentan: se refrescan todas
+  las noches para que el "actualizado hace X h" de la landing siga en ≤24 h. "Barrer ahora" (manual) no
+  salta nada. La salud del barrido del admin (`getSweepHealth`) cuenta sólo `cotizador_probe`.
 - **Panel**: `/producto/vuelos-baratos` → "Búsquedas reales en siviajo.com (7 días)": total, cuántas
   cayeron en rutas del catálogo, una tabla por día y las 10 rutas más buscadas con su mínimo y si están en
   el catálogo. Memo de 5 minutos.

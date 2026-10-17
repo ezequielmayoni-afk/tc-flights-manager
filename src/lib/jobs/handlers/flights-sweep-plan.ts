@@ -40,7 +40,7 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
       routes.map(r => r.id),
       { fromDate: todayIso(today) }
     )
-    // Lo que un viajero ya buscó en siviajo.com (o se vio anoche) no se vuelve a sondear.
+    // Lo que un viajero ya buscó en siviajo.com en las últimas 24 h no se vuelve a sondear.
     const observedPairs = await getObservedPairsForRoutes(
       db,
       routes.map(r => r.id),
@@ -65,7 +65,7 @@ export const flightsSweepPlanHandler: HandlerDefinition = {
     await log(
       `Vuelos baratos: ${inputs.length - deduped} sondeos encolados para ${routes.length} rutas` +
         ` (${monthsFromEstimates} meses con estimación de Sabre, ${monthsFixed} con fechas fijas` +
-        `${observedPairs.size ? `, ${observedPairs.size} pares ya observados en ${SWEEP_SKIP_OBSERVED_HOURS} h no se re-sondean` : ''})` +
+        `${observedPairs.size ? `, ${observedPairs.size} pares buscados en siviajo.com en ${SWEEP_SKIP_OBSERVED_HOURS} h no se re-sondean` : ''})` +
         `${deduped ? `, ${deduped} ya estaban en cola` : ''}${cancelledStale ? `, ${cancelledStale} de noches anteriores cancelados` : ''}`,
       { day, routes: routes.length, jobs: inputs.length, deduped, cancelledStale, monthsFromEstimates, monthsFixed, observedPairs: observedPairs.size }
     )
