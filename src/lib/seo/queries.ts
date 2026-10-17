@@ -2,7 +2,7 @@ import type { Db } from '@/lib/jobs/types'
 import type { SitemapListEntry, UrlStatus } from '@/lib/gsc/types'
 import type { GeoEngine } from './config'
 import type { GeoProbeInsert, GeoPromptRow } from './geo-probe'
-import type { QueryStatRow } from './site-sync'
+import { pickUrlsToInspect, type QueryStatRow } from './site-sync'
 import type { SerpCheckInsert, TrackedKeyword } from './serp-track'
 import { sumByPage, sumByQuery, type PageStat, type QueryStat } from './summary'
 
@@ -167,31 +167,14 @@ export interface UrlsToInspectOptions {
 
 /**
  * Qué URLs inspeccionar hoy: las de más impresiones (28 días) que nunca se
- * inspeccionaron o cuya inspección tiene más de `staleDays`. Así las fichas y
- * temáticas que importan se revisan cada ~2 semanas y las demás, cuando toca.
+ * inspeccionaron o cuya inspección tiene más de `staleDays`; la elección
+ * (normalización de fragmentos, dedupe, orden) vive en `pickUrlsToInspect`.
  */
 export async function urlsToInspect(db: Db, opts: UrlsToInspectOptions): Promise<string[]> {
   const hosts = opts.hosts ?? ['www.siviajo.com', 'siviajo.com', 'blog.siviajo.com']
   const pages = sumByPage(await readPageStats(db, opts.site, 28))
-    .filter(p => {
-      try {
-        return hosts.includes(new URL(p.page).hostname.toLowerCase())
-      } catch {
-        return false
-      }
-    })
-    .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks)
-    .slice(0, 400)
-
   const estados = new Map((await readUrlStatuses(db, opts.site)).map(u => [u.url, u.inspected_at]))
-  const limite = Date.now() - opts.staleDays * 86_400_000
-  return pages
-    .filter(p => {
-      const at = estados.get(p.page)
-      return !at || Date.parse(at) < limite
-    })
-    .slice(0, opts.limit)
-    .map(p => p.page)
+  return pickUrlsToInspect(pages, estados, { limit: opts.limit, staleDays: opts.staleDays, hosts })
 }
 
 export async function upsertUrlStatusRow(db: Db, site: string, row: UrlStatus): Promise<void> {

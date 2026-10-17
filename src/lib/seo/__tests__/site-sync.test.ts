@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { GscBudgetExhausted, type AnalyticsQuery, type AnalyticsRow, type GscClient, type SitemapListEntry, type UrlStatus } from '@/lib/gsc/types'
-import { INSPECT_PER_RUN, PERFORMANCE_BACKFILL_DAYS, PERFORMANCE_INCREMENTAL_DAYS, ROWS_PER_CALL, runSiteGscSync, type SiteSyncDeps } from '../site-sync'
+import { INSPECT_PER_RUN, PERFORMANCE_BACKFILL_DAYS, PERFORMANCE_INCREMENTAL_DAYS, ROWS_PER_CALL, pickUrlsToInspect, runSiteGscSync, type SiteSyncDeps } from '../site-sync'
 
 const HOY = new Date(Date.UTC(2026, 9, 17, 21, 0)) // 17 de octubre de 2026
 
@@ -171,5 +171,43 @@ describe('runSiteGscSync', () => {
     const { d } = deps(gsc, { urlsToInspect: async () => Array.from({ length: 60 }, (_, i) => `https://www.siviajo.com/u/${i}`) })
     const s = await runSiteGscSync(d)
     expect(s.inspected).toBe(INSPECT_PER_RUN)
+  })
+})
+
+describe('pickUrlsToInspect', () => {
+  const hosts = ['www.siviajo.com', 'blog.siviajo.com']
+  it('junta los fragmentos en la página real, descarta http:// y otros hosts, y ordena por impresiones', () => {
+    const urls = pickUrlsToInspect(
+      [
+        { page: 'https://blog.siviajo.com/post/#seccion-1', impressions: 500, clicks: 1 },
+        { page: 'https://blog.siviajo.com/post/#seccion-2', impressions: 400, clicks: 1 },
+        { page: 'https://blog.siviajo.com/post/', impressions: 300, clicks: 10 },
+        { page: 'https://www.siviajo.com/es/idea/1/x', impressions: 1000, clicks: 50 },
+        { page: 'http://www.siviajo.com/', impressions: 5000, clicks: 100 },
+        { page: 'https://sports.siviajo.com/', impressions: 9000, clicks: 1 },
+        { page: 'basura', impressions: 1, clicks: 0 },
+      ],
+      new Map(),
+      { limit: 10, staleDays: 14, hosts, now: HOY }
+    )
+    expect(urls).toEqual(['https://blog.siviajo.com/post/', 'https://www.siviajo.com/es/idea/1/x'])
+  })
+
+  it('salta las inspeccionadas hace poco y respeta el límite', () => {
+    const reciente = new Date(HOY.getTime() - 2 * 86_400_000).toISOString()
+    const vieja = new Date(HOY.getTime() - 20 * 86_400_000).toISOString()
+    const urls = pickUrlsToInspect(
+      [
+        { page: 'https://www.siviajo.com/a', impressions: 300, clicks: 0 },
+        { page: 'https://www.siviajo.com/b', impressions: 200, clicks: 0 },
+        { page: 'https://www.siviajo.com/c', impressions: 100, clicks: 0 },
+      ],
+      new Map([
+        ['https://www.siviajo.com/a', reciente],
+        ['https://www.siviajo.com/b', vieja],
+      ]),
+      { limit: 1, staleDays: 14, hosts, now: HOY }
+    )
+    expect(urls).toEqual(['https://www.siviajo.com/b'])
   })
 })

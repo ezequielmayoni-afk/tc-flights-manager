@@ -30,6 +30,56 @@ export const MAX_PAGES_PER_QUERY = 6
 /** Inspecciones por corrida: 25 deja margen para el sync de vuelos y una corrida manual. */
 export const INSPECT_PER_RUN = 25
 
+export interface InspectCandidate {
+  page: string
+  impressions: number
+  clicks: number
+}
+
+export interface PickUrlsOptions {
+  limit: number
+  /** Una URL inspeccionada hace menos de esto no se vuelve a pedir. */
+  staleDays: number
+  /** Hosts que entran en la rotación. */
+  hosts: string[]
+  now?: Date
+}
+
+/**
+ * Elige qué URLs inspeccionar: las de más impresiones que nunca se
+ * inspeccionaron o cuya inspección venció. Search Console lista aparte las
+ * URLs con `#fragmento` (los enlaces de salto de un post) y las versiones
+ * `http://`: se normalizan a la página real y se dedupean, porque la
+ * inspección es por página y la cuota son 100 llamadas por día.
+ */
+export function pickUrlsToInspect(pages: InspectCandidate[], inspectedAt: Map<string, string>, opts: PickUrlsOptions): string[] {
+  const limite = (opts.now ?? new Date()).getTime() - opts.staleDays * 86_400_000
+  const agregado = new Map<string, { impressions: number; clicks: number }>()
+  for (const p of pages) {
+    let u: URL
+    try {
+      u = new URL(p.page)
+    } catch {
+      continue
+    }
+    if (u.protocol !== 'https:' || !opts.hosts.includes(u.hostname.toLowerCase())) continue
+    u.hash = ''
+    const page = u.toString()
+    const acc = agregado.get(page) ?? { impressions: 0, clicks: 0 }
+    acc.impressions += p.impressions
+    acc.clicks += p.clicks
+    agregado.set(page, acc)
+  }
+  return [...agregado.entries()]
+    .sort((a, b) => b[1].impressions - a[1].impressions || b[1].clicks - a[1].clicks)
+    .map(([page]) => page)
+    .filter(page => {
+      const at = inspectedAt.get(page)
+      return !at || Date.parse(at) < limite
+    })
+    .slice(0, opts.limit)
+}
+
 export interface QueryStatRow {
   date: string
   query: string
