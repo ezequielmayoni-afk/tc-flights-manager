@@ -2,6 +2,8 @@ import { ApiError } from '@/lib/api/errors'
 import { cancelJob } from '@/lib/jobs/queue'
 import type { Db, JobRow } from '@/lib/jobs/types'
 import { ESTIMATE_WINDOW_HOURS, OBSERVATION_WINDOW_HOURS } from './config'
+import { addDays, todayIso } from './date-pairs'
+import { aggregateSiteSearchStats, type SiteSearch, type SiteSearchStatRow, type SiteSearchStats } from './site-search'
 import type { EstimateInsert, EstimateRow, LandingDestinationRow, LandingRouteRow, ProbeRow } from './types'
 
 /**
@@ -51,6 +53,8 @@ export type ProbeInsert = Omit<ProbeRow, 'id' | 'probed_at'> & {
   /** Columnas del barrido que la landing no lee pero conviene guardar. */
   elapsed_ms?: number | null
   error?: string | null
+  /** Lo que no tiene columna propia (las búsquedas de siviajo.com guardan cuántas tarjetas vieron). */
+  raw?: Record<string, unknown> | null
 }
 
 /**
@@ -556,4 +560,83 @@ export async function countEstimatesSince(db: Db, hours = 24): Promise<number> {
     .gte('observed_at', sinceIso(hours))
   if (error) throw new Error(`No se pudieron contar las estimaciones: ${error.message}`)
   return count ?? 0
+}
+
+/** Pares (ruta, ida, vuelta) con observación ok en las últimas `sinceHours`, de cualquier fuente. */
+export async function getObservedPairsForRoutes(db: Db, routeIds: number[], opts: { sinceHours: number }): Promise<Set<string>> {
+  const pares = new Set<string>()
+  if (routeIds.length === 0) return pares
+
+  const { data, error } = await db
+    .from('flight_price_probes')
+    .select('route_id, departure_date, return_date')
+    .in('route_id', routeIds)
+    .eq('status', 'ok')
+    .gte('probed_at', sinceIso(opts.sinceHours))
+    .gte('departure_date', todayIso(new Date()))
+    .limit(MAX_PROBE_ROWS_MULTI)
+  if (error) throw new Error(`No se pudieron leer los pares ya observados: ${error.message}`)
+
+  for (const raw of (data ?? []) as unknown as Array<Record<string, unknown>>) {
+    if (raw.route_id === null || raw.return_date === null) continue
+    pares.add(`${raw.route_id}|${raw.departure_date}|${raw.return_date}`)
+  }
+  return pares
+}
+
+/** ¿Ya entró la misma búsqueda hace poco? (reload o doble beacon). */
+export async function hasRecentSiteSearch(db: Db, s: SiteSearch, sinceMinutes: number): Promise<boolean> {
+  const { data, error } = await db
+    .from('flight_price_probes')
+    .select('id')
+    .eq('source', 'tc_search')
+    .eq('origin', s.origin)
+    .eq('destination_code', s.destinationCode)
+    .eq('departure_date', s.depart)
+    .eq('return_date', s.return)
+    .eq('adults', s.adults)
+    .gte('probed_at', new Date(Date.now() - sinceMinutes * 60_000).toISOString())
+    .limit(1)
+  if (error) throw new Error(`No se pudo revisar si la búsqueda ya entró: ${error.message}`)
+  return (data ?? []).length > 0
+}
+
+/**
+ * Mapa `${origin}|${destinationCode}` → ruta (activas e inactivas) para enganchar el route_id.
+ *
+ * La clave va con el `destination_code` de la ruta y, si difiere, también con
+ * el `tc_code` de su destino: el beacon trae el código de Travel Compositor.
+ */
+export async function getRoutesByCodes(db: Db): Promise<Map<string, LandingRouteRow>> {
+  const [routes, destinations] = await Promise.all([listRoutes(db), listLandingDestinations(db)])
+  const tcPorCodigo = new Map(destinations.map(d => [d.code, d.tc_code]))
+  const mapa = new Map<string, LandingRouteRow>()
+  for (const route of routes) {
+    mapa.set(`${route.origin_tc_code}|${route.destination_code}`, route)
+    const tc = tcPorCodigo.get(route.destination_code)
+    const claveTc = tc ? `${route.origin_tc_code}|${tc}` : null
+    if (claveTc && !mapa.has(claveTc)) mapa.set(claveTc, route)
+  }
+  return mapa
+}
+
+export type { SiteSearchStats } from './site-search'
+
+/** Un mes de búsquedas reales entra de sobra; el panel lee 7 días. */
+const MAX_SITE_SEARCH_ROWS = 20_000
+
+/** Resumen de los últimos `days` días de `source='tc_search'` (agrega en memoria; tope 20.000 filas). */
+export async function getSiteSearchStats(db: Db, opts: { days: number }): Promise<SiteSearchStats> {
+  const now = new Date()
+  // Desde el arranque del primer día UTC: así el primer día del panel no queda cortado.
+  const desde = `${addDays(todayIso(now), -(Math.max(1, opts.days) - 1))}T00:00:00.000Z`
+  const { data, error } = await db
+    .from('flight_price_probes')
+    .select('probed_at, origin, destination, destination_code, route_id, price_per_pax, status')
+    .eq('source', 'tc_search')
+    .gte('probed_at', desde)
+    .order('probed_at', { ascending: false })
+    .limit(MAX_SITE_SEARCH_ROWS)
+  if (error) throw new Error(`No se pudieron leer las búsquedas de siviajo.com: ${error.message}`)
+  return aggregateSiteSearchStats((data ?? []) as unknown as SiteSearchStatRow[], opts.days, now)
 }

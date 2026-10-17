@@ -19,7 +19,7 @@ const PUBLIC_PREFIXES = ['/vuelos-baratos', '/robots.txt', '/sitemap.xml']
  * `track` es el beacon de los eventos de la landing: lo manda el navegador de
  * un visitante anónimo con `sendBeacon`, que no lleva cookies de sesión.
  */
-const PUBLIC_API_PATHS = ['/api/vuelos-baratos/cities', '/api/vuelos-baratos/track']
+const PUBLIC_API_PATHS = ['/api/vuelos-baratos/cities', '/api/vuelos-baratos/track', '/api/vuelos-baratos/site-search']
 
 // Routes that require admin role (admin or marketing)
 const ADMIN_ROUTES = ['/users']
