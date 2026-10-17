@@ -9,7 +9,7 @@ import { ArrowLeft, Check, Loader2, Plane, RefreshCw, Send, ShieldCheck, X, Uplo
 import { toast } from 'sonner'
 import { OPTION_STATUS_LABELS, REQUEST_STATUS_LABELS, type CupoRequest, type CupoRequestOption } from '@/lib/cupos/requests'
 
-type Detail = { request: CupoRequest; options: CupoRequestOption[]; waitingHours: number | null; probeJob: { id: number; status: string; last_error: string | null } | null }
+type Detail = { request: CupoRequest; options: CupoRequestOption[]; waitingHours: number | null; probeJob: { id: number; status: string; last_error: string | null } | null; recipients: Array<{ id: number; airline: string; name: string | null; email: string }> }
 
 const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short', year: '2-digit' })
 const fmtMonth = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
@@ -72,6 +72,8 @@ export function CupoRequestDetail({ id }: { id: number }) {
         {r.sent_at && <span>Enviado {new Date(r.sent_at).toLocaleString('es-AR')}{r.response_deadline_at ? ` · plazo ${new Date(r.response_deadline_at).toLocaleString('es-AR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
         {d.waitingHours !== null && <span className={r.answered_at ? '' : 'text-amber-700'}>{r.answered_at ? `Aéreos respondió en ${Math.round(d.waitingHours)} h` : `${Math.round(d.waitingHours)} h esperando a aéreos`}</span>}
         {r.confirmed_at && <span>Confirmado {new Date(r.confirmed_at).toLocaleString('es-AR')} por {r.confirmed_by}</span>}
+        {(r.sent_to?.length ? r.sent_to : d.recipients.map(x => x.email)).length > 0 && <span title="Contactos de aerolínea a los que va (o fue) el pedido">✉ {r.sent_to?.length ? 'Enviado a' : 'Iría a'}: {(r.sent_to?.length ? r.sent_to : d.recipients.map(x => `${x.airline} ${x.email}`)).join(', ')}</span>}
+        {!r.sent_to?.length && d.recipients.length === 0 && <Link href="/flights/pedidos/contactos" className="text-amber-700 hover:underline">Sin contactos de aerolínea cargados</Link>}
         <span className="flex-1" />
         {['draft', 'ready'].includes(r.status) && <Button size="sm" variant="outline" onClick={() => call('probe', `/api/cupos/requests/${id}/probe`, 'POST', undefined, 'Sondeo en cola')} disabled={busy !== null}><RefreshCw className="h-3.5 w-3.5 mr-1" />{options.length ? 'Volver a sondear' : 'Armar tiradas'}</Button>}
         {canSend && <Button size="sm" onClick={() => { if (window.confirm(`¿Mandar ${options.filter(o => o.status === 'probed').length} tiradas a aéreos por Slack?`)) call('send', `/api/cupos/requests/${id}/send`, 'POST', undefined, 'Pedido enviado a aéreos') }} disabled={busy !== null}><Send className="h-3.5 w-3.5 mr-1" />Enviar a aéreos</Button>}

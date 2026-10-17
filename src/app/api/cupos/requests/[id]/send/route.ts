@@ -5,6 +5,7 @@ import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadRequest } from '@/lib/cupos/requests'
 import { buildCupoRequestMessage, sendSlackMessage } from '@/lib/slack/client'
+import { loadAirlineContacts, loadCupoMailSettings, recipientsFor } from '@/lib/cupos/contacts'
 
 export const dynamic = 'force-dynamic'
 const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
@@ -35,10 +36,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       slackTs = r.ts ?? slackTs
       slackNote = r.ok ? `publicado en ${settings.slack_channel_aereos || '#aereos'}` : `Slack falló: ${r.error}`
     }
+    const mail = await loadCupoMailSettings(db)
+    const recipients = recipientsFor(await loadAirlineContacts(db, { activeOnly: true }), toSend)
+    const sentTo = recipients.map(c => c.email)
+    const mailNote = mail.enabled ? (mail.from ? `mail pendiente del agente a ${sentTo.join(', ') || 'nadie (sin contactos)'}` : 'mail habilitado pero sin casilla configurada') : `mail apagado (destinatarios previstos: ${sentTo.join(', ') || 'ninguno'})`
     await db.from('cupo_request_options').update({ status: 'requested', updated_at: now.toISOString() }).eq('request_id', id).eq('status', 'probed')
-    await db.from('cupo_requests').update({ status: 'sent', sent_at: request.sent_at ?? now.toISOString(), sent_by: request.sent_by ?? actor, response_deadline_at: deadline.toISOString(), slack_message_ts: slackTs, updated_at: now.toISOString() }).eq('id', id)
-    await logEvent(db, { source: 'cupos', action: 'cupo_request.sent', message: `Pedido #${id} enviado a aéreos (${toSend.length} tiradas, plazo ${slaHours} h, ${slackNote})`, entityType: 'cupo_request', entityId: id, details: { slaHours, deadline: deadline.toISOString(), slackNote } }, user ? { id: user.id, email: user.email } : null)
-    return NextResponse.json({ ok: true, deadline: deadline.toISOString(), slack: slackNote })
+    await db.from('cupo_requests').update({ status: 'sent', sent_at: request.sent_at ?? now.toISOString(), sent_by: request.sent_by ?? actor, response_deadline_at: deadline.toISOString(), slack_message_ts: slackTs, sent_to: sentTo, updated_at: now.toISOString() }).eq('id', id)
+    await logEvent(db, { source: 'cupos', action: 'cupo_request.sent', message: `Pedido #${id} enviado a aéreos (${toSend.length} tiradas, plazo ${slaHours} h, ${slackNote}; ${mailNote})`, entityType: 'cupo_request', entityId: id, details: { slaHours, deadline: deadline.toISOString(), slackNote, mailNote, sentTo } }, user ? { id: user.id, email: user.email } : null)
+    return NextResponse.json({ ...{ ok: true, deadline: deadline.toISOString(), slack: slackNote, mail: mailNote, sentTo } })
   } catch (error) {
     return errorResponse(error)
   }

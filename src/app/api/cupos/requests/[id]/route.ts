@@ -4,6 +4,7 @@ import { checkSectionAccess } from '@/lib/auth'
 import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadRequest, waitingHours } from '@/lib/cupos/requests'
+import { loadAirlineContacts, recipientsFor } from '@/lib/cupos/contacts'
 
 export const dynamic = 'force-dynamic'
 type Params = { params: Promise<{ id: string }> }
@@ -17,7 +18,9 @@ export async function GET(_req: NextRequest, { params }: Params) {
     const loaded = await loadRequest(db, id)
     if (!loaded) throw API_ERRORS.NOT_FOUND(`El pedido ${id}`)
     const { data: job } = loaded.request.probe_job_id ? await db.from('hub_jobs').select('id, status, last_error, finished_at').eq('id', loaded.request.probe_job_id).maybeSingle() : { data: null }
-    return NextResponse.json({ ...loaded, waitingHours: waitingHours(loaded.request), probeJob: job })
+    const contacts = await loadAirlineContacts(db, { activeOnly: true })
+    const recipients = recipientsFor(contacts, loaded.options).map(c => ({ id: c.id, airline: c.airline_name, name: c.contact_name, email: c.email }))
+    return NextResponse.json({ ...loaded, waitingHours: waitingHours(loaded.request), probeJob: job, recipients })
   } catch (error) {
     return errorResponse(error)
   }

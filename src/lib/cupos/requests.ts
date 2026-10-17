@@ -21,7 +21,7 @@ export interface CupoRequest {
   months: string[]; weekdays: number[]; nights: number; seats_requested: number; adults: number; children_ages: number[]; airline_pref: string[]; direct_only: boolean; max_options: number; notes: string | null
   requested_by: string | null; probe_job_id: number | null; probe_error: string | null; last_probe_at: string | null
   sent_at: string | null; sent_by: string | null; response_deadline_at: string | null; answered_at: string | null; answered_by: string | null; response_hours: number | null
-  confirmed_at: string | null; confirmed_by: string | null; slack_message_ts: string | null; created_at: string; updated_at: string
+  confirmed_at: string | null; confirmed_by: string | null; slack_message_ts: string | null; sent_to: string[]; created_at: string; updated_at: string
 }
 
 export interface CupoRequestOption {
