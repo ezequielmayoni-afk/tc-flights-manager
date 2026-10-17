@@ -8,11 +8,30 @@ import { Input } from '@/components/ui/input'
 import { ArrowLeft, Check, Loader2, Plane, RefreshCw, Send, ShieldCheck, X, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import { OPTION_STATUS_LABELS, REQUEST_STATUS_LABELS, type CupoRequest, type CupoRequestOption } from '@/lib/cupos/requests'
+import type { ReplyProposal, ParsedTerms } from '@/lib/cupos/reply-extract'
+import { ReplyReader } from './ReplyReader'
 
 type Detail = { request: CupoRequest; options: CupoRequestOption[]; waitingHours: number | null; probeJob: { id: number; status: string; last_error: string | null } | null; recipients: Array<{ id: number; airline: string; name: string | null; email: string }> }
 
 const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: 'short', year: '2-digit' })
 const fmtMonth = (m: string) => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+const fmtShort = (d: string | null | undefined) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }) : null)
+/** Resumen de condiciones de una tirada: depósito, vencimientos, release, lista de nombres. */
+function termsLine(o: CupoRequestOption): string {
+  const parts: string[] = []
+  if (o.seats_offered !== null && o.seats_offered !== undefined) parts.push(`${o.seats_offered} lugares ofrecidos`)
+  if (o.deposit_pct) parts.push(`depósito ${o.deposit_pct}%${o.deposit_due_date ? ` al ${fmtShort(o.deposit_due_date)}` : ''}`)
+  else if (o.deposit_amount_pp) parts.push(`depósito USD ${o.deposit_amount_pp} pp${o.deposit_due_date ? ` al ${fmtShort(o.deposit_due_date)}` : ''}`)
+  else if (o.deposit_due_date) parts.push(`depósito al ${fmtShort(o.deposit_due_date)}`)
+  if (o.balance_due_date) parts.push(`saldo al ${fmtShort(o.balance_due_date)}`)
+  if (o.release_date) parts.push(`release ${fmtShort(o.release_date)}`)
+  if (o.name_list_due_date) parts.push(`nombres al ${fmtShort(o.name_list_due_date)}`)
+  if (o.valid_until) parts.push(`vale hasta ${fmtShort(o.valid_until)}`)
+  if (o.cancellation_terms) parts.push(`cancelación: ${o.cancellation_terms}`)
+  if (o.payment_conditions) parts.push(o.payment_conditions)
+  return parts.join(' · ')
+}
+void (null as unknown as ReplyProposal | ParsedTerms | null)
 const OPT_CLS: Record<string, string> = { probed: 'bg-slate-100 text-slate-700', requested: 'bg-amber-100 text-amber-700', quoted: 'bg-blue-100 text-blue-700', accepted: 'bg-green-100 text-green-700', rejected: 'bg-red-100 text-red-700', loaded: 'bg-emerald-100 text-emerald-800' }
 
 /** Detalle de un pedido: tiradas con precio de sistema, carga del precio de aéreos, delta, aceptar/rechazar, confirmar y cargar el cupo. */
@@ -111,7 +130,7 @@ export function CupoRequestDetail({ id }: { id: number }) {
                     ) : <span className="tabular-nums">{o.airline_price_pp !== null ? `USD ${Math.round(o.airline_price_pp)}` : '–'}</span>}
                   </td>
                   <td className={`px-3 py-2 text-right tabular-nums font-medium ${delta === null ? 'text-muted-foreground' : delta <= 0 ? 'text-green-700' : delta <= 10 ? 'text-amber-700' : 'text-red-600'}`}>{delta === null ? '–' : `${delta > 0 ? '+' : ''}${delta}%`}</td>
-                  <td className="px-3 py-2"><Badge className={`${OPT_CLS[o.status]} text-[10px]`}>{OPTION_STATUS_LABELS[o.status]}</Badge>{o.decision_reason && <div className="text-[11px] text-muted-foreground">{o.decision_reason}</div>}</td>
+                  <td className="px-3 py-2"><Badge className={`${OPT_CLS[o.status]} text-[10px]`}>{OPTION_STATUS_LABELS[o.status]}</Badge>{o.decision_reason && <div className="text-[11px] text-muted-foreground">{o.decision_reason}</div>}{termsLine(o) && <div className="text-[11px] text-muted-foreground mt-0.5" title="Condiciones informadas por aéreos">{termsLine(o)}</div>}</td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {o.status === 'quoted' && <><Button size="sm" variant="outline" className="h-7 mr-1" onClick={() => call(`acc-${o.id}`, `/api/cupos/requests/${id}/options/${o.id}`, 'PATCH', { decision: 'accept' }, 'Tirada aceptada')} disabled={busy !== null}><Check className="h-3.5 w-3.5" /></Button><Button size="sm" variant="ghost" className="h-7" onClick={() => { const reason = window.prompt('Motivo del rechazo (opcional)') ?? null; call(`rej-${o.id}`, `/api/cupos/requests/${id}/options/${o.id}`, 'PATCH', { decision: 'reject', reason }, 'Tirada rechazada') }} disabled={busy !== null}><X className="h-3.5 w-3.5" /></Button></>}
                     {(o.status === 'accepted' || o.status === 'rejected') && r.status !== 'loaded' && <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => call(`re-${o.id}`, `/api/cupos/requests/${id}/options/${o.id}`, 'PATCH', { decision: 'reopen' })} disabled={busy !== null}>Deshacer</Button>}
@@ -124,6 +143,7 @@ export function CupoRequestDetail({ id }: { id: number }) {
           </tbody>
         </table>
       </div>
+      {canAnswer && <ReplyReader requestId={id} onApplied={load} />}
       {r.notes && <p className="text-sm text-muted-foreground">📝 {r.notes}</p>}
       <p className="text-xs text-muted-foreground">Precio de sistema: la tarifa de línea más barata que el cotizador encontró para esa fecha (ida y vuelta, por persona). Δ = cuánto más (o menos) pide aéreos respecto del sistema: negativo es buen negocio.</p>
     </div>
