@@ -20,6 +20,7 @@ import { packageApplyAlternativeHandler } from './package-apply-alternative'
 import { marketingEvaluateHandler } from './marketing-evaluate'
 import { marketingActivateHandler, marketingLaunchHandler } from './marketing-launch'
 import { cupoProbeHandler } from './cupo-probe'
+import { crmRollupHandler } from './crm-rollup'
 import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
 import { flightsSweepPlanHandler } from './flights-sweep-plan'
@@ -27,6 +28,9 @@ import { flightsSweepHandler } from './flights-sweep'
 import { flightsEstimatePlanHandler } from './flights-estimate-plan'
 import { flightsEstimateHandler } from './flights-estimate'
 import { gscVuelosSyncHandler } from './gsc-vuelos-sync'
+import { gscSiteSyncHandler } from './gsc-site-sync'
+import { serpTrackHandler } from './serp-track'
+import { geoProbeHandler } from './geo-probe'
 
 /**
  * Registro de handlers: un archivo por `kind`. Las fases del loop van sumando
@@ -58,6 +62,7 @@ const HANDLERS: HandlerDefinition[] = [
   marketingLaunchHandler,
   marketingActivateHandler,
   cupoProbeHandler,
+  crmRollupHandler,
   ideaQuoteHandler,
   profileAuditHandler,
   // Vuelos baratos (vuelos.siviajo.com)
@@ -66,6 +71,10 @@ const HANDLERS: HandlerDefinition[] = [
   flightsEstimatePlanHandler,
   flightsEstimateHandler,
   gscVuelosSyncHandler,
+  // Fase 14 — SEO + GEO (posicionamiento)
+  gscSiteSyncHandler,
+  serpTrackHandler,
+  geoProbeHandler,
 ]
 
 const byKind = new Map(HANDLERS.map(h => [h.kind, h]))

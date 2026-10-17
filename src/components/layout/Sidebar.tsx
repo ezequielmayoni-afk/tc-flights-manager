@@ -335,6 +335,20 @@ export function Sidebar() {
             Rendimiento
           </Link>
         )}
+        {canAccessSection('rendimiento') && (
+          <Link
+            href="/rendimiento/paquetes"
+            className={cn(
+              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+              pathname === '/rendimiento/paquetes'
+                ? 'bg-[#1DE9B6] text-[#1A237E] font-semibold'
+                : 'text-white/70 hover:bg-[#283593] hover:text-white'
+            )}
+          >
+            <BarChart3 className="h-5 w-5" />
+            Paquetes × ventas
+          </Link>
+        )}
 
         {/* Admin Section */}
         {isAdmin && (

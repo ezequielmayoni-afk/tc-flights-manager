@@ -19,13 +19,13 @@ la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (en
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | 🟡 Desplegada 2026-10-14, sin primer lanzamiento real | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
 | 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | 🟡 Desplegada 2026-10-17 (núcleo; falta riesgo, tareas y SLA) | 2, 3 |
-| 8 | Tablero paquete × CRM: mensajes, ganadas, perdidas, CPA | ⏳ | 2 |
+| 8 | Tablero paquete × CRM: mensajes, ganadas, perdidas, CPA | 🟡 Desplegada 2026-10-17 (rollup nocturno + tablero) | 2 |
 | 9 | Autopilot de anuncios: reglas, fatiga → diseño, re-subida | ⏳ | 5, 8 |
 | 10 | Recotización con fecha alternativa | 🟡 Parcial: monitoreo por cotizador (2026-09-10), fecha alternativa + bot para cupos agotados (2026-09-11) | 6 |
 | 11 | Instagram: promocionar posts existentes (opcional) | ⏳ | 5 |
 | 12 | Catálogo de paquetes para retargeting en Meta | ⏳ | 5 |
 | 13 | Competencia: Ad Library de Meta y anuncios de Google | ⏳ | 1 |
-| 14 | Search Console: indexar paquetes y hoteles, desindexar bajas | ⏳ | 2 |
+| 14 | SEO + GEO: Search Console de todo el dominio, posiciones en Google AR, sondas a ChatGPT/Gemini/Claude, tablero `/producto/seo` | 🟡 medición desplegada 2026-10-17; acciones (títulos, temáticas, sitemaps, schema, blog) en `docs/SEO-GEO.md` | 2 |
 | 15 | Cierre: absorber media-os, documentación, panel del loop | ⏳ | todas |
 
 Orden previsto: 0 → 1 → 2 → 3 → 4 → 5 → {6, 8, 12, 13, 14} → {7, 9, 10, 11} → 15.
@@ -235,7 +235,16 @@ estado y fecha, aéreos carga precios en HUB, comparación, confirmación y alta
 plaza. Mide cuánto tarda aéreos. Siempre con clic humano.
 **Necesita**: usuario/rol de aéreos en HUB; canal `#aereos` en Slack.
 
-## Fase 8 — Tablero paquete × CRM · ⏳
+## Fase 8 — Tablero paquete × CRM · 🟡 Desplegada (2026-10-17)
+
+**Qué hay**: rollup nocturno de sólo lectura del CRM (SIV ↔ anuncio ↔ vendedor ↔ oportunidad ↔ CAPI) persistido en
+HUB y tablero `/rendimiento/paquetes` con filtros de fecha, vendedor y equipo. Primera corrida: 1.730 mensajes SIV en 7
+días, 1.662 contactos, 92 % con anuncio atribuido. Detalle en `docs/OPERACION-VPS.md`.
+
+**Falta**: señal `crm_wa` para Tendencias, tiempo de primera respuesta, validación de 5 paquetes contra el CRM con
+Ezequiel.
+
+### Plan original
 
 Filas = paquete; columnas = mensajes, perdidas, ganadas, eventos CAPI, gasto, costo por conversación,
 CPA real. Filtros obligatorios de fecha y agente/equipo. Rollup nocturno de sólo lectura sobre el RDS
@@ -276,11 +285,19 @@ Qué destinos, precios y ángulos empujan Despegar, Almundo, Avantrip y las mayo
 corre cada anuncio. Google vía Transparency Center (oficial). Meta sólo con proveedor pago.
 **Necesita**: lista definitiva de competidores con IDs de anunciante; decidir proveedor para Meta.
 
-## Fase 14 — Search Console · ⏳
+## Fase 14 — SEO + GEO (posicionamiento) · 🟡
 
-Sitemaps de paquetes y hoteles servidos desde HUB y enviados por API; inspección de URLs para confirmar
-indexación y retiro de las bajas; auditoría de títulos; clics e impresiones por paquete y hotel.
-La Service Account de HUB ya tiene acceso a la propiedad.
+Medición desplegada el 2026-10-17 (migración `20261018_seo_geo.sql`): jobs `gsc.site_sync` (diario:
+páginas, consultas marca/no-marca, sitemaps, 25 inspecciones), `serp.track` (lunes: 45 consultas en
+Google AR por SerpAPI, posición, AI Overview, pack local, PAA) y `geo.probe` (lunes: 12 preguntas a
+ChatGPT, Gemini y Claude con búsqueda web; si nombran o citan a Sí, Viajo). Tablero `/producto/seo`.
+Kill switch nuevo `automation.geo_probes`; presupuesto `llm_probe` (60/día).
+Diagnóstico, taxonomía de temáticas, fórmula de títulos (`docs/seo/titulos-propuestos-2026-10-17.csv`)
+y plan por semanas: `docs/SEO-GEO.md`.
+**Pendiente**: sitemap de paquetes/temáticas servido por HUB y enviado por API (y borrar los viejos),
+sitemap del blog en la ruta correcta, JSON-LD por GTM, página de entidad, pipeline del blog,
+títulos/temáticas por API (`tc.write`), meta tags y temáticas en backoffice (necesita OTP o usuario
+sin 2FA), `noindex` en hub.siviajo.com.
 
 ## Fase 15 — Cierre · ⏳
 

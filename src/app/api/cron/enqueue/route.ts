@@ -58,11 +58,15 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         // Sin ventana horaria (lane `gsc`), gasta como mucho 23 de las 100
         // llamadas del día.
         { kind: 'gsc.vuelos_sync', payload: { at: day }, dedupeKey: `gsc.vuelos_sync:${day}` },
+        // Fase 14: Search Console de todo el dominio (páginas, consultas,
+        // sitemaps, ~25 inspecciones). Mismo lane y cuota que el de vuelos.
+        { kind: 'gsc.site_sync', payload: { at: day }, dedupeKey: `gsc.site_sync:${day}` },
       ]
     }
     case 'nightly':
       return [
-        // Fase 8: crm.rollup (lane crm, ventana 05:00–09:00 UTC)
+        // Fase 8: rollup del CRM (lane crm, ventana 05:00–09:00 UTC): últimos 7 días
+        { kind: 'crm.rollup', payload: { at: day, days: 7 }, dedupeKey: `crm.rollup:${day}` },
         { kind: 'tc.reconcile', payload: { at: day }, dedupeKey: `tc.reconcile:${day}` },
         // Monitoreo de precio de los paquetes publicados (antes: tc-requote-bot a las 03:00 UTC)
         { kind: 'package.requote.plan', payload: { day }, dedupeKey: `package.requote.plan:${day}` },
@@ -74,6 +78,10 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         { kind: 'trend.run', payload: { trigger: 'cron', week }, dedupeKey: 'trend.run', maxAttempts: 2 },
         { kind: 'demand.signals', payload: { week }, dedupeKey: 'demand.signals' },
         { kind: 'profile.audit', payload: { week }, dedupeKey: `profile.audit:${week}` },
+        // Fase 14: posiciones en Google AR (SerpAPI, ~45 llamadas) y sondas a
+        // ChatGPT/Gemini/Claude (36 preguntas) — los lunes, después de Tendencias.
+        { kind: 'serp.track', payload: { week }, dedupeKey: `serp.track:${week}` },
+        { kind: 'geo.probe', payload: { week }, dedupeKey: `geo.probe:${week}` },
       ]
     }
   }

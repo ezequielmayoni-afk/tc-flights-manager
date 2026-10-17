@@ -284,6 +284,27 @@ activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de 
   días) con aviso a Slack, sección "Pedidos a aéreos" en `/tareas`, vencimientos del SLA en `check-deadlines`, rol
   propio para el departamento de aéreos, precio de mercado por Sabre cuando vuelos-siviajo esté desplegado.
 
+## Tablero paquete × ventas (Fase 8 del loop, desde 2026-10-17)
+
+- Pantalla `/rendimiento/paquetes` (sección `rendimiento`): por paquete (ID SIV) gasto, conversaciones de Meta,
+  contactos que mandaron el código, oportunidades, cotizados, ganadas, perdidas, costo por contacto y por venta,
+  ingresos, margen y ROAS sobre margen. Filtros de fecha obligatorios; vendedor y equipo opcionales (el gasto no se
+  filtra por vendedor). Doble clic: anuncios y vendedores del paquete.
+- Job `crm.rollup` (lane `crm`, ventana 05–09 UTC, flag `automation.crm_reads`; `enqueue?schedule=nightly`): lee el
+  CRM en una transacción READ ONLY (`src/lib/crm/pool.ts`, pool 2, timeout 60 s, siempre tenant + rango):
+  mensajes inbound con `SIV nnnnnnnn` (`searchable_text`) → primer mensaje por contacto y paquete → click de
+  anuncio de `contact_attribution_history` (el último antes del mensaje, hasta 14 días; `metadata.adId`,
+  `ctwaClickId`, `isFirstTouch`) enriquecido con `meta_ads_ads/adsets/campaigns` → vendedor y equipo de
+  `contacts` + `users`/`teams` → oportunidad principal (o la última) con etapa, cierre, valores y margen →
+  eventos CAPI del contacto. Escribe `crm_contact_attributions` (PK contacto + paquete) y agrega por cohorte
+  (fecha del primer SIV) en `package_performance_daily` (total, por vendedor, por equipo). El gasto por anuncio y
+  día sale de `meta_ad_insights` de HUB (fuente única) con `ad_id` real. Reprocesa 7 días; 1.700 mensajes en ~20 s.
+- Credenciales en `/opt/hub/.env.local`: `CRM_PG_HOST/PORT/USER/PASSWORD/DATABASE`, `CRM_TENANT_ID` (copiadas de
+  `~/.config/siviajo/crm-readonly.env` el 2026-10-17). Nunca escribir en el CRM.
+- Depurar: `SELECT * FROM crm_rollup_watermarks;` y `SELECT tc_package_id, count(*), count(ad_id) FROM crm_contact_attributions WHERE siv_first_at > now() - interval '7 days' GROUP BY 1 ORDER BY 2 DESC;`
+- Falta: `demand_signals_weekly.crm_wa` para Tendencias, tiempo de primera respuesta por vendedor, export CSV,
+  PR sugerido al equipo del CRM (insights por anuncio, columna SIV).
+
 ## vuelos.siviajo.com
 
 Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`
