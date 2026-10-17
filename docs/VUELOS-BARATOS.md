@@ -63,7 +63,7 @@ el barrido gasta sus (menos) sondas en los más baratos de ésos. El precio que 
 |---|---|---|---|
 | `flights.estimate.plan` | `default` | — | 21:00 UTC. Cancela las estimaciones que quedaron en cola de noches anteriores y encola un `flights.estimate` por ruta activa × mes, con `run_after` escalonado a lo largo de 3 h (uno cada 3 min con 5 rutas). No llama a Sabre. |
 | `flights.estimate` | `sabre` | 5 | Abre **una** sesión SOAP y pide un BFM por par de fechas (`scan_per_month` por mes); guarda las estimaciones (`runEstimate`). |
-| `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre. No sondea nada. |
+| `flights.sweep.plan` | `default` | — | 01:00 UTC. Arma la cola de la noche: cancela lo que quedó pendiente de noches anteriores (`cancelStaleFlightJobs`, esos precios ya no sirven) y encola un `flights.sweep` por cada ruta activa × mes, con las fechas que eligió Sabre; salta los pares ya observados en las últimas 24 h. No sondea nada. |
 | `flights.sweep` | `cotizador` | 3 (4 los primeros meses) | Sondea una tanda de pares de fechas de una ruta contra el bot y guarda las observaciones (`runSweep`). |
 | `gsc.vuelos_sync` | `gsc` | — | Diario. Reenvía el sitemap a Search Console, trae clics/impresiones por página e inspecciona hasta 20 URLs (`runVuelosGscSync`). |
 
@@ -284,6 +284,44 @@ siviajo.com). La escala plena planificada es de **~2.000 sondas/noche**. Para ll
 a poco (no todas de una), mirar `cotizador_probe` y `sabre` en `provider_budgets` y `external_calls` (tasa
 de error/timeout) antes de sumar la próxima, y preferir subir `scan_per_month` (que sale barato) antes que
 `confirm_per_month` de rutas que ya andan bien.
+
+## Búsquedas reales de siviajo.com
+
+Cada búsqueda de **solo vuelo** que hace un viajero en siviajo.com es una cotización real, del mismo motor
+que mide el barrido: se guarda como una observación más y el barrido no gasta sondas en lo que ya se vio.
+
+- **Qué manda la etiqueta de GTM** (en siviajo.com, página de resultados de "solo vuelo"): un `POST`
+  cross-origin a `https://vuelos.siviajo.com/api/vuelos-baratos/site-search` con
+  `{ v: 1, section, subsection, search: { departureCode, destinationCode, destinationName, startDate,
+  endDate, adults, children, infants }, itinerary: [{ position, type, destinationCode, destinationName,
+  startDate, endDate, nights }], items: [{ id, price, brand, variant, start, end }], url, ts }`. Sólo cuenta
+  `section: 'ONLY_FLIGHT'`; el resto se descarta. En "solo vuelo" TC manda `search.destinationCode` igual al
+  origen: el destino real sale de la primera parada `DESTINATION` del itinerario con `position >= 1`.
+  De las tarjetas sólo valen las `variant: 'RT'` con precio entre 0 y 20.000 (por persona).
+- **Endpoint** (`src/app/api/vuelos-baratos/site-search/route.ts`, público en el middleware): en orden,
+  `Origin` exacto de la allow-list (403), tope por IP (429), tamaño (413), JSON y esquema zod (400). Un
+  beacon válido que no es una búsqueda de ida y vuelta (otra sección, fechas pasadas, sin destino) responde
+  **204** igual: no es error del cliente. El camino feliz responde 204 y escribe en `after()`. `OPTIONS`
+  contesta el preflight (204 con `Access-Control-Allow-Origin` = el origen recibido, o 403). La traducción
+  del beacon es pura y está testeada: `src/lib/vuelos-baratos/site-search.ts`.
+- **Cómo entra a `flight_price_probes`**: `source='tc_search'`, `status` `ok` (con el mínimo en
+  `price_per_pax` y la aerolínea de esa tarjeta) o `empty` (sin tarjetas RT válidas), las 5 tarjetas más
+  baratas en `options` (`{ airline, pricePp, itineraryId }`), `raw = { v, results, url }` y `route_id` si
+  existe una ruta del catálogo con ese origen y destino (activa o no; también se engancha por el `tc_code`
+  del destino). Sin ruta queda en null y sólo cuenta para el panel. La misma búsqueda (ruta, fechas,
+  adultos) repetida en menos de `SITE_SEARCH_DEDUPE_MINUTES` es un reload y no se vuelve a guardar. Como
+  tienen `route_id` y `status='ok'`, la landing las muestra como cualquier otra observación.
+- **El barrido salta lo visto**: `flights.sweep.plan` lee los pares (ruta, ida, vuelta) con observación
+  `ok` de las últimas `SWEEP_SKIP_OBSERVED_HOURS` (24 h, de cualquier fuente) y `buildSweepJobs` los saca
+  tanto de los pares fijos como de los que eligió Sabre; un mes que queda sin pares no genera job. El
+  log y el resultado del job cuentan `observedPairs`. "Barrer ahora" (manual) no salta nada.
+- **Panel**: `/producto/vuelos-baratos` → "Búsquedas reales en siviajo.com (7 días)": total, cuántas
+  cayeron en rutas del catálogo, una tabla por día y las 10 rutas más buscadas con su mínimo y si están en
+  el catálogo. Memo de 5 minutos.
+- **Constantes** (`config.ts`): `SITE_SEARCH_ALLOWED_ORIGINS` (`https://www.siviajo.com`,
+  `https://siviajo.com`), `SITE_SEARCH_MAX_BYTES` (64 KB), `SITE_SEARCH_DEDUPE_MINUTES` (10),
+  `SITE_SEARCH_MAX_OPTIONS` (5), `SITE_SEARCH_RATE` (600 por IP cada 10 minutos, 5.000 IPs en memoria) y
+  `SWEEP_SKIP_OBSERVED_HOURS` (24).
 
 ## Search Console
 
