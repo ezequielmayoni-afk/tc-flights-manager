@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { Fragment, useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import {
   Table,
@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
+import { AlternativeDatePanel } from '@/components/packages/AlternativeDatePanel'
 import { Badge } from '@/components/ui/badge'
 import {
   RefreshCw,
@@ -320,7 +321,8 @@ export function RequoteTable({ packages }: RequoteTableProps) {
               : null
 
             return (
-              <TableRow key={pkg.id}>
+              <Fragment key={pkg.id}>
+              <TableRow>
                 {/* Paquete */}
                 <TableCell>
                   <div className="min-w-0">
@@ -588,6 +590,12 @@ export function RequoteTable({ packages }: RequoteTableProps) {
                   </div>
                 </TableCell>
               </TableRow>
+              <TableRow className="bg-blue-50/30">
+                <TableCell colSpan={14} className="py-2">
+                  <AlternativeDatePanel packageId={pkg.id} trigger="price_increase" compact />
+                </TableCell>
+              </TableRow>
+              </Fragment>
             )
           })}
         </TableBody>

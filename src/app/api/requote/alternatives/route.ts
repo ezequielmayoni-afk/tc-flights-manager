@@ -3,6 +3,7 @@ import { checkSectionAccess, isReadOnlyRole } from '@/lib/auth'
 import { API_ERRORS, errorResponse } from '@/lib/api/errors'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enqueueJob } from '@/lib/jobs/queue'
+import { latestAlternatives } from '@/lib/requote/alternative-view'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
 
 export const dynamic = 'force-dynamic'
@@ -12,6 +13,24 @@ export const dynamic = 'force-dynamic'
  * fecha de la misma temporada para un paquete (cupo agotado → sistema).
  * Encola `package.alternative_date` con prioridad manual; tarda 1 a 3 minutos.
  */
+/** GET /api/requote/alternatives?packageId= — última propuesta del paquete y si hay una búsqueda en cola. */
+export async function GET(request: NextRequest) {
+  const { authorized } = await checkSectionAccess('cupos')
+  if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
+  try {
+    const packageId = Number(request.nextUrl.searchParams.get('packageId'))
+    if (!Number.isInteger(packageId) || packageId <= 0) throw API_ERRORS.BAD_REQUEST('packageId inválido')
+    const db = createAdminClient()
+    const [alts, { data: jobs }] = await Promise.all([
+      latestAlternatives(db, [packageId]),
+      db.from('hub_jobs').select('id').eq('kind', 'package.alternative_date').eq('entity_id', packageId).in('status', ['queued', 'running']).limit(1),
+    ])
+    return NextResponse.json({ alternative: alts.get(packageId) ?? null, searching: (jobs ?? []).length > 0 })
+  } catch (error) {
+    return errorResponse(error)
+  }
+}
+
 export async function POST(request: NextRequest) {
   const { authorized, user } = await checkSectionAccess('cupos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })

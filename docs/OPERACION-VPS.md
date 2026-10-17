@@ -132,6 +132,13 @@ Modo en `automation_modes.marketing_guard` (shadow | semi | auto; se cambia en `
 - Depurar: `SELECT id, tc_package_id, requote_status, requote_price, requote_variance_pct, requote_note, last_requote_at FROM packages WHERE monitor_enabled ORDER BY last_requote_at DESC;`
   y `SELECT * FROM package_requote_logs ORDER BY checked_at DESC LIMIT 20;`.
 
+## Fecha alternativa para paquetes de sistema (desde 2026-10-17)
+
+`package.requote` encola `package.alternative_date` (trigger `price_increase`, dedupe por paquete y día, sólo si no hay
+una propuesta viva de los últimos 7 días) cuando el paquete queda `needs_manual` con variación positiva. La propuesta se
+ve en `/tareas` → Cotización manual (`AlternativeDatePanel`): aprobar → ensayar/aplicar (bot `switch-date.js`) → al
+aplicar, `switchPackageToSystem` relee TC y deja el monitoreo con el precio nuevo.
+
 ## Cupo agotado → aéreo de sistema (desde 2026-09-11)
 
 Cuando un cupo se agota y el paquete tiene que seguir vendiéndose con el mismo ID (indexación en Google,

@@ -7,6 +7,7 @@ import { summarizeQuote } from '@/lib/producto/idea-builder'
 import { evaluateRequote } from '@/lib/requote/evaluate'
 import { buildPackageQuoteRequest, pickMatchingOption, type PackageForRequote } from '@/lib/requote/package-request'
 import { FLAGS } from '../flags'
+import { enqueueJob } from '../queue'
 import type { Db, HandlerDefinition } from '../types'
 
 export interface PackageRow {
@@ -128,6 +129,14 @@ export const packageRequoteHandler: HandlerDefinition = {
     }).eq('id', packageId)
     await db.from('package_requote_logs').insert({ package_id: packageId, previous_price: reference, new_price: newPrice, variance_pct: ev.variancePct, action_taken: ev.action, error_message: ev.action === 'error' ? ev.note : null, source: 'cotizador', quote_run_id: runId })
     await log(`${label}: ${ev.status} · ${ev.note}`, { packageId, runId, newPrice, reference, variancePct: ev.variancePct, hotelMatch: picked.match, direct: summary.direct, airline: summary.airline }, ev.status === 'needs_manual' ? 'warning' : 'info')
+    // Fase 10: si quedó en cotización manual por suba de precio, buscar sola una fecha más barata en la misma temporada (una vez por semana por paquete).
+    if (ev.status === 'needs_manual' && ev.variancePct !== null && ev.variancePct > 0) {
+      const { data: recent } = await db.from('requote_alternatives').select('id').eq('package_id', packageId).in('status', ['proposed', 'approved', 'applying']).gte('created_at', new Date(Date.now() - 7 * 86400000).toISOString()).limit(1)
+      if (!recent?.length) {
+        const alt = await enqueueJob(db, { kind: 'package.alternative_date', payload: { packageId, trigger: 'price_increase' }, dedupeKey: `package.alternative_date:price:${packageId}:${now.slice(0, 10)}`, entityType: 'package', entityId: packageId, createdBy: 'package.requote' }).catch(() => null)
+        if (alt) await log(`${label}: fecha alternativa encolada por suba de precio (job ${alt.id ?? 'ya en cola'})`, { packageId })
+      }
+    }
     return { ok: true, result: { packageId, tcPackageId: pkg.tc_package_id, status: ev.status, action: ev.action, pricePp: newPrice, reference, variancePct: ev.variancePct, hotelMatch: picked.match, note: ev.note, runId } }
   },
 }

@@ -21,7 +21,7 @@ la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (en
 | 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | 🟡 Desplegada 2026-10-17 (núcleo; falta riesgo, tareas y SLA) | 2, 3 |
 | 8 | Tablero paquete × CRM: mensajes, ganadas, perdidas, CPA | 🟡 Desplegada 2026-10-17 (rollup nocturno + tablero) | 2 |
 | 9 | Autopilot de anuncios: reglas, fatiga → diseño, re-subida | ⏳ | 5, 8 |
-| 10 | Recotización con fecha alternativa | 🟡 Parcial: monitoreo por cotizador (2026-09-10), fecha alternativa + bot para cupos agotados (2026-09-11) | 6 |
+| 10 | Recotización con fecha alternativa | 🟡 Desplegada 2026-10-17 para cupos agotados y paquetes de sistema que suben de precio (aplicación por bot) | 6 |
 | 11 | Instagram: promocionar posts existentes (opcional) | ⏳ | 5 |
 | 12 | Catálogo de paquetes para retargeting en Meta | ⏳ | 5 |
 | 13 | Competencia: Ad Library de Meta y anuncios de Google | ⏳ | 1 |
@@ -259,7 +259,16 @@ objetivo, fatiga → pedido de diseño, escasez → "últimos lugares"), re-subi
 Arranca en sombra; nunca pausa el último anuncio activo de un paquete sin humano.
 **Necesita**: objetivos por familia (costo por conversación, CPA).
 
-## Fase 10 — Recotización con fecha alternativa · ⏳
+## Fase 10 — Recotización con fecha alternativa · 🟡 Desplegada (2026-10-17)
+
+**Qué hay**: cuando el monitoreo nocturno deja un paquete de sistema en cotización manual por suba de precio, encola
+solo `package.alternative_date` (una vez por semana por paquete); la propuesta aparece en `/tareas` → Cotización
+manual debajo de cada paquete, con aprobar, ensayar y aplicar (el mismo bot de switch-date). `GET
+/api/requote/alternatives?packageId=` y panel reutilizable `AlternativeDatePanel`. Para cupos agotados sigue igual.
+
+**Falta**: primera aplicación real; cuando exista el guardado por JSF (Fase 6) el bot Playwright se reemplaza.
+
+### Plan original
 
 **Adelanto (2026-09-10)**: el monitoreo nocturno de precio ya no lo hace el tc-requote-bot (Playwright, sesión de agente
 bloqueada por la verificación por email) sino el job `package.requote` con el cotizador, sin sesión: misma combinación
