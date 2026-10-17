@@ -21,6 +21,7 @@ import { marketingEvaluateHandler } from './marketing-evaluate'
 import { marketingActivateHandler, marketingLaunchHandler } from './marketing-launch'
 import { cupoProbeHandler } from './cupo-probe'
 import { crmRollupHandler } from './crm-rollup'
+import { cupoRiskEvalHandler } from './cupo-risk-eval'
 import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
 import { flightsSweepPlanHandler } from './flights-sweep-plan'
@@ -63,6 +64,7 @@ const HANDLERS: HandlerDefinition[] = [
   marketingActivateHandler,
   cupoProbeHandler,
   crmRollupHandler,
+  cupoRiskEvalHandler,
   ideaQuoteHandler,
   profileAuditHandler,
   // Vuelos baratos (vuelos.siviajo.com)

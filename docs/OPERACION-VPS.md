@@ -280,9 +280,18 @@ activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de 
   los precios como propuesta).
 - Depurar: `SELECT id, status, title, sent_at, response_hours, probe_error FROM cupo_requests ORDER BY id DESC;`
   `SELECT request_id, rank, departure_date, airline, system_price_pp, airline_price_pp, delta_pct, status FROM cupo_request_options ORDER BY request_id, rank;`
-- Falta (slice 2): job `cupo.risk_eval` (semáforo por salida: amarillo > 40 % sin vender a ≤ 60 días, rojo > 25 % a ≤ 45
-  días) con aviso a Slack, sección "Pedidos a aéreos" en `/tareas`, vencimientos del SLA en `check-deadlines`, rol
-  propio para el departamento de aéreos, precio de mercado por Sabre cuando vuelos-siviajo esté desplegado.
+- **Riesgo por cupo** (`cupo.risk_eval`, diario tras el import; `src/lib/cupos/risk.ts`): rojo > 25 % sin vender a
+  ≤ 45 días, amarillo > 40 % a ≤ 60; guarda `flights.risk_level` (ida y vuelta), badge en el dashboard y aviso a Slack
+  (`slack_channel_producto`) sólo de los que empeoran. **Tareas**: sección "Pedidos a aéreos" (esperando respuesta,
+  vencidos, para decidir, para cargar). **Plazo**: `check-deadlines` (12:00 UTC) recuerda por Slack una vez por día los
+  pedidos `sent` vencidos (`reminded_at`). **Rol `aereos`**: sólo `/flights/pedidos` y `/api/cupos/*`; admin,
+  marketing y producto lo heredan.
+- **Respuesta de aéreos**: en el detalle, "Respuesta de aéreos" (pegar el mail) → `POST /api/cupos/requests/[id]/reply`
+  (Claude Sonnet 5 extrae precio, lugares, depósito, vencimientos, release, lista de nombres, validez, cancelación;
+  `src/lib/cupos/reply-extract.ts`, JSON reparado y reintento) → propuesta editable → `reply/[replyId]/apply`.
+  Las condiciones viven en `cupo_request_options` y pasan a `flights` al cargar el cupo. Falta el agente que lea la
+  casilla (Gmail API) cuando esté delegada.
+- Falta: precio de mercado por Sabre cuando vuelos-siviajo esté desplegado.
 
 ## Tablero paquete × ventas (Fase 8 del loop, desde 2026-10-17)
 
