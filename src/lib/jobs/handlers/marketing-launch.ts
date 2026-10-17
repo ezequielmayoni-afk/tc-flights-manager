@@ -18,8 +18,11 @@ export const marketingLaunchHandler: HandlerDefinition = {
       return { ok: true, result: r as unknown as Record<string, unknown> }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      await log(`Lanzamiento falló: ${message}`, { packageId }, 'error')
-      return { ok: false, error: message, retry: /rate limit|timeout|ECONNRESET|503|502/i.test(message) }
+      // Meta corta por "User request limit reached" cuando coincide con la sincronización horaria de insights: se reintenta más tarde.
+      const retry = /request limit|rate limit|timeout|ECONNRESET|503|502|temporarily/i.test(message)
+      await db.from('packages').update({ launch_error: retry ? `${message} (se reintenta solo)` : message, marketing_status: null }).eq('id', packageId).eq('marketing_status', 'launching')
+      await log(`Lanzamiento falló: ${message}${retry ? ' · reintento programado' : ''}`, { packageId }, 'error')
+      return { ok: false, error: message, retry }
     }
   },
 }
