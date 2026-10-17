@@ -59,6 +59,8 @@ interface FlightFormProps {
   airlines: { code: string; name: string }[]
   airports: { code: string; name: string; city: string }[]
   suppliers: { id: number; name: string }[]
+  /** Fase 7: tirada del pedido de cupos desde la que se carga este cupo; al guardar se enlaza y se guarda el costo por plaza. */
+  cupoOptionId?: number
 }
 
 const defaultModality = {
@@ -80,7 +82,7 @@ const defaultModality = {
 const TABS = ['general', 'modality', 'prices', 'config'] as const
 type TabValue = typeof TABS[number]
 
-export function FlightForm({ initialData, airlines, airports, suppliers: initialSuppliers }: FlightFormProps) {
+export function FlightForm({ initialData, airlines, airports, suppliers: initialSuppliers, cupoOptionId }: FlightFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -344,6 +346,11 @@ export function FlightForm({ initialData, airlines, airports, suppliers: initial
       // Check if two flights were created (paired outbound/return)
       if (result.message && result.outboundId && result.returnId) {
         toast.success('Se crearon 2 vuelos enlazados: Ida y Vuelta')
+        if (cupoOptionId) {
+          const link = await fetch(`/api/cupos/requests/options/${cupoOptionId}/loaded`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ flightId: result.outboundId, returnFlightId: result.returnId }) })
+          if (link.ok) toast.success('Cupo enlazado al pedido de aéreos')
+          else toast.warning('El cupo se creó pero no se pudo enlazar al pedido')
+        }
         router.push('/flights')
         router.refresh()
       } else {

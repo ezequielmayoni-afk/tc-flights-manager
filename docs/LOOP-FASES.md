@@ -18,7 +18,7 @@ la misma temporada para cupos agotados y el bot que la aplica en siviajo.com (en
 | 4 | Criterio marketing vs web y temáticas | 🟡 Desplegada 2026-09-21 (semi: recomienda, no envía sola) | 2, 3 |
 | 5 | Lanzar conjuntos y anuncios en Meta desde HUB (en pausa) | 🟡 Desplegada 2026-10-14, sin primer lanzamiento real | 4 |
 | 6 | Guardar idea en siviajo.com sin navegador; N salidas = N paquetes | ⏳ | 3 |
-| 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | ⏳ | 2, 3 |
+| 7 | Cupos: tiradas, pedido a aéreos en HUB + Slack, carga del cupo | 🟡 Desplegada 2026-10-17 (núcleo; falta riesgo, tareas y SLA) | 2, 3 |
 | 8 | Tablero paquete × CRM: mensajes, ganadas, perdidas, CPA | ⏳ | 2 |
 | 9 | Autopilot de anuncios: reglas, fatiga → diseño, re-subida | ⏳ | 5, 8 |
 | 10 | Recotización con fecha alternativa | 🟡 Parcial: monitoreo por cotizador (2026-09-10), fecha alternativa + bot para cupos agotados (2026-09-11) | 6 |
@@ -218,7 +218,16 @@ semi, canary diario y fallback a Playwright.
 **Necesita**: HTML del botón "Guardar idea" y un HAR de una sesión creando una idea y recotizando;
 usuario del bot en siviajo.com.
 
-## Fase 7 — Cupos: tiradas, pedido a aéreos, carga del cupo · ⏳
+## Fase 7 — Cupos: tiradas, pedido a aéreos, carga del cupo · 🟡 Desplegada (2026-10-17)
+
+**Qué hay**: tablero `/flights/pedidos`, pedido con tiradas sondeadas por el cotizador (precio de sistema), envío a aéreos
+por Slack con plazo, carga del precio por plaza con Δ contra sistema, aceptar/rechazar/confirmar, y "Cargar cupo" que
+prellena el alta de vuelos y enlaza el cupo con su costo por plaza. Sin precio de mercado (Sabre) hasta que
+vuelos-siviajo esté desplegado. Detalle en `docs/OPERACION-VPS.md`.
+
+**Falta**: semáforo de riesgo por salida, sección en `/tareas`, vencimientos del SLA, rol de aéreos.
+
+### Plan original
 
 Reemplaza el Excel "SALIDAS 2027" y los mails. Tiradas con disponibilidad y precio por clase de Sabre
 (número de vuelo incluido) y precio de sistema del cotizador, pedido con

@@ -27,6 +27,7 @@ import {
   TrendingUp,
   Lightbulb,
   Compass,
+  Send,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -43,6 +44,7 @@ interface NavItem {
 const cuposItems: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, section: 'cupos' },
   { name: 'Vuelos', href: '/flights', icon: Plane, section: 'cupos' },
+  { name: 'Pedidos a aéreos', href: '/flights/pedidos', icon: Send, section: 'cupos' },
   { name: 'Reservas', href: '/reservations', icon: Ticket, section: 'cupos' },
   { name: 'Logs', href: '/logs', icon: FileText, section: 'cupos' },
   { name: 'Automatización', href: '/automatizacion', icon: Cog, section: 'automatizacion' },

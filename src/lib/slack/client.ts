@@ -893,3 +893,37 @@ export function buildCupoSoldOutMessage(data: {
 
   return { blocks, attachments: [{ color: '#e74c3c' }] }
 }
+
+/** Fase 7: pedido de cupos a aéreos (va al canal de aéreos; reemplaza el mail). */
+export function buildCupoRequestMessage(data: {
+  requestId: number
+  title: string
+  originCode: string
+  destinationName: string
+  nights: number
+  seats: number
+  adults: number
+  deadlineLabel: string
+  options: Array<{ rank: number; departureDate: string; returnDate: string; airline: string | null; flightOut: string | null; flightBack: string | null; direct: boolean | null; systemPricePp: number | null }>
+  notes?: string | null
+  systemUrl: string
+}): SlackMessage {
+  const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+  const lines = data.options.map(o => `${o.rank}. *${fmt(o.departureDate)} → ${fmt(o.returnDate)}* · ${o.airline ?? '?'} ${[o.flightOut, o.flightBack].filter(Boolean).join('/')} · ${o.direct ? 'directo' : 'con escala'}${o.systemPricePp ? ` · sistema USD ${Math.round(o.systemPricePp)} pp` : ''}`)
+  return {
+    text: `Pedido de cupos #${data.requestId}: ${data.title}`,
+    blocks: [
+      { type: 'header', text: { type: 'plain_text', text: `✈️ Pedido de cupos #${data.requestId}: ${data.title}`, emoji: true } },
+      { type: 'section', fields: [
+        { type: 'mrkdwn', text: `*Ruta*\n${data.originCode} → ${data.destinationName}` },
+        { type: 'mrkdwn', text: `*Lugares*\n${data.seats} (${data.adults} adultos por reserva)` },
+        { type: 'mrkdwn', text: `*Noches*\n${data.nights}` },
+        { type: 'mrkdwn', text: `*Respuesta antes de*\n${data.deadlineLabel}` },
+      ] },
+      { type: 'section', text: { type: 'mrkdwn', text: `*Salidas pedidas (de más barata a más cara según sistema)*\n${lines.join('\n')}` } },
+      ...(data.notes ? [{ type: 'context' as const, elements: [{ type: 'mrkdwn' as const, text: `📝 ${data.notes}` }] }] : []),
+      { type: 'divider' },
+      { type: 'actions', elements: [{ type: 'button', text: { type: 'plain_text', text: 'Cargar precios en HUB' }, url: `${data.systemUrl}/flights/pedidos/${data.requestId}` }] },
+    ],
+  }
+}

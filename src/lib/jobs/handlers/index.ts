@@ -19,6 +19,7 @@ import { packageAlternativeDateHandler } from './package-alternative-date'
 import { packageApplyAlternativeHandler } from './package-apply-alternative'
 import { marketingEvaluateHandler } from './marketing-evaluate'
 import { marketingActivateHandler, marketingLaunchHandler } from './marketing-launch'
+import { cupoProbeHandler } from './cupo-probe'
 import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
 import { flightsSweepPlanHandler } from './flights-sweep-plan'
@@ -56,6 +57,7 @@ const HANDLERS: HandlerDefinition[] = [
   marketingEvaluateHandler,
   marketingLaunchHandler,
   marketingActivateHandler,
+  cupoProbeHandler,
   ideaQuoteHandler,
   profileAuditHandler,
   // Vuelos baratos (vuelos.siviajo.com)

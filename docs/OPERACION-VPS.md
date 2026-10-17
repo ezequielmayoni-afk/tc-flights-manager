@@ -253,6 +253,30 @@ activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de 
 - Depurar: `SELECT tc_package_id, marketing_status, marketing_family, meta_launch_adset_id, launched_at, launch_error FROM packages WHERE launched_at IS NOT NULL ORDER BY launched_at DESC;`
   y `SELECT * FROM hub_jobs WHERE kind IN ('marketing.launch','marketing.activate') ORDER BY id DESC LIMIT 10;`.
 
+## Pedido de cupos a aéreos (Fase 7 del loop, desde 2026-10-17)
+
+- Pantallas: `/flights/pedidos` (tablero por estado) y `/flights/pedidos/[id]` (tiradas). Tablas `cupo_requests` y
+  `cupo_request_options` (migración `20261017_cupo_requests.sql`); `flights` suma `cost_per_seat`, `cost_currency`,
+  `release_date`, `deposit_due_date`, `cupo_option_id`, `risk_level`.
+- Flujo: **Nuevo pedido** (origen, destino con código TC del perfil, meses, días de salida, noches, lugares) → job
+  `cupo.probe` (lane `cotizador`, flag `automation.cotizador_calls`, presupuesto `cotizador`): sondea con
+  `POST /flights/probe` del cotizador hasta 24 fechas (jueves y sábados por defecto, repartidas entre los meses, desde
+  21 días), reutiliza sondas de la última semana (`flight_price_probes.options`, con `cupo_request_id`), elige por fecha
+  la opción más barata que cumpla directo/aerolínea preferida y guarda las mejores N (`max_options`, 5) como tiradas
+  con precio de sistema → **Enviar a aéreos** (Slack al canal de aéreos con la tabla y el link; plazo
+  `notification_settings.cupo_request_sla_hours`, 72 h) → aéreos o quien reciba la respuesta carga **precio por plaza**
+  en la pantalla (Δ % contra sistema, columna generada) → **Aceptar / Rechazar** con motivo → **Confirmar** → **Cargar cupo**
+  abre `/flights/new?option=<id>` prellenado (ida + vuelta, horarios, número de vuelo, precio de venta = sistema,
+  inventario = lugares); al guardar, `POST /api/cupos/requests/options/[id]/loaded` enlaza los vuelos, guarda
+  `cost_per_seat` y cierra el pedido como `loaded` cuando todas las aceptadas están cargadas.
+- Cada disparo manual corre con prioridad manual (de día, tope del lane); un pedido de 24 fechas tarda ~25 min porque el
+  cotizador atiende de a uno. `response_hours` (columna generada) mide cuánto tardó aéreos.
+- Depurar: `SELECT id, status, title, sent_at, response_hours, probe_error FROM cupo_requests ORDER BY id DESC;`
+  `SELECT request_id, rank, departure_date, airline, system_price_pp, airline_price_pp, delta_pct, status FROM cupo_request_options ORDER BY request_id, rank;`
+- Falta (slice 2): job `cupo.risk_eval` (semáforo por salida: amarillo > 40 % sin vender a ≤ 60 días, rojo > 25 % a ≤ 45
+  días) con aviso a Slack, sección "Pedidos a aéreos" en `/tareas`, vencimientos del SLA en `check-deadlines`, rol
+  propio para el departamento de aéreos, precio de mercado por Sabre cuando vuelos-siviajo esté desplegado.
+
 ## vuelos.siviajo.com
 
 Landing de "vuelos baratos" dentro de HUB (no es una app aparte). Barrido nocturno (`flights.sweep.plan`

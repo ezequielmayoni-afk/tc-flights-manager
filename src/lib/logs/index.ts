@@ -27,7 +27,7 @@ export interface LogEventInput {
   /** Texto legible: es lo que se lee en la pantalla */
   message: string
   level?: LogLevel
-  entityType?: 'package' | 'flight' | 'creative' | 'reservation'
+  entityType?: 'package' | 'flight' | 'creative' | 'reservation' | 'cupo_request'
   entityId?: number
   /** Título del paquete, base_id del vuelo… para no tener que resolverlo al leer */
   entityLabel?: string
