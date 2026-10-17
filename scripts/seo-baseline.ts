@@ -2,13 +2,18 @@
  * Corre a mano los agentes de la Fase 14 (SEO + GEO) sin pasar por el runner
  * del VPS: sirve para la primera corrida (baseline) y para probar cambios.
  *
- *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-baseline.ts [gsc|serp|geo|all]
+ *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-baseline.ts [gsc|serp|geo|all] [--engines=chatgpt,gemini,claude]
  *
- * Necesita `.env.local` cargado (`set -a; source .env.local; set +a`). Cada
+ * Carga `.env.local` como lo hace Next (`@next/env`): un `source` de shell
+ * rompe el JSON de GOOGLE_DRIVE_CREDENTIALS. `--engines` limita las sondas de
+ * IA a esos motores (sirve para repetir uno solo sin gastar el presupuesto). Cada
  * corrida crea una fila en `hub_jobs` con `run_after` lejano (para que el
  * runner no la tome) y la cierra como `done`/`failed` al terminar, así las
  * llamadas externas quedan atadas a un job real y cuentan en los presupuestos.
  */
+import { loadEnvConfig } from '@next/env'
+loadEnvConfig(process.cwd())
+
 import { getHandlerDefinition } from '@/lib/jobs/handlers'
 import { enqueueJob } from '@/lib/jobs/queue'
 import type { JobRow } from '@/lib/jobs/types'
@@ -22,7 +27,9 @@ const KINDS: Record<string, string[]> = {
 }
 
 async function main() {
-  const which = process.argv[2] ?? 'all'
+  const which = process.argv.find(a => !a.startsWith('--') && a !== process.argv[0] && a !== process.argv[1]) ?? 'all'
+  const enginesArg = process.argv.find(a => a.startsWith('--engines='))
+  const engines = enginesArg ? enginesArg.slice('--engines='.length).split(',').map(e => e.trim()).filter(Boolean) : undefined
   const kinds = KINDS[which]
   if (!kinds) throw new Error(`uso: seo-baseline.ts [gsc|serp|geo|all] (recibí "${which}")`)
 
@@ -34,7 +41,7 @@ async function main() {
     const stamp = new Date().toISOString()
     const enq = await enqueueJob(db, {
       kind,
-      payload: { trigger: 'script', at: stamp },
+      payload: { trigger: 'script', at: stamp, ...(engines && kind === 'geo.probe' ? { engines } : {}) },
       dedupeKey: `${kind}:script:${stamp}`,
       priority: 9,
       // Diez años: el runner del VPS nunca lo va a reclamar.

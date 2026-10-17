@@ -46,10 +46,14 @@ export const geoProbeHandler: HandlerDefinition = {
     const prompts = await listPrompts(db, { activeOnly: true })
     if (prompts.length === 0) return { ok: true, result: { prompts: 0, reason: 'sin preguntas activas en geo_prompts' } }
 
+    // `payload.engines` (opcional) limita la corrida a esos motores: sirve para
+    // repetir uno que falló sin volver a pagar los otros dos.
+    const pedidos = Array.isArray(job.payload.engines) ? (job.payload.engines as string[]) : null
+    const quiere = (e: GeoEngine) => !pedidos || pedidos.includes(e)
     const engines: Partial<Record<GeoEngine, AskFn>> = {}
-    if (isOpenAiConfigured()) engines.chatgpt = conPresupuesto(db, job.id, 'chatgpt', askChatGpt)
-    if (isGeminiConfigured()) engines.gemini = conPresupuesto(db, job.id, 'gemini', askGemini)
-    if (isClaudeConfigured()) engines.claude = conPresupuesto(db, job.id, 'claude', askClaude)
+    if (quiere('chatgpt') && isOpenAiConfigured()) engines.chatgpt = conPresupuesto(db, job.id, 'chatgpt', askChatGpt)
+    if (quiere('gemini') && isGeminiConfigured()) engines.gemini = conPresupuesto(db, job.id, 'gemini', askGemini)
+    if (quiere('claude') && isClaudeConfigured()) engines.claude = conPresupuesto(db, job.id, 'claude', askClaude)
     if (Object.keys(engines).length === 0) {
       return { ok: false, skipped: true, reason: 'ningún motor configurado (OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_CLOUD_PROJECT_ID)' }
     }
