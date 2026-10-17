@@ -85,7 +85,7 @@ Metas a 90 días (desde el 2026-10-20), medidas por los agentes de la sección 3
 | Consultas "paquetes a {destino}" (27) en top 10 | 1 | 12 |
 | Consultas con AI Overview donde se cita siviajo.com | 0 de 41 | 8 |
 | Posts nuevos en el blog por mes | 0 | 8 |
-| Sondas de IA (12 preguntas × 3 motores) donde Sí, Viajo es mencionada | 2 de 24 respondidas, y sólo en la pregunta que la nombra | ≥ 8 (22 %) |
+| Sondas de IA (12 preguntas × 3 motores) donde Sí, Viajo es mencionada | 6 de 36 (ChatGPT 1, Claude 1 —sólo la pregunta de marca—, Gemini 4) | ≥ 12 (33 %) |
 
 ### Baseline medido el 2026-10-17 (semana 2026-W42)
 
@@ -94,11 +94,15 @@ Metas a 90 días (desde el 2026-10-20), medidas por los agentes de la sección 3
   Azul, Tripadvisor, Buteler, YouTube. Competidores en el top 10 orgánico: TurismoCity en 29 de 45
   consultas, Despegar 27, Almundo 25, Viajobien 23, Atrápalo 21, Deturista 14, Multitravel 10.
   Sí, Viajo sólo aparece en el pack local de "mejores agencias de viajes en argentina" (2.ª).
-- **Motores de IA (ChatGPT `gpt-5.1` y Claude `claude-opus-5-5` con búsqueda web; Gemini se
-  repitió aparte):** en las 11 preguntas que no nombran la marca, ninguno menciona a Sí, Viajo.
-  Nombran a Despegar (15 respuestas), Almundo (13), TurismoCity (9), Juliá Tours (6), Avantrip (5),
-  Buteler y Atrápalo (4). En la pregunta "¿Sí, Viajo es confiable?", ChatGPT cita
-  `institucional.siviajo.com/tyc.html` y la home (no hay página de entidad mejor que citar).
+- **Motores de IA:** ChatGPT (`gpt-5.1` + web search) y Claude (`claude-opus-5-5` + web search)
+  no mencionan a Sí, Viajo en ninguna de las 11 preguntas que no la nombran; nombran a Despegar
+  (15 respuestas), Almundo (13), TurismoCity (9), Juliá Tours (6), Avantrip (5), Buteler y Atrápalo
+  (4). En "¿Sí, Viajo es confiable?", ChatGPT cita `institucional.siviajo.com/tyc.html` y la home
+  (no hay página de entidad mejor que citar). **Gemini** (`gemini-2.5-flash` con grounding en
+  Google) sí cita siviajo.com en 3 de las 11: F1 Brasil, "atención personalizada y asistencia
+  24 h" y Bayahibe; sus competidores más citados son Juliá Tours (7), Multitravel (6), Buteler (5).
+  Lectura: Google ya "conoce" a Sí, Viajo por el GBP y por lo que rankea; ChatGPT y Claude (Bing,
+  Brave) no, y ahí pesan las menciones en terceros y Bing Webmaster Tools.
 - **Search Console (28 días):** 3.503 clics, 166.492 impresiones, posición 7,1; marca 1.427 clics
   en 34 consultas vs. no-marca 671 clics en 5.441 consultas (posición media 9,6). Por plantilla:
   home 1.639 clics; fichas 782 (245 URLs); blog 655 (259 URLs, 92 k impresiones); temáticas 365
