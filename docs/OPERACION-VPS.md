@@ -269,8 +269,15 @@ activos: se pierde un solo vínculo y era falso (Florianópolis con JetSMART de 
   abre `/flights/new?option=<id>` prellenado (ida + vuelta, horarios, número de vuelo, precio de venta = sistema,
   inventario = lugares); al guardar, `POST /api/cupos/requests/options/[id]/loaded` enlaza los vuelos, guarda
   `cost_per_seat` y cierra el pedido como `loaded` cuando todas las aceptadas están cargadas.
-- Cada disparo manual corre con prioridad manual (de día, tope del lane); un pedido de 24 fechas tarda ~25 min porque el
-  cotizador atiende de a uno. `response_hours` (columna generada) mide cuánto tardó aéreos.
+- Cada sonda tarda ~14 s (medido 2026-10-17: 4 fechas en 73 s); un pedido de 24 fechas sale en ~6 min. `response_hours`
+  (columna generada) mide cuánto tardó aéreos.
+- **Contactos y casilla** (`/flights/pedidos/contactos`, migración `20261017_airline_contacts.sql`): `airline_contacts`
+  (código IATA o `*` para consolidadores, mail, copias, activo) y en `notification_settings` la casilla de envío
+  (`cupo_mail_enabled/from/from_name/cc/subject_prefix/signature`), el plazo y el canal de Slack de aéreos. Al enviar,
+  `recipientsFor` elige los contactos de las aerolíneas de las tiradas (más consolidadores; si ninguna tiene contacto,
+  todos los activos) y los guarda en `cupo_requests.sent_to`. El mail todavía no sale: lo manda el agente de la
+  siguiente tanda (Gmail API con la cuenta de servicio delegada sobre la casilla; lee la respuesta con Claude y carga
+  los precios como propuesta).
 - Depurar: `SELECT id, status, title, sent_at, response_hours, probe_error FROM cupo_requests ORDER BY id DESC;`
   `SELECT request_id, rank, departure_date, airline, system_price_pp, airline_price_pp, delta_pct, status FROM cupo_request_options ORDER BY request_id, rank;`
 - Falta (slice 2): job `cupo.risk_eval` (semáforo por salida: amarillo > 40 % sin vender a ≤ 60 días, rojo > 25 % a ≤ 45
