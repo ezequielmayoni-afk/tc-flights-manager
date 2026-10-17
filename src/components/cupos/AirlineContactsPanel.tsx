@@ -122,7 +122,7 @@ export function AirlineContactsPanel() {
           <thead className="bg-muted/40 text-xs uppercase text-muted-foreground"><tr><th className="px-2 py-2 text-left w-48">Aerolínea</th><th className="px-2 py-2 text-left">Contacto</th><th className="px-2 py-2 text-left">Mail</th><th className="px-2 py-2 text-left">Copias</th><th className="px-2 py-2 text-left w-28">Teléfono</th><th className="px-2 py-2 text-left">Notas</th><th className="px-2 py-2 w-12">Activo</th><th className="px-2 py-2 w-24"></th></tr></thead>
           <tbody className="divide-y">
             {creating && <tr className="bg-blue-50/40">{row(creating, setCreating, 'nuevo')}<td className="px-2 py-1.5 whitespace-nowrap"><Button size="sm" className="h-7 mr-1" onClick={createContact} disabled={busy === 'new' || !creating.email || !creating.airlineCode}>Crear</Button><Button size="sm" variant="ghost" className="h-7" onClick={() => setCreating(null)}>✕</Button></td></tr>}
-            {contacts.length === 0 && !creating && <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">Todavía no hay contactos. Agregá uno por aerolínea (o un consolidador con "*").</td></tr>}
+            {contacts.length === 0 && !creating && <tr><td colSpan={8} className="px-3 py-8 text-center text-muted-foreground">Todavía no hay contactos. Agregá uno por aerolínea, o un consolidador con el asterisco (*).</td></tr>}
             {contacts.map(c => { const d = drafts[c.id] ?? toDraft(c); const dirty = JSON.stringify(d) !== JSON.stringify(toDraft(c)); return (
               <tr key={c.id} className={c.active ? '' : 'opacity-60'}>
                 {row(d, x => setDrafts({ ...drafts, [c.id]: x }), String(c.id))}
