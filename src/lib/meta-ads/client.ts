@@ -28,6 +28,22 @@ let clientInstance: MetaAdsClient | null = null
  * If adAccountId is provided, creates a new client for that account.
  * Otherwise returns the singleton using the default env var account.
  */
+/**
+ * Al crear un conjunto copiando la segmentación de otro, Meta exige pares de
+ * ubicaciones que en el conjunto viejo conviven sin queja: "explore_home" de
+ * Instagram requiere también "explore" (error 2490392). Puro.
+ */
+export function sanitizeTargetingForCreate(targeting: Record<string, unknown>): Record<string, unknown> {
+  const t: Record<string, unknown> = { ...targeting }
+  const ig = Array.isArray(t.instagram_positions) ? [...(t.instagram_positions as string[])] : null
+  if (ig) {
+    if (ig.includes('explore_home') && !ig.includes('explore')) ig.push('explore')
+    if (ig.includes('profile_reels') && !ig.includes('reels')) ig.push('reels')
+    t.instagram_positions = ig
+  }
+  return t
+}
+
 export function getMetaAdsClient(adAccountId?: string): MetaAdsClient {
   if (!ACCESS_TOKEN) {
     throw new Error('META_ACCESS_TOKEN environment variable is required')
@@ -297,9 +313,9 @@ export class MetaAdsClient {
       optimization_goal: template.optimization_goal || 'REACH',
     }
 
-    // Copy targeting if available
+    // Copy targeting if available (saneado: Meta valida más estricto al crear que al editar)
     if (template.targeting) {
-      params.targeting = template.targeting
+      params.targeting = sanitizeTargetingForCreate(template.targeting)
     }
 
     // Copy budget - only one type, not both
