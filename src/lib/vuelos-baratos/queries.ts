@@ -306,6 +306,8 @@ export async function getSweepHealth(db: Db, sinceHours = 24): Promise<Map<numbe
   const { data, error } = await db
     .from('flight_price_probes')
     .select('route_id, status, probed_at')
+    // Las búsquedas reales de siviajo.com entran por otro camino y se ven en su propio panel.
+    .eq('source', 'cotizador_probe')
     .not('route_id', 'is', null)
     .gte('probed_at', new Date(Date.now() - sinceHours * 3_600_000).toISOString())
     .limit(MAX_HEALTH_ROWS)
