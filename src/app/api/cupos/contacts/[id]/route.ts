@@ -20,7 +20,7 @@ const schema = z.object({
 })
 
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)
@@ -46,7 +46,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 }
 
 export async function DELETE(_req: NextRequest, { params }: Params) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)

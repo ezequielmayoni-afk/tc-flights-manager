@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
 
-export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
+export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas' | 'aereos'
 
 // Role permissions configuration (must match server-side config)
 export const ROLE_PERMISSIONS = {

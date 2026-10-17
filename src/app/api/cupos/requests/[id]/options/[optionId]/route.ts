@@ -10,7 +10,7 @@ const schema = z.object({ decision: z.enum(['accept', 'reject', 'reopen']), reas
 
 /** PATCH — aceptar o rechazar una tirada (con motivo). */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string; optionId: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const { id, optionId } = await params

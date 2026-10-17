@@ -1,7 +1,14 @@
 import { google } from 'googleapis'
 import { getBudgetStatus, recordExternalCall } from '@/lib/jobs/budget'
 import type { Db } from '@/lib/jobs/types'
-import { GscBudgetExhausted, type GscApi, type GscClient, type PageStatRow } from './types'
+import {
+  GscBudgetExhausted,
+  type AnalyticsRow,
+  type GscApi,
+  type GscClient,
+  type PageStatRow,
+  type SitemapListEntry,
+} from './types'
 
 /**
  * Cliente de Google Search Console para vuelos.siviajo.com.
@@ -33,7 +40,18 @@ const SCOPES = ['https://www.googleapis.com/auth/webmasters']
 const INSPECTION_LANGUAGE = 'es'
 
 export { GscBudgetExhausted } from './types'
-export type { GscApi, GscClient, PageStatRow, PageStatsQuery, SitemapStatus, UrlStatus } from './types'
+export type {
+  AnalyticsFilter,
+  AnalyticsQuery,
+  AnalyticsRow,
+  GscApi,
+  GscClient,
+  PageStatRow,
+  PageStatsQuery,
+  SitemapListEntry,
+  SitemapStatus,
+  UrlStatus,
+} from './types'
 
 /** Sin credenciales no hay Search Console: los jobs terminan `skipped`. */
 export function isGscConfigured(): boolean {
@@ -142,6 +160,49 @@ export function createGscApi(): GscApi {
       return rows
     },
 
+    async queryRows(site, q) {
+      const { data } = await webmasters.searchanalytics.query({
+        siteUrl: site,
+        requestBody: {
+          startDate: q.startDate,
+          endDate: q.endDate,
+          dimensions: q.dimensions,
+          dimensionFilterGroups: q.filters?.length ? [{ filters: q.filters }] : undefined,
+          rowLimit: q.rowLimit ?? 5000,
+          startRow: q.startRow ?? 0,
+        },
+      })
+      const rows: AnalyticsRow[] = []
+      for (const row of data.rows ?? []) {
+        const keys = (row.keys ?? []).map(String)
+        if (keys.length !== q.dimensions.length) continue
+        rows.push({ keys, clicks: numero(row.clicks), impressions: numero(row.impressions), ctr: numero(row.ctr), position: numero(row.position) })
+      }
+      return rows
+    },
+
+    async listSitemaps(site) {
+      const { data } = await webmasters.sitemaps.list({ siteUrl: site })
+      const out: SitemapListEntry[] = []
+      for (const s of data.sitemap ?? []) {
+        if (!s.path) continue
+        const contents = s.contents ?? []
+        const leido = contents.length > 0
+        out.push({
+          feedpath: s.path,
+          isSitemapsIndex: s.isSitemapsIndex === true,
+          lastSubmitted: s.lastSubmitted ?? null,
+          lastDownloaded: s.lastDownloaded ?? null,
+          isPending: s.isPending === true,
+          errors: numero(s.errors),
+          warnings: numero(s.warnings),
+          submitted: leido ? contents.reduce((acc, c) => acc + numero(c.submitted), 0) : null,
+          indexed: leido ? contents.reduce((acc, c) => acc + numero(c.indexed), 0) : null,
+        })
+      }
+      return out
+    },
+
     async inspectUrl(site, url) {
       const { data } = await searchconsole.urlInspection.index.inspect({
         requestBody: { inspectionUrl: url, siteUrl: site, languageCode: INSPECTION_LANGUAGE },
@@ -226,6 +287,12 @@ export function createGscClient(db: Db, options: GscClientOptions = {}): GscClie
     },
     queryPages(q) {
       return llamar('searchanalytics', api => api.queryPages(site, q))
+    },
+    queryRows(q) {
+      return llamar('searchanalytics', api => api.queryRows(site, q))
+    },
+    listSitemaps() {
+      return llamar('sitemaps_list', api => api.listSitemaps(site))
     },
     inspectUrl(url) {
       return llamar('url_inspection', api => api.inspectUrl(site, url))

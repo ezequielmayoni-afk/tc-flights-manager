@@ -1,4 +1,5 @@
 import { calculateCupos, getFlightRoute, type FlightForMatch } from '@/lib/packages/flight-match'
+import { riskLevelFor, type RiskLevel } from './risk'
 
 /**
  * Cuadro "cupos por salida" del dashboard: una fila por salida (vuelo de ida
@@ -111,6 +112,8 @@ export interface CupoSummaryRow {
   sold: number
   remaining: number
   status: 'agotado' | 'ultimos' | 'pocos' | 'ok'
+  /** Semáforo del consultor: rojo > 25 % sin vender a ≤ 45 días, amarillo > 40 % a ≤ 60. */
+  riskLevel: RiskLevel
 }
 
 export interface CupoSummaryInput {
@@ -155,6 +158,7 @@ export function buildCupoSummary({ flights, linkedPackagesByFlight, linkIds = ne
       destination: destinationLabel(airport, packageDestinations), packageDestinations, packages, region: airport.region,
       departureDate: f.start_date, returnDate: paired?.start_date ?? null, daysToDeparture: daysBetween(today, f.start_date),
       total: cupos.total, sold: cupos.sold, remaining: cupos.remaining, status: seatStatus(cupos.remaining, cupos.total),
+      riskLevel: riskLevelFor({ remaining: cupos.remaining, total: cupos.total, daysToDeparture: daysBetween(today, f.start_date) }),
     })
   }
   return rows.sort((a, b) => a.departureDate.localeCompare(b.departureDate) || a.destination.localeCompare(b.destination))

@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 
 /** POST — (re)arma las tiradas: encola cupo.probe con prioridad manual. */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)

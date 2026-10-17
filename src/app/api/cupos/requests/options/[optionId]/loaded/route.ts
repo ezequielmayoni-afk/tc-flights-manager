@@ -14,7 +14,7 @@ const schema = z.object({ flightId: z.number().int().positive(), returnFlightId:
  * cargadas, cierra el pedido como "loaded".
  */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ optionId: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const optionId = Number((await params).optionId)

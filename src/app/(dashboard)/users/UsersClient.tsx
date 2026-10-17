@@ -44,7 +44,7 @@ import { Users, Loader2, Pencil, Trash2, Shield, User, Plus, Palette, Package, M
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
 
-type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
+type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas' | 'aereos'
 
 interface UserProfile {
   id: string
@@ -61,6 +61,7 @@ const ROLE_OPTIONS: { value: UserRole; label: string; description: string }[] = 
   { value: 'producto', label: 'Producto', description: 'Todo excepto Diseño y Marketing' },
   { value: 'diseño', label: 'Diseño', description: 'Paquetes, SEO y control de Diseño' },
   { value: 'ventas', label: 'Ventas', description: 'Solo lectura: Paquetes y Comercial' },
+  { value: 'aereos', label: 'Aéreos', description: 'Sólo los pedidos de cupos: cargar precios y condiciones' },
 ]
 
 export function UsersClient() {

@@ -6,6 +6,7 @@ import {
 } from '@/lib/notifications/deadlines'
 import { logEvent } from '@/lib/logs'
 import { authorizeCron } from '@/lib/cron/auth'
+import { checkCupoRequestDeadlines } from '@/lib/cupos/deadlines'
 
 /**
  * GET /api/cron/check-deadlines
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest) {
   try {
     const requote = await checkAndSendRequoteDeadlineNotifications()
     const design = await checkAndSendDesignDeadlineNotifications()
+    const cupos = await checkCupoRequestDeadlines(db, process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com')
 
     const totalSent = requote.sent + design.sent
     console.log(`[Cron deadlines] cotización manual: ${requote.message} | diseño: ${design.message}`)
@@ -40,13 +42,14 @@ export async function GET(request: NextRequest) {
         ? 'Cron de vencimientos: no había tareas vencidas para avisar'
         : `Cron de vencimientos: se avisó por ${requote.sent} cotización(es) manual(es) y ${design.sent} pedido(s) de diseño`,
       durationMs: Date.now() - startTime,
-      details: { requote, design },
+      details: { requote, design, cupos },
     }, null)
 
     return NextResponse.json({
       success: !requote.error && !design.error,
       requote,
       design,
+      cupos,
       duration: `${((Date.now() - startTime) / 1000).toFixed(2)}s`,
     })
   } catch (error) {

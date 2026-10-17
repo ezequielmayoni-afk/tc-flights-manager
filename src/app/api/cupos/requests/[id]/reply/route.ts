@@ -14,7 +14,7 @@ const schema = z.object({ text: z.string().trim().min(10).max(20000), source: z.
 
 /** POST — lee una respuesta de aéreos (texto pegado) y devuelve la propuesta: precio y condiciones por tirada. No aplica nada. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)

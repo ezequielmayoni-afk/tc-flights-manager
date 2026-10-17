@@ -44,7 +44,7 @@ interface NavItem {
 const cuposItems: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, section: 'cupos' },
   { name: 'Vuelos', href: '/flights', icon: Plane, section: 'cupos' },
-  { name: 'Pedidos a aéreos', href: '/flights/pedidos', icon: Send, section: 'cupos' },
+  { name: 'Pedidos a aéreos', href: '/flights/pedidos', icon: Send, section: 'aereos' },
   { name: 'Reservas', href: '/reservations', icon: Ticket, section: 'cupos' },
   { name: 'Logs', href: '/logs', icon: FileText, section: 'cupos' },
   { name: 'Automatización', href: '/automatizacion', icon: Cog, section: 'automatizacion' },
@@ -54,6 +54,7 @@ const productosItems: NavItem[] = [
   { name: 'Paquetes', href: '/packages', icon: Briefcase, section: 'productos' },
   { name: 'Tendencias', href: '/producto/tendencias', icon: TrendingUp, section: 'producto' },
   { name: 'Vuelos baratos', href: '/producto/vuelos-baratos', icon: Plane, section: 'producto' },
+  { name: 'SEO y GEO', href: '/producto/seo', icon: Search, section: 'producto' },
   { name: 'Ideas', href: '/producto/ideas', icon: Lightbulb, section: 'producto' },
   { name: 'Perfiles', href: '/producto/perfiles', icon: Compass, section: 'producto' },
   { name: 'SEO', href: '/packages/seo', icon: Search, section: 'seo' },
@@ -65,9 +66,10 @@ const productosItems: NavItem[] = [
 
 // Role permissions - must match middleware
 const ROLE_PERMISSIONS: Record<string, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas', 'producto'],
+  admin: ['cupos', 'aereos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+  marketing: ['cupos', 'aereos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+  producto: ['cupos', 'aereos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas', 'producto'],
+  aereos: ['aereos'],
   diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial'],
 }

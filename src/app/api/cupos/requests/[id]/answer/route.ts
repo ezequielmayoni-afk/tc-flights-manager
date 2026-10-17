@@ -12,7 +12,7 @@ const schema = z.object({ options: z.array(z.object({ id: z.number().int().posit
 
 /** POST — aéreos (o quien reciba la respuesta) carga el precio por plaza de cada tirada. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)

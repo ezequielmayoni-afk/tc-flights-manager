@@ -13,7 +13,7 @@ const schema = z.object({ proposals: z.array(z.object({ optionId: z.number().int
 
 /** POST — aplica la propuesta leída (tal cual o corregida en pantalla) a las tiradas: precio, lugares y condiciones. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string; replyId: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const { id, replyId } = await params

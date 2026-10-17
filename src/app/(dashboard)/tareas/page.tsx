@@ -1,10 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 import { Header } from '@/components/layout/Header'
-import { AlertTriangle, Megaphone, Plane } from 'lucide-react'
+import { AlertTriangle, Megaphone, Plane, Send } from 'lucide-react'
 import { RequoteTable } from '@/components/packages/RequoteTable'
 import { CuposAgotadosSection } from '@/components/tareas/CuposAgotadosSection'
 import { AdDecisionsSection } from '@/components/tareas/AdDecisionsSection'
 import { MarketingCandidatesSection } from '@/components/tareas/MarketingCandidatesSection'
+import { CupoRequestsTasks } from '@/components/tareas/CupoRequestsTasks'
 
 export const dynamic = 'force-dynamic'
 
@@ -115,6 +116,15 @@ export default async function TareasPage() {
             <h2 className="text-lg font-semibold">Cupos agotados con paquetes publicados</h2>
           </div>
           <CuposAgotadosSection />
+        </section>
+
+        {/* Pedidos a aéreos (Fase 7) */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Send className="h-5 w-5 text-blue-600" />
+            <h2 className="text-lg font-semibold">Pedidos a aéreos</h2>
+          </div>
+          <CupoRequestsTasks />
         </section>
       </div>
     </div>

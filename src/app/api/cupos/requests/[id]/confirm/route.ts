@@ -11,7 +11,7 @@ const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
 /** POST — confirma el pedido: las tiradas aceptadas quedan listas para cargar como cupo (ida + vuelta) en /flights. */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)

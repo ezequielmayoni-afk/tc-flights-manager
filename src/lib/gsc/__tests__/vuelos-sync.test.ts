@@ -72,6 +72,14 @@ function fakeGsc(opts: FakeOpts = {}) {
       callsMade++
       return opts.getSitemap ? opts.getSitemap() : sitemap()
     },
+    async queryRows() {
+      callsMade++
+      return []
+    },
+    async listSitemaps() {
+      callsMade++
+      return []
+    },
     async queryPages(q) {
       calls.push('query')
       queries.push(q)

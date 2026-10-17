@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 
 /** GET /api/cupos/requests — todos los pedidos con resumen de tiradas y horas de espera. */
 export async function GET() {
-  const { authorized } = await checkSectionAccess('cupos')
+  const { authorized } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const db = createAdminClient()
@@ -57,7 +57,7 @@ const createSchema = z.object({
 
 /** POST /api/cupos/requests — crea un pedido (borrador) y, por defecto, encola el armado de tiradas. */
 export async function POST(request: NextRequest) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const parsed = createSchema.safeParse(await request.json().catch(() => null))

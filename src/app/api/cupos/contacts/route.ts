@@ -9,7 +9,7 @@ import { loadAirlineContacts } from '@/lib/cupos/contacts'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const { authorized } = await checkSectionAccess('cupos')
+  const { authorized } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const db = createAdminClient()
@@ -32,7 +32,7 @@ const schema = z.object({
 })
 
 export async function POST(request: NextRequest) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const parsed = schema.safeParse(await request.json().catch(() => null))

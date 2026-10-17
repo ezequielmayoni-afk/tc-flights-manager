@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
+type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas' | 'aereos'
 
 // Rutas públicas de vuelos.siviajo.com: la landing y los archivos de SEO se
 // responden sin pasar por Supabase (no hay sesión que refrescar).
@@ -29,6 +29,7 @@ const ADMIN_ROUTES = ['/users']
 // More specific routes must come before less specific ones in checks
 const SECTION_ROUTES: Record<string, string> = {
   '/dashboard': 'cupos',
+  '/flights/pedidos': 'aereos',
   '/flights': 'cupos',
   '/reservations': 'cupos',
   '/logs': 'cupos',
@@ -47,9 +48,10 @@ const SECTION_ROUTES: Record<string, string> = {
 
 // Role permissions (must match client-side config)
 const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  admin: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
-  marketing: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
-  producto: ['cupos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote', 'tareas', 'producto'],
+  admin: ['cupos', 'aereos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+  marketing: ['cupos', 'aereos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'vendedores', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+  producto: ['cupos', 'aereos', 'productos', 'comercial', 'rendimiento', 'vendedores', 'seo', 'requote', 'tareas', 'producto'],
+  aereos: ['aereos'],
   diseño: ['productos', 'diseño', 'seo'],
   ventas: ['productos', 'comercial', 'vendedores'],
 }

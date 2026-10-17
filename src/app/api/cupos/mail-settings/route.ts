@@ -9,7 +9,7 @@ import { loadCupoMailSettings } from '@/lib/cupos/contacts'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
-  const { authorized } = await checkSectionAccess('cupos')
+  const { authorized } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try { return NextResponse.json({ settings: await loadCupoMailSettings(createAdminClient()) }) } catch (error) { return errorResponse(error) }
 }
@@ -27,7 +27,7 @@ const schema = z.object({
 
 /** PATCH — casilla desde la que sale el pedido, copia interna, firma, plazo y canal de Slack de aéreos. */
 export async function PATCH(request: NextRequest) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const parsed = schema.safeParse(await request.json().catch(() => null))

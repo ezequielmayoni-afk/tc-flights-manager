@@ -12,7 +12,7 @@ const SYSTEM_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://hub.siviajo.com'
 
 /** POST — manda el pedido a aéreos: fija el plazo (SLA), publica en Slack y marca las tiradas como pedidas. */
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)

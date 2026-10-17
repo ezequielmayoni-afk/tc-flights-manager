@@ -172,7 +172,7 @@ export function CuposSummary() {
                         <div className={`h-full ${pct >= 100 ? 'bg-slate-400' : pct >= 60 ? 'bg-green-500' : 'bg-amber-400'}`} style={{ width: `${Math.min(100, pct)}%` }} />
                       </div>
                     </TableCell>
-                    <TableCell className="text-right whitespace-nowrap text-muted-foreground">{r.daysToDeparture} días</TableCell>
+                    <TableCell className="text-right whitespace-nowrap text-muted-foreground">{r.daysToDeparture} días{r.riskLevel === 'red' && <Badge className="ml-2 bg-red-100 text-red-700 text-[10px]" title="Más del 25 % sin vender a 45 días o menos">Riesgo alto</Badge>}{r.riskLevel === 'yellow' && <Badge className="ml-2 bg-amber-100 text-amber-700 text-[10px]" title="Más del 40 % sin vender a 60 días o menos">Riesgo</Badge>}</TableCell>
                   </TableRow>
                 )
               })}

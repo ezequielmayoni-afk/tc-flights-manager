@@ -13,6 +13,7 @@ export const FLAGS = {
   vuelosCalls: 'automation.vuelos_calls',
   flightsSweep: 'automation.flights_sweep',
   sabreCalls: 'automation.sabre_calls',
+  geoProbes: 'automation.geo_probes',
 } as const
 
 export type FlagKey = (typeof FLAGS)[keyof typeof FLAGS]

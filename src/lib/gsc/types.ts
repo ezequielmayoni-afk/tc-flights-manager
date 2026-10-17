@@ -33,6 +33,38 @@ export interface PageStatRow {
   position: number
 }
 
+/** Una fila genérica de `searchanalytics.query` con las dimensiones pedidas, en orden. */
+export interface AnalyticsRow {
+  keys: string[]
+  clicks: number
+  impressions: number
+  /** 0–1 (como lo devuelve la API), no porcentaje. */
+  ctr: number
+  position: number
+}
+
+export interface AnalyticsFilter {
+  dimension: 'page' | 'query' | 'country' | 'device'
+  operator: 'contains' | 'equals' | 'notContains' | 'notEquals' | 'includingRegex' | 'excludingRegex'
+  expression: string
+}
+
+/** Consulta genérica (cualquier combinación de dimensiones): la usa el sync de todo el dominio. */
+export interface AnalyticsQuery {
+  startDate: string
+  endDate: string
+  dimensions: Array<'date' | 'page' | 'query' | 'country' | 'device'>
+  filters?: AnalyticsFilter[]
+  rowLimit?: number
+  startRow?: number
+}
+
+/** Un sitemap tal como lo lista `sitemaps.list` (sin pedirlo uno por uno). */
+export interface SitemapListEntry extends SitemapStatus {
+  feedpath: string
+  isSitemapsIndex: boolean
+}
+
 export interface PageStatsQuery {
   /** YYYY-MM-DD, inclusive. */
   startDate: string
@@ -65,6 +97,8 @@ export interface GscApi {
   submitSitemap(site: string, feedpath: string): Promise<void>
   getSitemap(site: string, feedpath: string): Promise<SitemapStatus | null>
   queryPages(site: string, q: PageStatsQuery): Promise<PageStatRow[]>
+  queryRows(site: string, q: AnalyticsQuery): Promise<AnalyticsRow[]>
+  listSitemaps(site: string): Promise<SitemapListEntry[]>
   inspectUrl(site: string, url: string): Promise<UrlStatus>
 }
 
@@ -76,6 +110,8 @@ export interface GscClient {
   submitSitemap(feedpath: string): Promise<void>
   getSitemap(feedpath: string): Promise<SitemapStatus | null>
   queryPages(q: PageStatsQuery): Promise<PageStatRow[]>
+  queryRows(q: AnalyticsQuery): Promise<AnalyticsRow[]>
+  listSitemaps(): Promise<SitemapListEntry[]>
   inspectUrl(url: string): Promise<UrlStatus>
   /** Llamadas hechas por esta instancia (para el resumen del job). */
   readonly callsMade: number

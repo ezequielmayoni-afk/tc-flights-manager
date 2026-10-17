@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 
 // Available roles in the system
-export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas'
+export type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas' | 'aereos'
 
 // Role permissions configuration
 export const ROLE_PERMISSIONS = {
@@ -11,21 +11,21 @@ export const ROLE_PERMISSIONS = {
     description: 'Acceso total al sistema',
     canAccessAdmin: true,
     readOnly: false,
-    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+    sections: ['cupos', 'aereos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
   },
   marketing: {
     label: 'Marketing',
     description: 'Acceso admin (todo el sistema)',
     canAccessAdmin: true,
     readOnly: false,
-    sections: ['cupos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
+    sections: ['cupos', 'aereos', 'productos', 'diseño', 'marketing', 'comercial', 'rendimiento', 'users', 'seo', 'requote', 'tareas', 'automatizacion', 'producto'],
   },
   producto: {
     label: 'Producto',
     description: 'Todo excepto Diseño y Marketing',
     canAccessAdmin: false,
     readOnly: false,
-    sections: ['cupos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas', 'producto'],
+    sections: ['cupos', 'aereos', 'productos', 'comercial', 'rendimiento', 'seo', 'requote', 'tareas', 'producto'],
   },
   diseño: {
     label: 'Diseño',
@@ -33,6 +33,13 @@ export const ROLE_PERMISSIONS = {
     canAccessAdmin: false,
     readOnly: false,
     sections: ['productos', 'diseño', 'seo'],
+  },
+  aereos: {
+    label: 'Aéreos',
+    description: 'Sólo los pedidos de cupos: cargar precios y condiciones',
+    canAccessAdmin: false,
+    readOnly: false,
+    sections: ['aereos'],
   },
   ventas: {
     label: 'Ventas',

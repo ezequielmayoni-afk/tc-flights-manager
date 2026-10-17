@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic'
 type Params = { params: Promise<{ id: string }> }
 
 export async function GET(_req: NextRequest, { params }: Params) {
-  const { authorized } = await checkSectionAccess('cupos')
+  const { authorized } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)
@@ -34,7 +34,7 @@ const patchSchema = z.object({
 
 /** PATCH — edita el borrador (o cierra / cancela). */
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const { authorized, user } = await checkSectionAccess('cupos')
+  const { authorized, user } = await checkSectionAccess('aereos')
   if (!authorized) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
   try {
     const id = Number((await params).id)
