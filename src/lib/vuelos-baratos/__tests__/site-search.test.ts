@@ -101,6 +101,7 @@ describe('parseSiteSearch', () => {
       nights: 7,
       adults: 1,
       children: 0,
+      infants: 0,
       status: 'ok',
       minPricePp: 886.17,
       airline: 'Avianca',
@@ -185,12 +186,41 @@ describe('parseSiteSearch', () => {
     expect(ok(beacon({ items: [] })).status).toBe('empty')
   })
 
-  it('suma menores e infantes y valida los adultos', () => {
-    expect(ok(conSearch({ adults: 2, children: '1', infants: 1 }))).toMatchObject({ adults: 2, children: 2 })
-    expect(ok(conSearch({ adults: undefined, children: undefined, infants: undefined }))).toMatchObject({ adults: 1, children: 0 })
+  it('lee menores e infantes por separado y valida los adultos', () => {
+    expect(ok(conSearch({ adults: 2, children: '1', infants: 1 }))).toMatchObject({ adults: 2, children: 1, infants: 1 })
+    expect(ok(conSearch({ adults: undefined, children: undefined, infants: undefined }))).toMatchObject({ adults: 1, children: 0, infants: 0 })
     expect(motivo(conSearch({ adults: '0' }))).toBe('pasajeros')
     expect(motivo(conSearch({ adults: 10 }))).toBe('pasajeros')
     expect(motivo(conSearch({ children: '1.5' }))).toBe('pasajeros')
+  })
+})
+
+describe('parseSiteSearch con varios pasajeros (el price del dataLayer es el total)', () => {
+  const tarjeta = (price: number) => [{ id: 'x', price, brand: 'Avianca', variant: 'RT' }]
+
+  it('2 adultos: divide el total por 2', () => {
+    const s = ok(beacon({ search: { ...BEACON_REAL.search, adults: '2' }, items: tarjeta(1772.34) }))
+    expect(s.minPricePp).toBe(886.17)
+    expect(s.options[0].pricePp).toBe(886.17)
+  })
+
+  it('1 adulto: el precio queda igual', () => {
+    expect(ok(beacon()).minPricePp).toBe(886.17)
+  })
+
+  it('2 adultos + 1 menor: divide por 3', () => {
+    const s = ok(beacon({ search: { ...BEACON_REAL.search, adults: 2, children: 1 }, items: tarjeta(2658.51) }))
+    expect(s.minPricePp).toBe(886.17)
+  })
+
+  it('los infantes no dividen', () => {
+    const s = ok(beacon({ search: { ...BEACON_REAL.search, adults: 2, infants: '1' }, items: tarjeta(1772.34) }))
+    expect(s.minPricePp).toBe(886.17)
+  })
+
+  it('el tope de rango se mide por persona', () => {
+    // 30.000 entre 2 son 15.000 por persona: entra.
+    expect(ok(beacon({ search: { ...BEACON_REAL.search, adults: 2 }, items: tarjeta(30000) })).minPricePp).toBe(15000)
   })
 })
 
@@ -198,7 +228,8 @@ describe('siteSearchKey', () => {
   it('es estable y cambia con la ruta, las fechas o los pasajeros', () => {
     const a = ok(beacon())
     expect(siteSearchKey(a)).toBe(siteSearchKey(ok(beacon())))
-    expect(siteSearchKey(a)).toBe('BUE|MIA|2027-09-03|2027-09-10|1|0')
+    expect(siteSearchKey(a)).toBe('BUE|MIA|2027-09-03|2027-09-10|1|0|0')
+    expect(siteSearchKey(a)).not.toBe(siteSearchKey(ok(conSearch({ infants: 1 }))))
     expect(siteSearchKey(a)).not.toBe(siteSearchKey(ok(conSearch({ adults: 2 }))))
     expect(siteSearchKey(a)).not.toBe(siteSearchKey(ok(conSearch({ endDate: '2027-09-11' }))))
   })

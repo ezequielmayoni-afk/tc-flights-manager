@@ -80,9 +80,17 @@ export interface SiteSearch {
   return: string
   nights: number
   adults: number
-  /** Menores e infantes juntos. */
+  /** Menores (pagan tarifa y dividen el precio). */
   children: number
-  /** 'empty' si no hubo tarjetas de ida y vuelta con precio válido. */
+  /** Infantes (viajan con tarifa mínima: no dividen el precio). */
+  infants: number
+  /**
+   * 'empty' si no hubo tarjetas de ida y vuelta con precio válido.
+   *
+   * El `price` de cada tarjeta en el dataLayer es el TOTAL de los pasajeros
+   * (con 2 adultos, 1772.34 donde la página muestra "US$886" por persona):
+   * los precios de acá ya están divididos por adultos + menores.
+   */
   status: 'ok' | 'empty'
   minPricePp: number | null
   /** La aerolínea de la tarjeta más barata. */
@@ -95,13 +103,13 @@ export interface SiteSearch {
 }
 
 const CODIGO = /^[A-Z0-9-]{2,8}$/
-/** Arriba de esto es un precio mal leído (o un total de grupo), no una tarifa por persona. */
+/** Arriba de esto (por persona) es un precio mal leído, no una tarifa. */
 const PRECIO_MAXIMO = 20_000
 const MAX_ADULTOS = 9
 
 /** Clave de dedupe: misma ruta, fechas y pasajeros. */
 export function siteSearchKey(s: SiteSearch): string {
-  return [s.origin, s.destinationCode, s.depart, s.return, s.adults, s.children].join('|')
+  return [s.origin, s.destinationCode, s.depart, s.return, s.adults, s.children, s.infants].join('|')
 }
 
 function codigo(raw: string | undefined): string | null {
@@ -121,9 +129,14 @@ function entero(raw: string | number | undefined, porDefecto: number): number | 
   return Number.isInteger(n) ? n : null
 }
 
-function precio(raw: string | number | undefined): number | null {
+/**
+ * El precio por persona de una tarjeta: el `price` del dataLayer es el total
+ * de los que pagan (adultos + menores; los infantes van con tarifa mínima y
+ * no cuentan). El rango se mide ya dividido.
+ */
+function precioPorPersona(raw: string | number | undefined, paxPagan: number): number | null {
   if (raw === undefined || (typeof raw === 'string' && raw.trim() === '')) return null
-  const n = Number(raw)
+  const n = Number(raw) / paxPagan
   return Number.isFinite(n) && n > 0 && n < PRECIO_MAXIMO ? n : null
 }
 
@@ -174,7 +187,7 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
 
   const tarjetas = beacon.items
     .filter(item => (item.variant ?? '').trim().toUpperCase() === 'RT')
-    .map(item => ({ item, pricePp: precio(item.price) }))
+    .map(item => ({ item, pricePp: precioPorPersona(item.price, adults + menores) }))
     .filter((t): t is { item: (typeof beacon.items)[number]; pricePp: number } => t.pricePp !== null)
     .sort((a, b) => a.pricePp - b.pricePp)
 
@@ -194,7 +207,8 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
       return: back,
       nights: daysBetween(depart, back),
       adults,
-      children: menores + infantes,
+      children: menores,
+      infants: infantes,
       status: mejor ? 'ok' : 'empty',
       minPricePp: mejor ? mejor.pricePp : null,
       airline: mejor ? mejor.airline : null,

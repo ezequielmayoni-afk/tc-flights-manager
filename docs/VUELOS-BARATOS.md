@@ -297,7 +297,10 @@ que mide el barrido: se guarda como una observación más y el barrido no gasta 
   startDate, endDate, nights }], items: [{ id, price, brand, variant, start, end }], url, ts }`. Sólo cuenta
   `section: 'ONLY_FLIGHT'`; el resto se descarta. En "solo vuelo" TC manda `search.destinationCode` igual al
   origen: el destino real sale de la primera parada `DESTINATION` del itinerario con `position >= 1`.
-  De las tarjetas sólo valen las `variant: 'RT'` con precio entre 0 y 20.000 (por persona).
+  De las tarjetas sólo valen las `variant: 'RT'`. Su `price` es el **total de los pasajeros que pagan**
+  (con 2 adultos la tarjeta trae 1772.34 y la página muestra "US$886" por persona): se divide por
+  `adults + children` (los infantes viajan con tarifa mínima y no dividen) y vale si queda entre 0 y
+  20.000 por persona.
 - **Endpoint** (`src/app/api/vuelos-baratos/site-search/route.ts`, público en el middleware): en orden,
   `Origin` exacto de la allow-list (403), tope por IP (429), tamaño (413), JSON y esquema zod (400). Un
   beacon válido que no es una búsqueda de ida y vuelta (otra sección, fechas pasadas, sin destino) responde
