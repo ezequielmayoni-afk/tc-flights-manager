@@ -81,10 +81,30 @@ Metas a 90 días (desde el 2026-10-20), medidas por los agentes de la sección 3
 | Meta | Hoy | Objetivo |
 |---|---|---|
 | Clics no-marca (90 días) | 2.324 | 5.000 |
-| Consultas "paquetes a {destino}" con siviajo.com en top 10 (de 27 seguidas) | 2–3 | 12 |
-| Fichas y temáticas indexadas de las que trae impresiones | sin medir | ≥ 90 % |
+| Consultas seguidas (45) con siviajo.com en el top 10 de Google AR | 4 (F1 Brasil 1.º, GP México 1.º, "clima bayahibe" 4.º por el blog, "paquetes a bayahibe" 9.º) | 20 |
+| Consultas "paquetes a {destino}" (27) en top 10 | 1 | 12 |
+| Consultas con AI Overview donde se cita siviajo.com | 0 de 41 | 8 |
 | Posts nuevos en el blog por mes | 0 | 8 |
-| Sondas de IA donde Sí, Viajo es mencionada (36 por semana) | sin medir | ≥ 8 (22 %) |
+| Sondas de IA (12 preguntas × 3 motores) donde Sí, Viajo es mencionada | 2 de 24 respondidas, y sólo en la pregunta que la nombra | ≥ 8 (22 %) |
+
+### Baseline medido el 2026-10-17 (semana 2026-W42)
+
+- **Google AR (SerpAPI, 45 consultas):** 41 muestran AI Overview. Fuentes que más cita el AIO:
+  Instagram (9 consultas), TurismoCity (5), Despegar (5), Almundo (3), TikTok, Juliá Tours, Costa
+  Azul, Tripadvisor, Buteler, YouTube. Competidores en el top 10 orgánico: TurismoCity en 29 de 45
+  consultas, Despegar 27, Almundo 25, Viajobien 23, Atrápalo 21, Deturista 14, Multitravel 10.
+  Sí, Viajo sólo aparece en el pack local de "mejores agencias de viajes en argentina" (2.ª).
+- **Motores de IA (ChatGPT `gpt-5.1` y Claude `claude-opus-5-5` con búsqueda web; Gemini se
+  repitió aparte):** en las 11 preguntas que no nombran la marca, ninguno menciona a Sí, Viajo.
+  Nombran a Despegar (15 respuestas), Almundo (13), TurismoCity (9), Juliá Tours (6), Avantrip (5),
+  Buteler y Atrápalo (4). En la pregunta "¿Sí, Viajo es confiable?", ChatGPT cita
+  `institucional.siviajo.com/tyc.html` y la home (no hay página de entidad mejor que citar).
+- **Search Console (28 días):** 3.503 clics, 166.492 impresiones, posición 7,1; marca 1.427 clics
+  en 34 consultas vs. no-marca 671 clics en 5.441 consultas (posición media 9,6). Por plantilla:
+  home 1.639 clics; fichas 782 (245 URLs); blog 655 (259 URLs, 92 k impresiones); temáticas 365
+  (108 URLs); destinos 13 (70 URLs). "Para subir" (impresiones altas, posición 4–15): burgerpalusa
+  (2.778 impresiones, 7,1), clima bayahibe (1.197, 8,4), f1 brasil 2026 (634, 6,6), paquetes a
+  bayahibe all inclusive 2027 (598, 8,3), paquetes a bayahibe (525, 10,3).
 
 ## 3. Agentes de medición (construidos el 2026-10-17)
 
