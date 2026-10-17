@@ -64,7 +64,7 @@ export async function runGeoProbe(deps: GeoProbeDeps): Promise<GeoProbeSummary> 
   const s: GeoProbeSummary = { prompts: deps.prompts.length, engines, asked: 0, answered: 0, mentioned: 0, cited: 0, errors: 0, budgetStopped: false, durationMs: 0 }
 
   const faltan = GEO_ENGINES.filter(e => !deps.engines[e])
-  if (faltan.length > 0) await deps.log(`Sondas de IA: sin credenciales para ${faltan.join(', ')}; se omiten`, undefined, 'warning')
+  if (faltan.length > 0) await deps.log(`Sondas de IA: se omiten ${faltan.join(', ')} (sin credenciales o fuera de esta corrida)`, undefined, 'warning')
 
   bucle: for (const p of deps.prompts) {
     for (const engine of engines) {
