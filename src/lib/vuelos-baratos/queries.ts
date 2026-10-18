@@ -612,6 +612,8 @@ export async function hasRecentSiteSearch(db: Db, s: SiteSearch, sinceMinutes: n
     .eq('departure_date', s.depart)
     .eq('return_date', s.return)
     .eq('adults', s.adults)
+    // Una fila sospechosa (beacon fuera de banda) no puede frenar a la búsqueda real que viene detrás.
+    .neq('status', 'error')
     .gte('probed_at', new Date(Date.now() - sinceMinutes * 60_000).toISOString())
     .limit(1)
   if (error) throw new Error(`No se pudo revisar si la búsqueda ya entró: ${error.message}`)

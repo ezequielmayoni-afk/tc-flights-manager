@@ -88,7 +88,12 @@ async function guardar(s: SiteSearch): Promise<void> {
   let error: string | null = null
   let suspect = false
   if (route && s.status === 'ok' && s.minPricePp !== null) {
-    const ref = await getReferencePricePp(db, route.id, s.depart.slice(0, 7), SITE_SEARCH_PLAUSIBLE.refDays)
+    // Si la referencia no se puede leer (base caída un instante), la búsqueda
+    // entra igual como ok: perderla es peor que el riesgo de un beacon falso.
+    const ref = await getReferencePricePp(db, route.id, s.depart.slice(0, 7), SITE_SEARCH_PLAUSIBLE.refDays).catch((fallo: unknown) => {
+      console.warn('[site-search] sin referencia de precio:', fallo instanceof Error ? fallo.message : fallo)
+      return null
+    })
     if (ref !== null && !isPlausiblePrice(s.minPricePp, ref, SITE_SEARCH_PLAUSIBLE)) {
       status = 'error'
       error = `precio fuera de rango (referencia US$ ${Math.round(ref)})`
