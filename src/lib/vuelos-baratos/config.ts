@@ -83,12 +83,25 @@ export const PAGE_SIZE = 30
 export const SITE_SEARCH_ALLOWED_ORIGINS = ['https://www.siviajo.com', 'https://siviajo.com']
 /** Un beacon real pesa 5–10 KB (40 tarjetas); 64 KB es techo, no objetivo. */
 export const SITE_SEARCH_MAX_BYTES = 64 * 1024
-/** Misma búsqueda (ruta, fechas, pax) repetida en menos de esto es un reload, no otra observación. */
+/** Misma búsqueda (ruta, fechas, adultos) repetida en menos de esto es un reload, no otra observación. */
 export const SITE_SEARCH_DEDUPE_MINUTES = 10
 /** Tarjetas más baratas que se guardan en `options`. */
 export const SITE_SEARCH_MAX_OPTIONS = 5
 /** Beacons por IP y ventana: una oficina detrás de un NAT puede buscar mucho. */
 export const SITE_SEARCH_RATE = { max: 600, windowMs: 10 * 60_000, maxKeys: 5_000 }
+/**
+ * Ninguna tarifa internacional ida y vuelta vale menos que esto por persona: una
+ * tarjeta por debajo es un precio mal leído (o inventado) y se descarta, igual
+ * que las de 20.000 o más.
+ */
+export const SITE_SEARCH_MIN_PRICE_PP = 80
+/**
+ * Banda de plausibilidad de una búsqueda contra la referencia propia de la ruta
+ * (mínimo de Sabre y del cotizador en ese mes, de los últimos `refDays` días).
+ * Fuera de [ref × min, ref × max] la fila se guarda como 'error' (sospechosa):
+ * el header `Origin` lo falsifica cualquier `curl` y la landing publica el mínimo.
+ */
+export const SITE_SEARCH_PLAUSIBLE = { min: 0.5, max: 4, refDays: 7 }
 /** El barrido no vuelve a sondear un par que un viajero vio hace menos de esto. */
 export const SWEEP_SKIP_OBSERVED_HOURS = 24
 export const SLUG_RE = /^[a-z0-9-]{2,40}$/

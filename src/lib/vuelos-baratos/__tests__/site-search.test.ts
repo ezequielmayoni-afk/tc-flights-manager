@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { SITE_SEARCH_ALLOWED_ORIGINS, SITE_SEARCH_MAX_OPTIONS } from '../config'
+import { SITE_SEARCH_ALLOWED_ORIGINS, SITE_SEARCH_MAX_OPTIONS, SITE_SEARCH_MIN_PRICE_PP, SITE_SEARCH_PLAUSIBLE } from '../config'
 import {
   aggregateSiteSearchStats,
+  isPlausiblePrice,
+  siteSearchDestinationLabel,
   parseSiteSearch,
   siteSearchBeaconSchema,
   siteSearchKey,
@@ -192,6 +194,37 @@ describe('parseSiteSearch', () => {
     expect(motivo(conSearch({ adults: '0' }))).toBe('pasajeros')
     expect(motivo(conSearch({ adults: 10 }))).toBe('pasajeros')
     expect(motivo(conSearch({ children: '1.5' }))).toBe('pasajeros')
+    expect(motivo(conSearch({ children: '100000' }))).toBe('pasajeros')
+    expect(motivo(conSearch({ children: 9 }))).toBe('pasajeros')
+    expect(motivo(conSearch({ infants: 5 }))).toBe('pasajeros')
+    expect(ok(conSearch({ adults: 9, children: 8, infants: 4 }))).toMatchObject({ adults: 9, children: 8, infants: 4 })
+  })
+
+  it('descarta tarjetas que divididas quedan por debajo del piso por persona', () => {
+    expect(SITE_SEARCH_MIN_PRICE_PP).toBe(80)
+    // 60 entre 2 adultos son US$ 30: no es una tarifa.
+    const s = ok(beacon({ search: { ...BEACON_REAL.search, adults: 2 }, items: [{ price: 60, variant: 'RT' }] }))
+    expect(s).toMatchObject({ status: 'empty', minPricePp: null, results: 0 })
+    // El piso es inclusivo.
+    expect(ok(beacon({ items: [{ price: 80, variant: 'RT' }] })).minPricePp).toBe(80)
+    expect(ok(beacon({ items: [{ price: 79.99, variant: 'RT' }] })).status).toBe('empty')
+  })
+
+  it('guarda sólo el pathname de la url', () => {
+    expect(ok(beacon({ url: '/transport/onlyTransportAvail.xhtml;jsessionid=ABC?email=a@b.com#x' })).url).toBe('/transport/onlyTransportAvail.xhtml')
+    expect(ok(beacon({ url: '/a?b=1' })).url).toBe('/a')
+    expect(ok(beacon({ url: 'https://www.siviajo.com/a' })).url).toBeNull()
+    expect(ok(beacon({ url: undefined })).url).toBeNull()
+  })
+
+  it('con destino directo, la vuelta de respaldo sale de la parada de ese destino y no de otra', () => {
+    const itinerary = [
+      { position: 1, type: 'DESTINATION', destinationCode: 'CUN', startDate: '2027-09-03', endDate: '2027-09-20' },
+      { position: 2, type: 'DESTINATION', destinationCode: 'MIA', startDate: '2027-09-03', endDate: '2027-09-12' },
+    ]
+    const s = ok(beacon({ search: { ...BEACON_REAL.search, destinationCode: 'MIA', endDate: undefined }, itinerary }))
+    expect(s.destinationCode).toBe('MIA')
+    expect(s.return).toBe('2027-09-12')
   })
 })
 
@@ -221,6 +254,36 @@ describe('parseSiteSearch con varios pasajeros (el price del dataLayer es el tot
   it('el tope de rango se mide por persona', () => {
     // 30.000 entre 2 son 15.000 por persona: entra.
     expect(ok(beacon({ search: { ...BEACON_REAL.search, adults: 2 }, items: tarjeta(30000) })).minPricePp).toBe(15000)
+  })
+})
+
+describe('isPlausiblePrice', () => {
+  const cfg = SITE_SEARCH_PLAUSIBLE
+
+  it('acepta dentro de la banda, con límites inclusivos', () => {
+    expect(cfg).toEqual({ min: 0.5, max: 4, refDays: 7 })
+    expect(isPlausiblePrice(500, 1000, cfg)).toBe(true)
+    expect(isPlausiblePrice(4000, 1000, cfg)).toBe(true)
+    expect(isPlausiblePrice(900, 1000, cfg)).toBe(true)
+  })
+
+  it('rechaza fuera de la banda', () => {
+    expect(isPlausiblePrice(499.99, 1000, cfg)).toBe(false)
+    expect(isPlausiblePrice(4000.01, 1000, cfg)).toBe(false)
+    expect(isPlausiblePrice(80, 1000, cfg)).toBe(false)
+  })
+
+  it('sin referencia acepta', () => {
+    expect(isPlausiblePrice(1, null, cfg)).toBe(true)
+    expect(isPlausiblePrice(1, 0, cfg)).toBe(true)
+  })
+})
+
+describe('siteSearchDestinationLabel', () => {
+  it('nunca devuelve el código pelado', () => {
+    expect(siteSearchDestinationLabel({ destinationCode: 'MIA', destinationName: 'Miami FL' }, 'Miami')).toBe('Miami FL')
+    expect(siteSearchDestinationLabel({ destinationCode: 'MIA', destinationName: null }, 'Miami')).toBe('Miami')
+    expect(siteSearchDestinationLabel({ destinationCode: 'MIA', destinationName: null }, null)).toBe('MIA (búsqueda web)')
   })
 })
 

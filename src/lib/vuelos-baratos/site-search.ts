@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { SITE_SEARCH_MAX_OPTIONS } from './config'
+import { SITE_SEARCH_MAX_OPTIONS, SITE_SEARCH_MIN_PRICE_PP } from './config'
 import { daysBetween, isValidIsoDate, todayIso } from './date-pairs'
 
 /**
@@ -105,7 +105,10 @@ export interface SiteSearch {
 const CODIGO = /^[A-Z0-9-]{2,8}$/
 /** Arriba de esto (por persona) es un precio mal leído, no una tarifa. */
 const PRECIO_MAXIMO = 20_000
+/** Topes de TC por tipo de pasajero: más que esto no es una búsqueda de verdad. */
 const MAX_ADULTOS = 9
+const MAX_MENORES = 8
+const MAX_INFANTES = 4
 
 /** Clave de dedupe: misma ruta, fechas y pasajeros. */
 export function siteSearchKey(s: SiteSearch): string {
@@ -129,18 +132,40 @@ function entero(raw: string | number | undefined, porDefecto: number): number | 
   return Number.isInteger(n) ? n : null
 }
 
+const redondear = (n: number): number => Math.round(n * 100) / 100
+
 /**
  * El precio por persona de una tarjeta: el `price` del dataLayer es el total
  * de los que pagan (adultos + menores; los infantes van con tarifa mínima y
- * no cuentan). El rango se mide ya dividido.
+ * no cuentan). El rango [`SITE_SEARCH_MIN_PRICE_PP`, 20.000) se mide ya
+ * dividido y redondeado: así nada se guarda como US$ 0.
  */
 function precioPorPersona(raw: string | number | undefined, paxPagan: number): number | null {
   if (raw === undefined || (typeof raw === 'string' && raw.trim() === '')) return null
-  const n = Number(raw) / paxPagan
-  return Number.isFinite(n) && n > 0 && n < PRECIO_MAXIMO ? n : null
+  const total = Number(raw)
+  if (!Number.isFinite(total)) return null
+  const n = redondear(total / paxPagan)
+  return n >= SITE_SEARCH_MIN_PRICE_PP && n < PRECIO_MAXIMO ? n : null
 }
 
-const redondear = (n: number): number => Math.round(n * 100) / 100
+/**
+ * Sólo el pathname de la URL que manda la etiqueta: sin query, fragmento ni
+ * parámetros de matriz (`;jsessionid=`), que pueden traer identificadores.
+ */
+function soloPath(raw: string | undefined): string | null {
+  if (!raw) return null
+  const path = raw.split(/[?#;]/, 1)[0].trim()
+  return path.startsWith('/') ? path.slice(0, 200) : null
+}
+
+/**
+ * ¿El precio de una búsqueda es creíble frente a la referencia propia de la ruta?
+ * Límites inclusivos; sin referencia no hay contra qué comparar y se acepta.
+ */
+export function isPlausiblePrice(pricePp: number, ref: number | null, cfg: { min: number; max: number }): boolean {
+  if (ref === null || !Number.isFinite(ref) || ref <= 0) return true
+  return pricePp >= ref * cfg.min && pricePp <= ref * cfg.max
+}
 
 /**
  * Traduce el beacon a una búsqueda normalizada. Devuelve null (y el motivo) cuando no es
@@ -171,8 +196,12 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
     return { search: null, reason: 'destino' }
   }
 
+  // La vuelta de respaldo sale de la parada del destino elegido, no de otra.
+  const paradaDestino = (beacon.itinerary ?? []).find(
+    e => e.type === 'DESTINATION' && (e.position ?? -1) >= 1 && codigo(e.destinationCode) === destinationCode
+  )
   const depart = beacon.search.startDate
-  const vuelta = beacon.search.endDate ?? parada?.endDate
+  const vuelta = beacon.search.endDate ?? paradaDestino?.endDate
   if (!isValidIsoDate(depart) || !isValidIsoDate(vuelta) || vuelta! < depart || depart < todayIso(today)) {
     return { search: null, reason: 'fechas' }
   }
@@ -181,7 +210,11 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
   const adults = entero(beacon.search.adults, 1)
   const menores = entero(beacon.search.children, 0)
   const infantes = entero(beacon.search.infants, 0)
-  if (adults === null || adults < 1 || adults > MAX_ADULTOS || menores === null || menores < 0 || infantes === null || infantes < 0) {
+  if (
+    adults === null || adults < 1 || adults > MAX_ADULTOS ||
+    menores === null || menores < 0 || menores > MAX_MENORES ||
+    infantes === null || infantes < 0 || infantes > MAX_INFANTES
+  ) {
     return { search: null, reason: 'pasajeros' }
   }
 
@@ -193,7 +226,7 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
 
   const options: SiteSearchOption[] = tarjetas.slice(0, SITE_SEARCH_MAX_OPTIONS).map(t => ({
     airline: nombre(t.item.brand),
-    pricePp: redondear(t.pricePp),
+    pricePp: t.pricePp,
     itineraryId: t.item.id ?? null,
   }))
   const mejor = options[0]
@@ -214,9 +247,19 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
       airline: mejor ? mejor.airline : null,
       options,
       results: tarjetas.length,
-      url: beacon.url ? beacon.url.slice(0, 200) : null,
+      url: soloPath(beacon.url),
     },
   }
+}
+
+/**
+ * Lo que va en `flight_price_probes.destination`: nunca el código pelado (con el
+ * código solo, una fila de la web coincidiría con las cachés de `cupo.probe` y
+ * de fechas alternativas, que buscan por código TC). El nombre del beacon; si
+ * falta, el del destino de la landing; si tampoco, `CODE (búsqueda web)`.
+ */
+export function siteSearchDestinationLabel(s: Pick<SiteSearch, 'destinationCode' | 'destinationName'>, landingName: string | null): string {
+  return s.destinationName ?? landingName ?? `${s.destinationCode} (búsqueda web)`
 }
 
 /** `Origin` del request dentro de la allow-list (comparación exacta, sin barra final). */
