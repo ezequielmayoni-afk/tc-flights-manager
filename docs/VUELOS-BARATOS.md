@@ -299,21 +299,36 @@ que mide el barrido: se guarda como una observación más y el barrido no gasta 
   origen: el destino real sale de la primera parada `DESTINATION` del itinerario con `position >= 1`.
   De las tarjetas sólo valen las `variant: 'RT'`. Su `price` es el **total de los pasajeros que pagan**
   (con 2 adultos la tarjeta trae 1772.34 y la página muestra "US$886" por persona): se divide por
-  `adults + children` (los infantes viajan con tarifa mínima y no dividen) y vale si queda entre 0 y
-  20.000 por persona.
+  `adults + children` (los infantes viajan con tarifa mínima y no dividen), se redondea y vale si queda
+  entre `SITE_SEARCH_MIN_PRICE_PP` (US$ 80, inclusive) y 20.000 por persona. Pasajeros: adultos 1–9,
+  menores 0–8, infantes 0–4; fuera de eso el beacon se descarta.
 - **Endpoint** (`src/app/api/vuelos-baratos/site-search/route.ts`, público en el middleware): en orden,
   `Origin` exacto de la allow-list (403), tope por IP (429), tamaño (413), JSON y esquema zod (400). Un
   beacon válido que no es una búsqueda de ida y vuelta (otra sección, fechas pasadas, sin destino) responde
   **204** igual: no es error del cliente. El camino feliz responde 204 y escribe en `after()`. `OPTIONS`
-  contesta el preflight (204 con `Access-Control-Allow-Origin` = el origen recibido, o 403). La traducción
+  contesta el preflight (204 con `Access-Control-Allow-Origin` = el origen recibido, o 403). El 403 deja un
+  `console.warn` (uno por minuto) con el `Origin` rechazado, para ver si siviajo.com sirve desde otro host. La traducción
   del beacon es pura y está testeada: `src/lib/vuelos-baratos/site-search.ts`.
 - **Cómo entra a `flight_price_probes`**: `source='tc_search'`, `status` `ok` (con el mínimo en
   `price_per_pax` y la aerolínea de esa tarjeta) o `empty` (sin tarjetas RT válidas), las 5 tarjetas más
-  baratas en `options` (`{ airline, pricePp, itineraryId }`), `raw = { v, results, url }` y `route_id` si
-  existe una ruta del catálogo con ese origen y destino (activa o no; también se engancha por el `tc_code`
-  del destino). Sin ruta queda en null y sólo cuenta para el panel. La misma búsqueda (ruta, fechas,
-  adultos) repetida en menos de `SITE_SEARCH_DEDUPE_MINUTES` es un reload y no se vuelve a guardar. Como
-  tienen `route_id` y `status='ok'`, la landing las muestra como cualquier otra observación.
+  baratas en `options` (`{ airline, pricePp, itineraryId }`), `raw = { v: 1, results, url, children,
+  infants }` (`url` es sólo el pathname: se corta en `?`, `#` y `;`) y `route_id` si existe una ruta del
+  catálogo con ese origen y destino (activa o no; también se engancha por el `tc_code` del destino). Sin
+  ruta queda en null y sólo cuenta para el panel. `destination` nunca es el código pelado: el nombre del
+  beacon, si no el del destino de la landing, si no `CODE (búsqueda web)` (con el código solo, la fila
+  coincidiría con las cachés de `cupo.probe` y `package.alternative_date`, que además ahora sólo
+  reutilizan `source='cotizador_probe'`). La misma búsqueda (ruta, fechas, adultos) repetida en menos de
+  `SITE_SEARCH_DEDUPE_MINUTES` es un reload y no se vuelve a guardar; dos beacons simultáneos pueden
+  dejar dos filas iguales (carrera aceptada). Como tienen `route_id` y `status='ok'`, la landing las
+  muestra como cualquier otra observación.
+- **Plausibilidad** (el `Origin` lo falsifica cualquier `curl`, y la landing publica el mínimo): con
+  `route_id` y `status 'ok'`, se compara el mínimo contra la referencia propia de la ruta en ese mes
+  (`getReferencePricePp`: el menor entre `flight_fare_estimates.price_pp` y las `cotizador_probe` ok de
+  los últimos `SITE_SEARCH_PLAUSIBLE.refDays` días). Fuera de `[ref × 0,5, ref × 4]` la fila entra igual
+  pero con `status 'error'`, `error = 'precio fuera de rango (referencia US$ X)'`, el precio guardado y
+  `raw.suspect = true`: la landing la ignora y queda auditable. Sin referencia entra como ok.
+- **Otras filas `tc_search`**: `idea.probe` también escribe `source='tc_search'` (celdas del matrix, con
+  `idea_id`). El panel, el dedupe y el salto del barrido filtran `idea_id` y `cupo_request_id` en null.
 - **El barrido salta lo visto**: `flights.sweep.plan` lee los pares (ruta, ida, vuelta) con búsqueda
   real (`source='tc_search'`) `ok` de las últimas `SWEEP_SKIP_OBSERVED_HOURS` (24 h) y `buildSweepJobs` los saca
   tanto de los pares fijos como de los que eligió Sabre; un mes que queda sin pares no genera job. El
@@ -325,7 +340,8 @@ que mide el barrido: se guarda como una observación más y el barrido no gasta 
   el catálogo. Memo de 5 minutos.
 - **Constantes** (`config.ts`): `SITE_SEARCH_ALLOWED_ORIGINS` (`https://www.siviajo.com`,
   `https://siviajo.com`), `SITE_SEARCH_MAX_BYTES` (64 KB), `SITE_SEARCH_DEDUPE_MINUTES` (10),
-  `SITE_SEARCH_MAX_OPTIONS` (5), `SITE_SEARCH_RATE` (600 por IP cada 10 minutos, 5.000 IPs en memoria) y
+  `SITE_SEARCH_MAX_OPTIONS` (5), `SITE_SEARCH_RATE` (600 por IP cada 10 minutos, 5.000 IPs en memoria),
+  `SITE_SEARCH_MIN_PRICE_PP` (80), `SITE_SEARCH_PLAUSIBLE` (`{ min: 0.5, max: 4, refDays: 7 }`) y
   `SWEEP_SKIP_OBSERVED_HOURS` (24).
 
 ## Search Console
