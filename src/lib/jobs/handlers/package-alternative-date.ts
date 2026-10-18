@@ -60,7 +60,8 @@ const optionToCell = (date: string, o: ProbeOption): FareCell => ({ date, priceP
 async function flightCellsFor(db: Db, args: { originTc: string; destTc: string; date: string; nights: number; adults: number; childrenAges: number[]; jobId: number }): Promise<{ cells: FareCell[]; reused: boolean }> {
   const returnDate = addDays(args.date, args.nights)
   const since = new Date(Date.now() - PROBE_REUSE_DAYS * 86400000).toISOString()
-  const { data: existing } = await db.from('flight_price_probes').select('price_per_pax, currency, airline, flight_numbers, direct, stops, duration_minutes').eq('origin', args.originTc).eq('destination', args.destTc).eq('departure_date', args.date).eq('nights', args.nights).eq('status', 'ok').gte('probed_at', since).not('price_per_pax', 'is', null)
+  // Sólo se reutilizan sondas del cotizador, nunca búsquedas de la web (tc_search).
+  const { data: existing } = await db.from('flight_price_probes').select('price_per_pax, currency, airline, flight_numbers, direct, stops, duration_minutes').eq('source', 'cotizador_probe').eq('origin', args.originTc).eq('destination', args.destTc).eq('departure_date', args.date).eq('nights', args.nights).eq('status', 'ok').gte('probed_at', since).not('price_per_pax', 'is', null)
   const rows = (existing ?? []) as Array<{ price_per_pax: number | string; currency: string | null; airline: string | null; flight_numbers: string[] | null; direct: boolean | null; stops: number | null; duration_minutes: number | null }>
   if (rows.length > 0) {
     return { reused: true, cells: rows.map(r => ({ date: args.date, pricePerPax: Number(r.price_per_pax), currency: r.currency || 'USD', direct: r.direct === true, durationMinutes: r.duration_minutes, airline: r.airline, flightNumbers: r.flight_numbers ?? undefined, stops: r.stops ?? undefined, source: 'cotizador_probe' as const })) }

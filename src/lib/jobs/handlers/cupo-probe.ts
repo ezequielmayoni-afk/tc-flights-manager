@@ -9,7 +9,8 @@ const PROBE_REUSE_DAYS = 7
 async function probeDate(db: Db, args: { requestId: number; originTc: string; destTc: string; date: string; nights: number; adults: number; childrenAges: number[]; jobId: number }): Promise<{ options: ProbeOption[]; reused: boolean; error: string | null }> {
   const returnDate = addDays(args.date, args.nights)
   const since = new Date(Date.now() - PROBE_REUSE_DAYS * 86400000).toISOString()
-  const { data: existing } = await db.from('flight_price_probes').select('options').eq('origin', args.originTc).eq('destination', args.destTc).eq('departure_date', args.date).eq('nights', args.nights).eq('adults', args.adults).eq('status', 'ok').gte('probed_at', since).not('options', 'is', null).order('probed_at', { ascending: false }).limit(1)
+  // Sólo se reutilizan sondas del cotizador: las búsquedas de la web (tc_search) no traen opciones completas.
+  const { data: existing } = await db.from('flight_price_probes').select('options').eq('source', 'cotizador_probe').eq('origin', args.originTc).eq('destination', args.destTc).eq('departure_date', args.date).eq('nights', args.nights).eq('adults', args.adults).eq('status', 'ok').gte('probed_at', since).not('options', 'is', null).order('probed_at', { ascending: false }).limit(1)
   const cached = (existing?.[0]?.options as ProbeOption[] | null) ?? null
   if (cached && cached.length) return { options: cached, reused: true, error: null }
   const result = await probeFlights(db, { originCode: args.originTc, destCode: args.destTc, departDate: args.date, returnDate, adults: args.adults, childrenAges: args.childrenAges, topN: 6 }, { jobId: args.jobId })
