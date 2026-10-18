@@ -8,10 +8,18 @@ import {
   SITE_SEARCH_ALLOWED_ORIGINS,
   SITE_SEARCH_DEDUPE_MINUTES,
   SITE_SEARCH_MAX_BYTES,
+  SITE_SEARCH_PLAUSIBLE,
   SITE_SEARCH_RATE,
 } from '@/lib/vuelos-baratos/config'
-import { getRoutesByCodes, hasRecentSiteSearch, insertProbe } from '@/lib/vuelos-baratos/queries'
-import { parseSiteSearch, siteSearchBeaconSchema, siteSearchOriginAllowed, type SiteSearch } from '@/lib/vuelos-baratos/site-search'
+import { getReferencePricePp, getRoutesByCodes, hasRecentSiteSearch, insertProbe } from '@/lib/vuelos-baratos/queries'
+import {
+  isPlausiblePrice,
+  parseSiteSearch,
+  siteSearchBeaconSchema,
+  siteSearchDestinationLabel,
+  siteSearchOriginAllowed,
+  type SiteSearch,
+} from '@/lib/vuelos-baratos/site-search'
 
 export const dynamic = 'force-dynamic'
 
@@ -70,12 +78,28 @@ async function guardar(s: SiteSearch): Promise<void> {
   if (await hasRecentSiteSearch(db, s, SITE_SEARCH_DEDUPE_MINUTES)) return
 
   const routes = await ttlMemo('site-search:routes', PUBLIC_CACHE_TTL_MS, () => getRoutesByCodes(db))
-  const route = routes.get(`${s.origin}|${s.destinationCode}`)
+  const entrada = routes.get(`${s.origin}|${s.destinationCode}`)
+  const route = entrada?.route
+
+  // El `Origin` lo falsifica cualquier `curl` y la landing publica el mínimo:
+  // un precio fuera de la banda de la referencia propia de la ruta entra como
+  // 'error' (la landing sólo lee 'ok') y queda auditable con `raw.suspect`.
+  let status: 'ok' | 'empty' | 'error' = s.status
+  let error: string | null = null
+  let suspect = false
+  if (route && s.status === 'ok' && s.minPricePp !== null) {
+    const ref = await getReferencePricePp(db, route.id, s.depart.slice(0, 7), SITE_SEARCH_PLAUSIBLE.refDays)
+    if (ref !== null && !isPlausiblePrice(s.minPricePp, ref, SITE_SEARCH_PLAUSIBLE)) {
+      status = 'error'
+      error = `precio fuera de rango (referencia US$ ${Math.round(ref)})`
+      suspect = true
+    }
+  }
 
   await insertProbe(db, {
     route_id: route?.id ?? null,
     origin: s.origin,
-    destination: s.destinationName ?? s.destinationCode,
+    destination: siteSearchDestinationLabel(s, entrada?.destinationName ?? null),
     destination_code: s.destinationCode,
     departure_date: s.depart,
     return_date: s.return,
@@ -93,18 +117,32 @@ async function guardar(s: SiteSearch): Promise<void> {
     fare_family: null,
     checked_bag: null,
     carry_on: null,
-    status: s.status,
+    status,
     source: 'tc_search',
     options: s.options,
-    raw: { v: 1, results: s.results, url: s.url },
+    // Menores e infantes no tienen columna: van acá para poder depurar.
+    raw: { v: 1, results: s.results, url: s.url, children: s.children, infants: s.infants, ...(suspect ? { suspect: true } : {}) },
+    error,
     probed_at: new Date().toISOString(),
     job_id: null,
     elapsed_ms: null,
   })
 }
 
+/** Último 403 avisado por consola (ms): uno por minuto alcanza para ver si siviajo.com sirve desde otro host. */
+let ultimoAviso403 = 0
+
+function rechazarOrigen(request: NextRequest): NextResponse {
+  const ahora = Date.now()
+  if (ahora - ultimoAviso403 > 60_000) {
+    ultimoAviso403 = ahora
+    console.warn('[site-search] origen rechazado', { origin: (request.headers.get('origin') ?? '').slice(0, 80) })
+  }
+  return new NextResponse(null, { status: 403 })
+}
+
 export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
-  if (!siteSearchOriginAllowed(request.headers, SITE_SEARCH_ALLOWED_ORIGINS)) return new NextResponse(null, { status: 403 })
+  if (!siteSearchOriginAllowed(request.headers, SITE_SEARCH_ALLOWED_ORIGINS)) return rechazarOrigen(request)
   const origin = request.headers.get('origin')!.trim().replace(/\/+$/, '')
   return new NextResponse(null, {
     status: 204,
@@ -118,7 +156,7 @@ export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Lo más barato primero y antes de leer el body.
-  if (!siteSearchOriginAllowed(request.headers, SITE_SEARCH_ALLOWED_ORIGINS)) return new NextResponse(null, { status: 403 })
+  if (!siteSearchOriginAllowed(request.headers, SITE_SEARCH_ALLOWED_ORIGINS)) return rechazarOrigen(request)
   const headers = cors(request.headers.get('origin')!.trim().replace(/\/+$/, ''))
 
   const ip = clientIp(request.headers)

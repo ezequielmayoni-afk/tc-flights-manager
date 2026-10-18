@@ -2,7 +2,7 @@ import { ApiError } from '@/lib/api/errors'
 import { cancelJob } from '@/lib/jobs/queue'
 import type { Db, JobRow } from '@/lib/jobs/types'
 import { ESTIMATE_WINDOW_HOURS, OBSERVATION_WINDOW_HOURS } from './config'
-import { addDays, todayIso } from './date-pairs'
+import { addDays, daysInMonth, todayIso } from './date-pairs'
 import { aggregateSiteSearchStats, type SiteSearch, type SiteSearchStatRow, type SiteSearchStats } from './site-search'
 import type { EstimateInsert, EstimateRow, LandingDestinationRow, LandingRouteRow, ProbeRow } from './types'
 
@@ -578,6 +578,10 @@ export async function getObservedPairsForRoutes(db: Db, routeIds: number[], opts
     .select('route_id, departure_date, return_date')
     .in('route_id', routeIds)
     .eq('source', 'tc_search')
+    // `idea.probe` también escribe `tc_search` (celdas del matrix, con idea_id) y
+    // `cupo.probe` marca cupo_request_id: ninguna de las dos es una búsqueda de un viajero.
+    .is('idea_id', null)
+    .is('cupo_request_id', null)
     .eq('status', 'ok')
     .gte('probed_at', sinceIso(opts.sinceHours))
     .gte('departure_date', todayIso(new Date()))
@@ -591,12 +595,18 @@ export async function getObservedPairsForRoutes(db: Db, routeIds: number[], opts
   return pares
 }
 
-/** ¿Ya entró la misma búsqueda hace poco? (reload o doble beacon). */
+/**
+ * ¿Ya entró la misma búsqueda hace poco? (reload). Dos beacons simultáneos
+ * pueden pasar los dos: la carrera se acepta (deja dos filas iguales, no daña).
+ */
 export async function hasRecentSiteSearch(db: Db, s: SiteSearch, sinceMinutes: number): Promise<boolean> {
   const { data, error } = await db
     .from('flight_price_probes')
     .select('id')
     .eq('source', 'tc_search')
+    // Sólo búsquedas de viajeros: las celdas de `idea.probe` (idea_id) o de cupos no cuentan.
+    .is('idea_id', null)
+    .is('cupo_request_id', null)
     .eq('origin', s.origin)
     .eq('destination_code', s.destinationCode)
     .eq('departure_date', s.depart)
@@ -608,23 +618,79 @@ export async function hasRecentSiteSearch(db: Db, s: SiteSearch, sinceMinutes: n
   return (data ?? []).length > 0
 }
 
+export interface RouteByCodes {
+  route: LandingRouteRow
+  /** Nombre del destino de la landing (null si el perfil no tiene nombre). */
+  destinationName: string | null
+}
+
 /**
- * Mapa `${origin}|${destinationCode}` → ruta (activas e inactivas) para enganchar el route_id.
+ * Mapa `${origin}|${destinationCode}` → ruta (activas e inactivas) y nombre de su
+ * destino, para enganchar el route_id y no guardar nunca el código pelado en `destination`.
  *
  * La clave va con el `destination_code` de la ruta y, si difiere, también con
  * el `tc_code` de su destino: el beacon trae el código de Travel Compositor.
  */
-export async function getRoutesByCodes(db: Db): Promise<Map<string, LandingRouteRow>> {
+export async function getRoutesByCodes(db: Db): Promise<Map<string, RouteByCodes>> {
   const [routes, destinations] = await Promise.all([listRoutes(db), listLandingDestinations(db)])
-  const tcPorCodigo = new Map(destinations.map(d => [d.code, d.tc_code]))
-  const mapa = new Map<string, LandingRouteRow>()
+  const porCodigo = new Map(destinations.map(d => [d.code, d]))
+  const mapa = new Map<string, RouteByCodes>()
   for (const route of routes) {
-    mapa.set(`${route.origin_tc_code}|${route.destination_code}`, route)
-    const tc = tcPorCodigo.get(route.destination_code)
-    const claveTc = tc ? `${route.origin_tc_code}|${tc}` : null
-    if (claveTc && !mapa.has(claveTc)) mapa.set(claveTc, route)
+    const destino = porCodigo.get(route.destination_code)
+    // `toDestination` cae al código cuando el perfil no tiene nombre: eso no es un nombre.
+    const destinationName = destino && destino.name !== destino.code ? destino.name : null
+    const entrada = { route, destinationName }
+    mapa.set(`${route.origin_tc_code}|${route.destination_code}`, entrada)
+    const claveTc = destino?.tc_code ? `${route.origin_tc_code}|${destino.tc_code}` : null
+    if (claveTc && !mapa.has(claveTc)) mapa.set(claveTc, entrada)
   }
   return mapa
+}
+
+/** Filas por consulta de referencia: con el mínimo alcanza, ordenadas por precio. */
+const MAX_REFERENCE_ROWS = 1
+
+/**
+ * Precio de referencia propio de una ruta en un mes (YYYY-MM): el mínimo entre lo
+ * que estimó Sabre y lo que confirmó el cotizador en los últimos `refDays` días.
+ * null si no hay nada contra qué comparar.
+ */
+export async function getReferencePricePp(db: Db, routeId: number, month: string, refDays: number): Promise<number | null> {
+  const desde = `${month}-01`
+  const hasta = `${month}-${String(daysInMonth(month)).padStart(2, '0')}`
+  const since = sinceIso(refDays * 24)
+
+  const [estimates, probes] = await Promise.all([
+    db
+      .from('flight_fare_estimates')
+      .select('price_pp')
+      .eq('route_id', routeId)
+      .gte('depart_date', desde)
+      .lte('depart_date', hasta)
+      .gte('observed_at', since)
+      .order('price_pp', { ascending: true })
+      .limit(MAX_REFERENCE_ROWS),
+    db
+      .from('flight_price_probes')
+      .select('price_per_pax')
+      .eq('route_id', routeId)
+      .eq('source', 'cotizador_probe')
+      .eq('status', 'ok')
+      .gte('departure_date', desde)
+      .lte('departure_date', hasta)
+      .gte('probed_at', since)
+      .not('price_per_pax', 'is', null)
+      .order('price_per_pax', { ascending: true })
+      .limit(MAX_REFERENCE_ROWS),
+  ])
+  if (estimates.error) throw new Error(`No se pudo leer la referencia de Sabre de la ruta ${routeId}: ${estimates.error.message}`)
+  if (probes.error) throw new Error(`No se pudo leer la referencia del cotizador de la ruta ${routeId}: ${probes.error.message}`)
+
+  const precios = [
+    ...((estimates.data ?? []) as Array<{ price_pp: number | string }>).map(r => Number(r.price_pp)),
+    ...((probes.data ?? []) as Array<{ price_per_pax: number | string }>).map(r => Number(r.price_per_pax)),
+  ].filter(n => Number.isFinite(n) && n > 0)
+  return precios.length > 0 ? Math.min(...precios) : null
 }
 
 export type { SiteSearchStats } from './site-search'
@@ -641,6 +707,9 @@ export async function getSiteSearchStats(db: Db, opts: { days: number }): Promis
     .from('flight_price_probes')
     .select('probed_at, origin, destination, destination_code, route_id, price_per_pax, status')
     .eq('source', 'tc_search')
+    // El panel mide búsquedas de viajeros: fuera las celdas de `idea.probe` (idea_id) y de cupos.
+    .is('idea_id', null)
+    .is('cupo_request_id', null)
     .gte('probed_at', desde)
     .order('probed_at', { ascending: false })
     .limit(MAX_SITE_SEARCH_ROWS)
