@@ -5,7 +5,8 @@ type UserRole = 'admin' | 'marketing' | 'producto' | 'diseño' | 'ventas' | 'aer
 
 // Rutas públicas de vuelos.siviajo.com: la landing y los archivos de SEO se
 // responden sin pasar por Supabase (no hay sesión que refrescar).
-const PUBLIC_PREFIXES = ['/vuelos-baratos', '/robots.txt', '/sitemap.xml']
+// `/sitemaps` son los sitemaps de siviajo.com que HUB sirve para Search Console (Fase 14).
+const PUBLIC_PREFIXES = ['/vuelos-baratos', '/robots.txt', '/sitemap.xml', '/sitemaps']
 
 /**
  * APIs públicas, por path EXACTO (no por prefijo).

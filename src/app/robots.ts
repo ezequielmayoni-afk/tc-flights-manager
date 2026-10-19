@@ -14,7 +14,7 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/vuelos-baratos', '/vuelos-baratos/', '/_next/static/', '/_next/image'],
+        allow: ['/vuelos-baratos', '/vuelos-baratos/', '/sitemaps/', '/_next/static/', '/_next/image'],
         disallow: ['/'],
       },
     ],
