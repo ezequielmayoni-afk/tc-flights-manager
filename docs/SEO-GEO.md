@@ -218,7 +218,7 @@ Reglas:
 6. Job diario `seo.expiring`: cruza `packages` activos con las impresiones de 28 días y avisa por
    Slack y en `/tareas` ("Fichas con tráfico en Google que vencen") cuando la última salida vence en
    ≤ 7 días o ya venció (≥ 20 impresiones). Tabla `seo_expiring_alerts`; se cierran solas al cambiar
-   la fecha. Primera corrida: Praia do Forte (31958325, vencida el 7/10 con 274 impresiones).
+   la fecha. Primera corrida (2026-10-19): GP Fórmula 1 Austin (50056785, salida 22/10, 68 impresiones) → después de la carrera pasa a ser la ficha del GP Austin 2027.
 
 ## 6. Técnico (TC, GTM, DNS)
 
