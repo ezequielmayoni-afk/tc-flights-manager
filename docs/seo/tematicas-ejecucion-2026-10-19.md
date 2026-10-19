@@ -117,3 +117,27 @@ en 9 destinos) y revisión del `<head>` público de cada uno (`seo-hotel-sitemap
 El Calafate 134, Bayahíbe 95); 23.770 sin SEO quedan fuera; 290 ya no existen. Índice reenviado a
 Search Console. Riesgo a vigilar: miles de fichas de departamentos ("master-…") con texto generado son
 candidatas a "scaled content"; si GSC muestra caída de calidad, limitar el sitemap a hoteles con reservas.
+
+## 8. Home (2026-10-19, noche)
+
+Diagnóstico: casi todo lo que diferencia a la agencia (tira de confianza, reseñas, grupales, blog,
+WhatsApp) lo inyecta GTM después de cargar, así que no está en el HTML que leen ChatGPT, Claude o los
+snippets de Gemini. Además la home no tenía H1 ni meta descripción y las solapas de destino apuntaban a
+temáticas General sin SEO. GTM no se tocó.
+
+Cambios aplicados en el CMS de TC (`scripts/tc-admin/home_edit.py`, backup en `backup_home_title.json`):
+- Pestaña "Título": meta título `Sí, Viajo | Agencia de viajes en Argentina con concierge 24/7`, meta
+  descripción con 4,9★ / 1.972 opiniones / cuotas (ahora sí se renderiza, también en og y twitter),
+  H1 del slider `Paquetes de viaje con vuelo, hotel y concierge 24/7` y H2 con oficinas y reseñas.
+- Sección nueva de tipo **SEO Content** (`seo_section.html`), última antes del footer: quién es la
+  agencia (legajo, oficinas, cupos propios, CACE, GPTW), qué hace el concierge, 17 enlaces a las
+  temáticas con SEO, tres reseñas citadas y cuatro preguntas frecuentes. Texto crawleable sin JS.
+- Solapas "Paquetes seleccionados por destino": las temáticas propias Punta Cana, Cancún, Río, Búzios,
+  Florianópolis y Orlando y Disney pasaron a "principal" + "destino" (orden 4 a 9, entre Brasil y Asia);
+  la General Disney (322) se quitó de sus dos paquetes y del microsite.
+- La home se cachea por servidor backend: los cambios aparecen servidor por servidor (hasta unas horas).
+- TC no imprime la etiqueta keywords desde este formulario (trae un párrafo pegado en otro lado);
+  irrelevante para Google.
+
+Pendiente: FAQ y TravelAgency en JSON-LD dentro del HTML (probar sección "Custom Html"), fotos reales
+para las portadas, y quitar del microsite las otras General reemplazadas cuando las nuevas indexen.
