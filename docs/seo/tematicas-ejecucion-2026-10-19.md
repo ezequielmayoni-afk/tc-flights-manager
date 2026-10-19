@@ -107,3 +107,13 @@ vez del paquete buscado y le agregó una temática. Se revirtió en ambos (`repa
   Cartagena, Perú, Ecuador) cuando las nuevas tengan impresiones.
 - Cargar el submenú de Brasil (ver §4) y evaluar si "All inclusive" y "Escapadas" van al menú.
 - Reemplazar las imágenes IA por fotos reales cuando las haya.
+
+## 7. Sitemap de hoteles desde el backoffice
+
+Listado completo de "Landing del Alojamiento" por destino (`scripts/tc-admin/hl_list.py`, 42.888 hoteles
+en 9 destinos) y revisión del `<head>` público de cada uno (`seo-hotel-sitemap.ts hotels --admin=…`,
+55 min): **17.971 hoteles con SEO cargado** ahora en `https://hub.siviajo.com/sitemaps/hoteles-*.xml`
+(Río 9.699, Playa del Carmen 3.382, Cancún 2.829, Punta Cana 787, Orlando 574, Bariloche 310, Salta 161,
+El Calafate 134, Bayahíbe 95); 23.770 sin SEO quedan fuera; 290 ya no existen. Índice reenviado a
+Search Console. Riesgo a vigilar: miles de fichas de departamentos ("master-…") con texto generado son
+candidatas a "scaled content"; si GSC muestra caída de calidad, limitar el sitemap a hoteles con reservas.
