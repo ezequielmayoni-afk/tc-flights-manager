@@ -66,9 +66,19 @@ export async function syncSingleFlight(
   if (modalities.length > 0) {
     const dbModality = modalities[0]
     const tcModality = mapModalityToTC(dbModality, flight.start_date, flight.end_date)
+    const hubTotal = dbModality.modality_inventories?.[0]?.quantity ?? 0
+    if (isModalityUpdate) {
+      // Cupo ya cargado en TC: TC descuenta sola sus ventas sobre lo que tiene.
+      // No se pisa ese número; sólo se le suma o resta lo que cambió el TOTAL
+      // del cupo desde la última carga (ej. aéreos agregó 2 lugares).
+      const kept = await keepTcInventory(transportId, dbModality.code, supplierId, hubTotal, (flight as { tc_pushed_total?: number | null }).tc_pushed_total ?? null)
+      if (kept !== null && tcModality.inventories?.[0]) tcModality.inventories[0].quantity = kept
+    }
     const modalityResult = await tcClient.syncModality(transportId, tcModality, isModalityUpdate, supplierId)
     if (!modalityResult.success) {
       modalitySyncError = modalityResult.error || 'Modality sync failed'
+    } else {
+      await db.from('flights').update({ tc_pushed_total: hubTotal }).eq('id', flight.id)
     }
   } else {
     const defaultModality = createDefaultModality(flight)
@@ -117,5 +127,23 @@ export async function syncSingleFlight(
     success: true,
     transportId,
     error: modalitySyncError || undefined,
+  }
+}
+
+/**
+ * Cantidad a mandarle a TC en una edición: la que TC tiene hoy (con sus ventas
+ * ya descontadas) más la diferencia de total desde la última carga. Si no se
+ * puede leer TC, null (se manda el total, como en una carga nueva).
+ */
+async function keepTcInventory(transportId: string, modalityCode: string, supplierId: number | undefined, hubTotal: number, lastPushedTotal: number | null): Promise<number | null> {
+  try {
+    const sup = supplierId || process.env.TC_SUPPLIER_ID
+    const current = await (tcClient as unknown as { request: (p: string) => Promise<{ inventories?: Array<{ quantity?: number }> }> }).request(`/transport/${sup}/${transportId}/${encodeURIComponent(modalityCode)}`)
+    const tcQty = current?.inventories?.[0]?.quantity
+    if (typeof tcQty !== 'number') return null
+    const delta = lastPushedTotal === null ? 0 : hubTotal - lastPushedTotal
+    return Math.max(0, tcQty + delta)
+  } catch {
+    return null
   }
 }
