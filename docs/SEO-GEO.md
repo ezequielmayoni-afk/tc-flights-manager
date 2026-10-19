@@ -300,3 +300,80 @@ de sumar las 20 k restantes.
   `scripts/seo-title-proposals.ts`.
 - Skill de Claude Code instalada el 2026-10-17: `claude-seo` v2.4.2 (`~/.claude/skills/seo*`,
   26 sub-skills: `/seo audit`, `/seo geo`, `/seo schema`, `/seo sitemap`, `/seo local`…).
+
+## 10. Arquitectura para ser n.º 1 detrás de Despegar, TurismoCity y Almundo (2026-10-19)
+
+Objetivo acordado con Ezequiel: ganarles a Buteler, Viajobien, Deturista, Multitravel y el resto en
+Google y en los motores de IA, comunicando lo que nos diferencia (concierge 24/7, 4,9★ con 1.972
+reseñas en Google, 13 años, legajo 19159, oficinas en Buenos Aires, Rosario y Córdoba, cupos propios
+desde el interior). Análisis de competidores: `docs/seo/competidores-2026-10-19.md`.
+
+### Cuatro niveles de páginas (todo dentro de TC, con id fijo)
+
+| Nivel | Página | Para qué consulta | Dónde vive en TC |
+|---|---|---|---|
+| 1 | Home | marca, "agencia de viajes buenos aires/argentina" | Home del microsite: H1 con la propuesta + prueba social, bloques por región que enlazan a las landings |
+| 2 | **Landing permanente por destino** ("Paquetes a Punta Cana desde Argentina") | "paquetes a {destino}", "viajes a {destino} desde buenos aires", "{destino} all inclusive" | **Web content → Landing** (`/es/landing/{id}/{slug}`: admite título, meta, texto, H2, imágenes y enlaces; verificado con Burgerpalusa). Una por destino con producto; después por origen ("… desde Córdoba") donde hay cupo propio |
+| 2b | Temática (listado) | el mismo intento, versión catálogo | `/es/{id}/{slug}/moreideas`, con título/H1 propios y un párrafo arriba; enlazada desde la landing y viceversa |
+| 3 | Ficha de producto | "paquete a {destino} {noches} noches {régimen}" | `/es/idea/{id}`, título por temporada, calendario de salidas, schema TouristTrip por GTM |
+| 4 | Apoyo | informativas, long tail, confianza | Blog (guías, "cuánto cuesta", comparativas), fichas de hotel con SEO, "Sobre Sí, Viajo" y "Opiniones" |
+
+Estructura de cada landing de destino (600–900 palabras propias, nunca plantilla con el nombre cambiado):
+1. H1 "Paquetes a {Destino} desde Argentina" + subtítulo con la propuesta (vuelo, hotel, traslados,
+   asistencia 24 h, cuotas). 2. "Precios desde" reales (HUB los tiene) y salidas próximas. 3. Bloque
+   de paquetes vigentes enlazados a sus fichas (3–8). 4. "Qué incluye y cómo trabajamos" (concierge:
+   qué hace antes, durante y después del viaje, con ejemplos concretos). 5. "Cuándo viajar" con
+   enlace al post del blog. 6. 3–5 preguntas frecuentes sacadas de la PAA real (`serp_checks.paa`).
+   7. Reseñas de clientes que viajaron a ese destino (texto real de Google) + "4,9★ en 1.972
+   opiniones". 8. Enlaces a destinos hermanos y a la temática. 9. CTA WhatsApp.
+
+Orden de construcción: Punta Cana, Bayahibe, Cancún y Riviera Maya, Brasil (hub) + Búzios, Río,
+Florianópolis y Nordeste (Maceió, Porto de Galinhas, Natal), Aruba y Curazao, Europa (hub) + Salidas
+grupales, Fórmula 1 (permanente, con el GP vigente), Orlando y Disney, Turquía, Dubái, Egipto.
+Después, origen × destino: "Paquetes a Punta Cana desde Córdoba / Rosario / Mendoza".
+
+### Cómo se comunica "la mejor agencia del país" en el resultado de búsqueda
+
+- **Title y meta**: la prueba va en el snippet. Title ≤ 60: "Paquetes a Punta Cana desde Argentina
+  | Sí, Viajo" y la meta description con el diferencial: "Vuelo, hotel all inclusive y traslados.
+  Concierge 24/7 durante tu viaje. 4,9★ en 1.972 opiniones. Pagá en cuotas." Hoy ningún
+  competidor pone reseñas ni servicio en la meta.
+- **Estrellas en Google**: Google no muestra estrellas por reseñas de la propia agencia en
+  `Organization`/`LocalBusiness`. Sí las puede mostrar en una página de producto o servicio con
+  reseñas reales de ese producto: `Product`/`TouristTrip` "Paquete a Punta Cana" con `review` de
+  clientes que viajaron ahí (texto real, con fecha y nombre), vía GTM. Empezar por 3 landings y
+  medir en Search Console → "Mejoras".
+- **Entidad**: página "Sobre Sí, Viajo" (legajo 19159, 13 años, oficinas con dirección y teléfono
+  iguales a GBP, equipo, prensa, GPTW, cómo funciona el concierge) + JSON-LD `TravelAgency` con
+  `sameAs` (Instagram, Facebook, LinkedIn, YouTube, TripAdvisor). Es lo que ChatGPT/Claude leen
+  cuando preguntan "¿Sí Viajo es confiable?" (hoy citan `tyc.html`).
+- **Google Business Profile**: categoría principal "Agencia de viajes", servicios cargados
+  ("Paquetes al Caribe", "Concierge 24/7", "Salidas grupales"), posts semanales con las salidas,
+  fotos de clientes, respuesta al 100 % de las reseñas, pedido de reseña post-viaje desde el CRM con
+  enlace directo.
+- **Menciones (lo que mueve a ChatGPT y Perplexity)**: notas en Ladevi, Report, Mensajero y
+  secciones de turismo de Infobae/La Nación ("la agencia argentina con 1.972 reseñas 4,9★ explica…"),
+  YouTube con videos cortos por destino (la correlación más alta con citas de IA), respuestas
+  honestas como empresa en TripAdvisor forum y Reddit, perfil en Bing Places + Bing Webmaster Tools
+  (ChatGPT y Copilot leen Bing).
+- **Frescura**: `lastmod` real en los sitemaps (ya), precios "desde" actualizados por job, fecha
+  "actualizado el" visible en landings y posts.
+
+### Contra cada competidor (lo que hacen y cómo se les gana)
+
+- **Buteler** (buteler.tur.ar): landings por origen × destino con 2.000 palabras ("Viajes a Punta
+  Cana con vuelos desde Salta"), sin schema ni reseñas. Se le gana con la misma matriz origen ×
+  destino pero con cupos propios reales desde el interior, precios desde, reseñas y FAQ.
+- **Viajobien** (viajobien.com): landings renderizadas por JavaScript con 121 palabras ("Cargando
+  paquetes"); rankea por autoridad del dominio. Se le gana con contenido real y schema; la brecha
+  de autoridad se cierra con menciones y blog.
+- Deturista, Multitravel, Promociones Aéreas, Atrápalo, Juliá Tours, Costa Azul: ver el informe de
+  competidores (tabla y oportunidades).
+
+### Qué hace falta de Ezequiel
+
+1. Backoffice (OTP o usuario sin 2FA): las landings, los textos de temáticas y los meta tags se
+   cargan ahí; HUB genera los borradores (`docs/seo/landings/`).
+2. GTM: JSON-LD de entidad, producto y reseñas (la SA ya puede publicar).
+3. Reseñas: exportar las de Google (o SerpAPI `google_maps_reviews`) para usarlas por destino.
+4. Decidir la baja de los circuitos mayoristas y aprobar las 22 fusiones.
