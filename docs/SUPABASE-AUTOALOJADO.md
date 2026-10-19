@@ -1,8 +1,9 @@
 # Supabase autoalojado en el VPS
 
 Desde el 2026-10-19 hay un stack oficial de Supabase (Docker) en `/opt/supabase` del VPS `148.230.72.17`, con la
-misma versión de Postgres que el proyecto cloud (17.6.1). **Todavía no es producción**: HUB sigue en Supabase cloud
-hasta el corte. Supabase cloud queda como respaldo congelado hasta noviembre de 2026 (pedido de Ezequiel).
+misma versión de Postgres que el proyecto cloud (17.6.1). **Es producción desde el 2026-10-19 16:45 UTC** (corte hecho
+con OK de Ezequiel): HUB, invoice-bot y tc-requote-bot apuntan acá. Supabase cloud quedó congelado en ese momento como
+respaldo hasta noviembre de 2026; no recibe escrituras.
 
 ## Qué hay
 
@@ -46,7 +47,14 @@ idéntica byte a byte); 11 pruebas de API (lectura, RLS, escritura, RPC de la co
 seguidas; 22 pantallas de HUB con login real sin errores (HUB de prueba `pm2 hub-staging`, `127.0.0.1:3011`, apunta a
 la copia, con automatización y Slack apagados en la copia).
 
-## Corte (no ejecutado)
+## Corte (ejecutado el 2026-10-19)
+
+Resultado: copia final 117 s, 132.130 filas idénticas a cloud ya quieto, deploy con secretos nuevos OK, job de prueba
+procesado por el runner contra la base nueva, 22 pantallas de producción sin errores con login real. Copias de los .env
+viejos en `/opt/backups/supabase/cutover-20261019T1640Z/`; secretos de build de cloud en
+`~/.config/siviajo/github-secrets-cloud.env` (iMac); `.env.local` viejo de la iMac en `~/.config/siviajo/`.
+
+Procedimiento (para referencia o para repetir):
 
 1. VPS: `CLOUD_PW=<pw hub_migrator> sh /opt/supabase/cutover.sh` → pausa HUB, bot de facturas y crontab, copia final,
    cambia las variables de `/opt/hub/.env.local`, `/opt/invoice-bot/.env`, `/opt/tc-requote-bot/.env`,
