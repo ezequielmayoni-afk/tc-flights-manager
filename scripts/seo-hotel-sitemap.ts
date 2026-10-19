@@ -235,11 +235,16 @@ function slug(s: string): string {
 async function packages(db: Db) {
   const hoy = new Date().toISOString().slice(0, 10)
   const all: Array<{ id: number; active: boolean; themes?: string[]; title: string }> = []
-  for (let first = 0; ; first += 200) {
+  // La lista devuelve menos filas que `limit` (100 o menos por llamada): se avanza por lo
+  // recibido y se corta cuando no llega nada nuevo.
+  const vistos = new Set<number>()
+  for (let first = 0; first < 20_000; ) {
     const page = await tc<{ package: Array<{ id: number; active: boolean; themes?: string[]; title: string }> }>(`/package/${MICROSITE}?first=${first}&limit=200`)
-    const items = page.package ?? []
+    const items = (page.package ?? []).filter(p => !vistos.has(p.id))
+    if (items.length === 0) break
+    for (const p of items) vistos.add(p.id)
     all.push(...items)
-    if (items.length < 200) break
+    first += (page.package ?? []).length
   }
   const propios = all.filter(p => p.active && (p.themes?.length ?? 0) > 0)
   console.log(`paquetes activos ${all.filter(p => p.active).length}, propios (con temáticas) ${propios.length}`)

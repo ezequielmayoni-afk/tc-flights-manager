@@ -199,11 +199,32 @@ nueva.
 
 | # | Qué | Cómo | Quién |
 |---|---|---|---|
-| T1/T2 | Sitemap de paquetes y temáticas **servido por HUB** (`hub.siviajo.com/sitemaps/siviajo-packages.xml`: fichas activas propias + temáticas con ≥ 1 paquete; `lastmod` = última actualización en TC) y enviado por API a la propiedad de dominio (Google acepta sitemaps de otro host dentro de la misma propiedad). Borrar el `sitemap.xml` estático y `packages-sitemap.xml` de la propiedad. | HUB (job `seo.sitemap`, siguiente iteración) |
+| T1/T2 | **Hecho 2026-10-19.** Sitemaps servidos por HUB desde `seo_sitemap_entries`: `https://hub.siviajo.com/sitemaps/index.xml` → `paquetes.xml` (96 fichas propias activas, URL canónica), `tematicas.xml` (46) y `hoteles-{destino}.xml` (ver abajo). Enviado por API a `sc-domain:siviajo.com`. Se regeneran con `scripts/seo-hotel-sitemap.ts packages` / `hotels`; falta programarlo como job semanal. Los sitemaps viejos de TC siguen en la propiedad (no se pueden borrar del robots de TC). | HUB |
 | T3 | Enviar `https://blog.siviajo.com/sitemap_index.xml` y borrar el de la ruta mala. | HUB (API) — 2 llamadas |
 | T6 | JSON-LD: `TravelAgency` + `aggregateRating` (4,9/1.972) + `sameAs` + oficinas en la home e institucional; `TouristTrip` + `Offer` (precio, moneda, fechas) + `BreadcrumbList` en las fichas. TC no tiene campo de schema: va por **GTM (GTM-WR6MCZWL, custom HTML)** leyendo título/precio del DOM. El contenedor lo cargan la web **y el blog**, y vuelve a publicar (versión 129, 2026-10-18); la SA de HUB es admin de la cuenta. Googlebot renderiza JS; GPTBot no, así que la entidad también va en texto plano en "Sobre nosotros". | HUB (script `gtm-*`) |
 | T8 | `X-Robots-Tag: noindex` en todo hub.siviajo.com salvo `/vuelos-baratos`. | HUB (middleware, 5 líneas) |
 | — | Bing Webmaster Tools: verificar `siviajo.com`, enviar sitemaps, IndexNow. ChatGPT y Copilot leen Bing. | Ezequiel (cuenta) + HUB (IndexNow) |
+
+### Hoteles con SEO cargado (sitemap, 2026-10-19)
+
+Las fichas de hotel (`/es/accommodation/{código}/{slug}`) con título, descripción y keywords
+cargados por el script de SEO_HOTEL (Punta Cana, Bayahibe, Cancún, Playa del Carmen, Río, Orlando
+parcial, Bariloche, Salta, El Calafate) no estaban en ningún sitemap. `scripts/seo-hotel-sitemap.ts
+hotels` toma el inventario de `GET /accommodations` de TC (446.539 alojamientos), se queda con los
+que caen a ≤ 45 km de esos destinos, lee sólo el `<head>` de cada ficha pública y marca "con SEO"
+cuando el `<title>` es propio o las keywords no son las genéricas. Primera corrida: 2.303 fichas
+revisadas, **1.276 con SEO** publicadas en `hoteles-{destino}.xml` (Río 464, Bariloche 191, Cancún
+161, Punta Cana 154, Salta 98, El Calafate 90, Playa del Carmen 89, Bayahibe 20, Orlando 9).
+
+Límite conocido: el inventario de la API es sólo una parte del listado "hotel-landing" del
+backoffice (Cancún tiene 3.350 filas ahí, Río 10.643, Orlando 21.450), porque el backoffice lista
+también los códigos por proveedor (`hts-`, `tos-`, `mul-`, `ani-`…). Para cubrir todo hace falta
+listar el backoffice: `SEO_HOTEL/list-hotel-landings.ts` lo hace (login + OTP → `hotel-landings.json`)
+y después el mismo script de HUB revisa esos códigos con `--landings=`. Pendiente de un OTP.
+
+Google decide qué indexa: las fichas son plantilla de TC con ~1.500 palabras del proveedor y meta
+propias; conviene mirar en `/producto/seo` (indexación y sitemaps) cuántas entran por destino antes
+de sumar las 20 k restantes.
 
 ## 7. GEO: entidad, reseñas y menciones
 
