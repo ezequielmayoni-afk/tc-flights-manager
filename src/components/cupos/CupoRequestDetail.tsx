@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { ArrowLeft, Check, Loader2, Plane, RefreshCw, Send, ShieldCheck, X, Upload } from 'lucide-react'
 import { toast } from 'sonner'
-import { OPTION_STATUS_LABELS, REQUEST_STATUS_LABELS, type CupoRequest, type CupoRequestOption } from '@/lib/cupos/requests'
+import { OPTION_STATUS_LABELS, REQUEST_STATUS_LABELS, groupsFor, probeGroupLabel, type CupoRequest, type CupoRequestOption } from '@/lib/cupos/requests'
 import type { ReplyProposal, ParsedTerms } from '@/lib/cupos/reply-extract'
 import { ReplyReader } from './ReplyReader'
+import { CupoMailPreview } from './CupoMailPreview'
 
 type Detail = { request: CupoRequest; options: CupoRequestOption[]; waitingHours: number | null; probeJob: { id: number; status: string; last_error: string | null } | null; recipients: Array<{ id: number; airline: string; name: string | null; email: string }> }
 
@@ -72,6 +73,7 @@ export function CupoRequestDetail({ id }: { id: number }) {
   const canAnswer = ['sent', 'answered', 'confirming'].includes(r.status)
   const accepted = options.filter(o => o.status === 'accepted' || o.status === 'loaded')
   const canConfirm = ['answered', 'confirming'].includes(r.status) && accepted.length > 0
+  const { groups, legacy } = groupsFor(r)
 
   return (
     <div className="space-y-5">
@@ -79,7 +81,8 @@ export function CupoRequestDetail({ id }: { id: number }) {
         <Link href="/flights/pedidos" className="text-muted-foreground hover:text-foreground"><ArrowLeft className="h-5 w-5" /></Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold">{r.title}</h1>
-          <p className="text-sm text-muted-foreground">{r.origin_code} → {r.destination_name} ({r.destination_code}) · {r.months.map(fmtMonth).join(', ')} · {r.nights} noches · {r.seats_requested} lugares · {r.adults} adultos por reserva{r.direct_only ? ' · sólo directos' : ''}{r.airline_pref.length ? ` · preferencia ${r.airline_pref.join(', ')}` : ''}</p>
+          <p className="text-sm text-muted-foreground">{r.origin_code} → {r.destination_name} ({r.destination_code}) · {legacy ? `${r.months.map(fmtMonth).join(', ')} · ${r.nights} noches · ` : ''}{r.seats_requested} lugares por salida · {r.adults} adultos por reserva{legacy && r.direct_only ? ' · sólo directos' : ''}{legacy && r.airline_pref.length ? ` · preferencia ${r.airline_pref.join(', ')}` : ''}</p>
+          {!legacy && <div className="mt-1 flex flex-wrap gap-1.5">{groups.map((g, i) => <span key={i} className="rounded-full border bg-muted/40 px-2 py-0.5 text-[11px]">Sondeo {i + 1}: {probeGroupLabel(g)}</span>)}</div>}
         </div>
         <Badge variant="secondary">{REQUEST_STATUS_LABELS[r.status]}</Badge>
       </div>
@@ -95,6 +98,7 @@ export function CupoRequestDetail({ id }: { id: number }) {
         {!r.sent_to?.length && d.recipients.length === 0 && <Link href="/flights/pedidos/contactos" className="text-amber-700 hover:underline">Sin contactos de aerolínea cargados</Link>}
         <span className="flex-1" />
         {['draft', 'ready'].includes(r.status) && <Button size="sm" variant="outline" onClick={() => call('probe', `/api/cupos/requests/${id}/probe`, 'POST', undefined, 'Sondeo en cola')} disabled={busy !== null}><RefreshCw className="h-3.5 w-3.5 mr-1" />{options.length ? 'Volver a sondear' : 'Armar tiradas'}</Button>}
+        <CupoMailPreview requestId={id} />
         {canSend && <Button size="sm" onClick={() => { if (window.confirm(`¿Mandar ${options.filter(o => o.status === 'probed').length} tiradas a aéreos por Slack?`)) call('send', `/api/cupos/requests/${id}/send`, 'POST', undefined, 'Pedido enviado a aéreos') }} disabled={busy !== null}><Send className="h-3.5 w-3.5 mr-1" />Enviar a aéreos</Button>}
         {r.status === 'sent' && <Button size="sm" variant="outline" onClick={() => call('send', `/api/cupos/requests/${id}/send`, 'POST', undefined, 'Recordatorio enviado')} disabled={busy !== null}><Send className="h-3.5 w-3.5 mr-1" />Reenviar</Button>}
         {canConfirm && <Button size="sm" onClick={() => { if (window.confirm(`¿Confirmar ${accepted.length} tirada(s)? Después se cargan como cupo en Vuelos.`)) call('confirm', `/api/cupos/requests/${id}/confirm`, 'POST', undefined, 'Pedido confirmado') }} disabled={busy !== null}><ShieldCheck className="h-3.5 w-3.5 mr-1" />Confirmar</Button>}
@@ -105,12 +109,12 @@ export function CupoRequestDetail({ id }: { id: number }) {
         <table className="w-full text-sm">
           <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Salida</th><th className="px-3 py-2 text-left">Regreso</th><th className="px-3 py-2 text-left">Aerolínea · vuelos</th><th className="px-3 py-2 text-left">Horarios</th>
+              <th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Salida</th><th className="px-3 py-2 text-left">Regreso</th><th className="px-3 py-2 text-right">Noches</th><th className="px-3 py-2 text-left">Aerolínea · vuelos</th><th className="px-3 py-2 text-left">Horarios</th>
               <th className="px-3 py-2 text-right">Sistema pp</th><th className="px-3 py-2 text-right">Aéreos pp</th><th className="px-3 py-2 text-right">Δ</th><th className="px-3 py-2 text-left">Estado</th><th className="px-3 py-2 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {options.length === 0 && <tr><td colSpan={10} className="px-3 py-8 text-center text-muted-foreground">{r.status === 'probing' ? 'Sondeando…' : 'Sin tiradas todavía'}</td></tr>}
+            {options.length === 0 && <tr><td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">{r.status === 'probing' ? 'Sondeando…' : 'Sin tiradas todavía'}</td></tr>}
             {options.map(o => {
               const delta = o.delta_pct
               return (
@@ -118,6 +122,7 @@ export function CupoRequestDetail({ id }: { id: number }) {
                   <td className="px-3 py-2 font-mono text-xs">{o.rank}</td>
                   <td className="px-3 py-2 whitespace-nowrap">{fmt(o.departure_date)}</td>
                   <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{fmt(o.return_date)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums" title={o.probe_group_label ?? undefined}>{o.nights}{o.probe_group !== null && o.probe_group !== undefined ? <div className="text-[10px] text-muted-foreground">sondeo {o.probe_group + 1}</div> : null}{o.seats !== r.seats_requested ? <div className="text-[10px] text-muted-foreground">{o.seats} lug.</div> : null}</td>
                   <td className="px-3 py-2"><div className="font-medium">{o.airline ?? '?'}</div><div className="text-xs text-muted-foreground">{[o.flight_out, o.flight_back].filter(Boolean).join(' / ')} · {o.direct ? 'directo' : `escala${o.stops_out ? ` (${o.stops_out})` : ''}`}{o.checked_bag ? ' · con valija' : ''}</div></td>
                   <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{o.depart_out ?? '–'}→{o.arrive_out ?? '–'}<br />{o.depart_back ?? '–'}→{o.arrive_back ?? '–'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{o.system_price_pp !== null ? `USD ${Math.round(o.system_price_pp)}` : '–'}</td>

@@ -6,7 +6,7 @@ import { logEvent } from '@/lib/logs'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { enqueueJob } from '@/lib/jobs/queue'
 import { MANUAL_PRIORITY } from '@/lib/jobs/lanes'
-import { waitingHours, type CupoRequest } from '@/lib/cupos/requests'
+import { probeGroupsSchema, requestColumnsFromGroups, waitingHours, type CupoRequest } from '@/lib/cupos/requests'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,9 +42,12 @@ const createSchema = z.object({
   destinationCode: z.string().trim().min(2).max(12),
   destinationName: z.string().trim().min(2).max(80),
   destinationProfileCode: z.string().trim().max(20).nullable().optional(),
-  months: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(6),
+  // Sondeos (nuevo): cada uno con meses, noches, cantidad de fechas, días, aerolínea, directo y lugares.
+  probeGroups: probeGroupsSchema.optional(),
+  // Forma vieja de un solo sondeo; se usa si no vienen probeGroups.
+  months: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(6).optional(),
   weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([4, 6]),
-  nights: z.number().int().min(1).max(30),
+  nights: z.number().int().min(1).max(30).optional(),
   seatsRequested: z.number().int().min(1).max(500),
   adults: z.number().int().min(1).max(9).default(2),
   childrenAges: z.array(z.number().int().min(0).max(17)).max(6).default([]),
@@ -63,13 +66,15 @@ export async function POST(request: NextRequest) {
     const parsed = createSchema.safeParse(await request.json().catch(() => null))
     if (!parsed.success) throw API_ERRORS.BAD_REQUEST(parsed.error.issues.map(i => `${i.path.join('.') || 'body'}: ${i.message}`).join('; '))
     const p = parsed.data
+    if (!p.probeGroups && (!p.months?.length || !p.nights)) throw API_ERRORS.BAD_REQUEST('Cargá al menos un sondeo (meses y noches)')
+    const cols = p.probeGroups ? requestColumnsFromGroups(p.probeGroups) : { probe_groups: [], months: p.months!, nights: p.nights!, weekdays: p.weekdays, airline_pref: p.airlinePref, direct_only: p.directOnly, max_options: p.maxOptions }
     const db = createAdminClient()
-    const monthsLabel = p.months.map(m => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })).join('/')
+    const monthsLabel = cols.months.map(m => new Date(`${m}-15T12:00:00Z`).toLocaleDateString('es-AR', { month: 'short', year: '2-digit' })).join('/')
     const title = p.title ?? `${p.originCode} → ${p.destinationName} · ${monthsLabel} · ${p.seatsRequested} lugares`
     const actor = user?.email ?? 'ui'
     const { data, error } = await db.from('cupo_requests').insert({
       title, origin_code: p.originCode.toUpperCase(), origin_name: p.originName ?? null, destination_code: p.destinationCode, destination_name: p.destinationName, destination_profile_code: p.destinationProfileCode ?? null,
-      months: p.months, weekdays: p.weekdays, nights: p.nights, seats_requested: p.seatsRequested, adults: p.adults, children_ages: p.childrenAges, airline_pref: p.airlinePref, direct_only: p.directOnly, max_options: p.maxOptions, notes: p.notes ?? null, requested_by: actor,
+      ...cols, seats_requested: p.seatsRequested, adults: p.adults, children_ages: p.childrenAges, notes: p.notes ?? null, requested_by: actor,
     }).select('id').single()
     if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el pedido')
     let jobId: number | null = null
