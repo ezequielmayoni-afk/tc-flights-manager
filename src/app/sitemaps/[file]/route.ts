@@ -32,6 +32,8 @@ export async function GET(_request: Request, context: { params: Promise<{ file: 
 
   return new NextResponse(xml, {
     status: 200,
-    headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' },
+    // El archivo vive en hub.siviajo.com sólo como contenedor: las URLs son de www.siviajo.com.
+    // `noindex` deja explícito que el XML en sí no debe aparecer en Google.
+    headers: { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600', 'X-Robots-Tag': 'noindex' },
   })
 }
