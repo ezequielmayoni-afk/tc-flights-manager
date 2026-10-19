@@ -176,8 +176,20 @@ Lo que la gente escribe es `paquete(s) a {destino} {all inclusive} {desde buenos
 | `metaDescription` (≤ 155) | `Viajá a {Destino} {temporada}: {N} noches {régimen}, vuelo desde {origen} y traslados. Pagá en cuotas. Cupos limitados.` + CTA. | — |
 | Circuitos mayoristas | Capitalizar ("Circuito Madrid y Andalucía: 8 días, salida los martes") y generar la descripción desde el día a día del closed tour (`closedTours[0].description` + `includedServices`), en tandas de 50 con muestreo humano, empezando por los que tienen impresiones. Nunca los 1.300 de golpe. | — |
 
+**Aplicado el 2026-10-19** (CSV aprobado por Ezequiel): 82 paquetes propios con el título nuevo en
+`title` y `largeTitle` vía `scripts/seo-apply-titles.ts` (backup en
+`scripts/_seo_titles_backup_2026-10-19.json`); 81 de 81 fichas ya mostraban el H1 nuevo al minuto.
+Hallazgo: **en la plantilla de siviajo.com el H1 de la ficha es `largeTitle`**, `title` va al slug,
+los listados y el og:title; por eso el título con palabra clave se cargó en los dos campos y la
+columna "subtítulo con beneficios" del CSV no se usa. 15 paquetes se saltaron porque su única
+salida ya venció (8 BURGERPALUSA, Costa do Sauípe, Praia do Forte 31958325, Curazao 34147176,
+Bahamas, Orlando/Disney, Punta Cana + Playa del Carmen 14 noches, Turquía 40427498): cargar fechas
+nuevas o despublicarlos y después correr el script con `--ids=`.
+
 Qué se puede escribir por API (`PUT /package/siviajo/{id}`, `IdeaUpdateRequestVO`): `title`,
-`largeTitle`, `description`, `themes`, `remarks`, `active`, `visible`. **`metaTitle` y
+`largeTitle`, `description`, `themes`, `remarks`, `active`, `visible`. Verificado: lo que no se
+manda (meta tags, cinta, orden, temáticas) queda igual. `/package/{id}` trae los servicios pero no
+el título: los textos están en `/package/info/{id}`. **`metaTitle` y
 `metaDescription` sólo por backoffice** (el bot `tc-requote-bot seo:manual` ya lo hace, pero el
 login web de HUBSIVIAJO pide OTP desde 2026-10-17: hace falta el código del buzón o un usuario sin
 2FA). Cambiar el título cambia el slug pero la URL vieja sigue respondiendo 200 con canonical a la
@@ -189,7 +201,7 @@ nueva.
 |---|---|---|---|
 | T1/T2 | Sitemap de paquetes y temáticas **servido por HUB** (`hub.siviajo.com/sitemaps/siviajo-packages.xml`: fichas activas propias + temáticas con ≥ 1 paquete; `lastmod` = última actualización en TC) y enviado por API a la propiedad de dominio (Google acepta sitemaps de otro host dentro de la misma propiedad). Borrar el `sitemap.xml` estático y `packages-sitemap.xml` de la propiedad. | HUB (job `seo.sitemap`, siguiente iteración) |
 | T3 | Enviar `https://blog.siviajo.com/sitemap_index.xml` y borrar el de la ruta mala. | HUB (API) — 2 llamadas |
-| T6 | JSON-LD: `TravelAgency` + `aggregateRating` (4,9/1.972) + `sameAs` + oficinas en la home e institucional; `TouristTrip` + `Offer` (precio, moneda, fechas) + `BreadcrumbList` en las fichas. TC no tiene campo de schema: va por **GTM (GTM-WR6MCZWL, custom HTML)** leyendo título/precio del DOM, o por el "código en head" del microsite si TC lo permite. Googlebot renderiza JS; GPTBot no, así que la entidad también va en texto plano en "Sobre nosotros". | Ezequiel (acceso GTM; la publicación está trabada por `compilerError` desde septiembre) |
+| T6 | JSON-LD: `TravelAgency` + `aggregateRating` (4,9/1.972) + `sameAs` + oficinas en la home e institucional; `TouristTrip` + `Offer` (precio, moneda, fechas) + `BreadcrumbList` en las fichas. TC no tiene campo de schema: va por **GTM (GTM-WR6MCZWL, custom HTML)** leyendo título/precio del DOM. El contenedor lo cargan la web **y el blog**, y vuelve a publicar (versión 129, 2026-10-18); la SA de HUB es admin de la cuenta. Googlebot renderiza JS; GPTBot no, así que la entidad también va en texto plano en "Sobre nosotros". | HUB (script `gtm-*`) |
 | T8 | `X-Robots-Tag: noindex` en todo hub.siviajo.com salvo `/vuelos-baratos`. | HUB (middleware, 5 líneas) |
 | — | Bing Webmaster Tools: verificar `siviajo.com`, enviar sitemaps, IndexNow. ChatGPT y Copilot leen Bing. | Ezequiel (cuenta) + HUB (IndexNow) |
 
@@ -221,7 +233,7 @@ nueva.
 |---|---|---|
 | 0 (hecha, 2026-10-17) | Diagnóstico, agentes de medición, tablero, migración, CSV de títulos propuestos, skill `claude-seo` instalada. | — |
 | 1 | Deploy (push a `main`). Primera corrida de los 3 jobs (baseline). Sitemap del blog por API. `noindex` en hub. Decidir la taxonomía de temáticas (sección 4) y aprobar el CSV de títulos. | Ezequiel: revisar CSV y taxonomía |
-| 2 | Aplicar títulos + `largeTitle` + temáticas por API a los 96 paquetes propios (job `tc.write` con flag). Cargar en backoffice meta title/description de los 30 con más impresiones y el título/H1/texto de las 12 temáticas de destino. | Ezequiel: OTP o usuario sin 2FA para el backoffice |
+| 2 | ~~Aplicar títulos~~ (hecho 2026-10-19, 82 paquetes). Falta: temáticas nuevas (crear la taxonomía en backoffice y asignar por API), meta title/description de los 30 con más impresiones y el título/H1/texto de las 12 temáticas de destino en backoffice. | Ezequiel: OTP o usuario sin 2FA para el backoffice |
 | 3 | Sitemap de paquetes/temáticas desde HUB + envío por API; borrar sitemaps viejos. JSON-LD por GTM (home + fichas). Página de entidad. | Ezequiel: GTM |
 | 4 | Pipeline del blog (brief → borrador → aprobación → WordPress). 4 posts: dos PAA de confianza, dos destinos. | Ezequiel: application password de WordPress |
 | 5–8 | Circuitos mayoristas: 50 por semana con descripción generada y título capitalizado, midiendo indexación. Bing Webmaster + IndexNow. Menciones en terceros (PR). | — |
