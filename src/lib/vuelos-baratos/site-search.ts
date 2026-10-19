@@ -22,11 +22,11 @@ export const siteSearchBeaconSchema = z.object({
   subsection: z.string().max(40).optional(),
   search: z.object({
     departureCode: z.string().max(16),
-    departureName: z.string().max(80).optional(),
+    departureName: z.string().max(120).optional(),
     destinationCode: z.string().max(16).optional(),
-    destinationName: z.string().max(80).optional(),
-    startDate: z.string().max(10),
-    endDate: z.string().max(10).optional(),
+    destinationName: z.string().max(120).optional(),
+    startDate: z.string().max(40),
+    endDate: z.string().max(40).optional(),
     adults: z.union([z.string(), z.number()]).optional(),
     children: z.union([z.string(), z.number()]).optional(),
     infants: z.union([z.string(), z.number()]).optional(),
@@ -37,9 +37,9 @@ export const siteSearchBeaconSchema = z.object({
         position: z.number().optional(),
         type: z.string().max(20).optional(),
         destinationCode: z.string().max(16).optional(),
-        destinationName: z.string().max(80).optional(),
-        startDate: z.string().max(10).optional(),
-        endDate: z.string().max(10).optional(),
+        destinationName: z.string().max(120).optional(),
+        startDate: z.string().max(40).optional(),
+        endDate: z.string().max(40).optional(),
         nights: z.number().optional(),
       })
     )
@@ -48,16 +48,17 @@ export const siteSearchBeaconSchema = z.object({
   items: z
     .array(
       z.object({
-        id: z.string().max(200).optional(),
+        // Un itinerario con escalas concatena sus tramos: pasa los 200 caracteres.
+        id: z.string().max(500).optional(),
         price: z.union([z.string(), z.number()]).optional(),
-        brand: z.string().max(60).optional(),
+        brand: z.string().max(100).optional(),
         variant: z.string().max(10).optional(),
         start: z.string().max(10).optional(),
         end: z.string().max(10).optional(),
       })
     )
     .max(60),
-  url: z.string().max(200).optional(),
+  url: z.string().max(300).optional(),
   ts: z.number().optional(),
 })
 export type SiteSearchBeacon = z.infer<typeof siteSearchBeaconSchema>
@@ -200,8 +201,9 @@ export function parseSiteSearch(beacon: SiteSearchBeacon, today: Date): { search
   const paradaDestino = (beacon.itinerary ?? []).find(
     e => e.type === 'DESTINATION' && (e.position ?? -1) >= 1 && codigo(e.destinationCode) === destinationCode
   )
-  const depart = beacon.search.startDate
-  const vuelta = beacon.search.endDate ?? paradaDestino?.endDate
+  // Si alguna vez la web manda fecha con hora ("2027-03-20T00:00"), se queda el día.
+  const depart = beacon.search.startDate.slice(0, 10)
+  const vuelta = (beacon.search.endDate ?? paradaDestino?.endDate)?.slice(0, 10)
   if (!isValidIsoDate(depart) || !isValidIsoDate(vuelta) || vuelta! < depart || depart < todayIso(today)) {
     return { search: null, reason: 'fechas' }
   }

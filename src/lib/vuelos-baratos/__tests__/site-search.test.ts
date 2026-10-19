@@ -287,6 +287,24 @@ describe('siteSearchDestinationLabel', () => {
   })
 })
 
+describe('tolerancia del beacon real', () => {
+  it('acepta item_id de más de 200 caracteres (itinerarios con escalas) y fechas con hora', () => {
+    const largo = 'transport_sabre_flights_plane_public__' + 'eze_bog_2027-03-20t16:50_2027-03-20t21:30_av_av_8396_s__'.repeat(5) + 'economy'
+    expect(largo.length).toBeGreaterThan(200)
+    const beacon = siteSearchBeaconSchema.parse({
+      v: 1,
+      section: 'ONLY_FLIGHT',
+      search: { departureCode: 'BUE', destinationCode: 'MIA', destinationName: 'Miami FL', startDate: '2027-03-20T00:00:00', endDate: '2027-03-28T00:00:00', adults: '2', children: '0', infants: '0' },
+      items: [{ id: largo, price: 1500, brand: 'Avianca', variant: 'RT' }],
+    })
+    const r = parseSiteSearch(beacon, new Date('2026-10-19T00:00:00Z'))
+    expect(r.search).not.toBeNull()
+    expect(r.search!.depart).toBe('2027-03-20')
+    expect(r.search!.return).toBe('2027-03-28')
+    expect(r.search!.minPricePp).toBe(750)
+  })
+})
+
 describe('siteSearchKey', () => {
   it('es estable y cambia con la ruta, las fechas o los pasajeros', () => {
     const a = ok(beacon())

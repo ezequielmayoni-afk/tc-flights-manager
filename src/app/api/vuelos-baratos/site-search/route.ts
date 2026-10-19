@@ -159,6 +159,15 @@ export async function OPTIONS(request: NextRequest): Promise<NextResponse> {
   })
 }
 
+/** Último aviso de beacon inválido (ms): uno por minuto alcanza para ver el campo que falla. */
+let ultimoAvisoInvalido = 0
+function avisarBeaconInvalido(issues: string[]): void {
+  const ahora = Date.now()
+  if (ahora - ultimoAvisoInvalido < 60_000) return
+  ultimoAvisoInvalido = ahora
+  console.warn('[site-search] beacon inválido:', issues.join(' | '))
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // Lo más barato primero y antes de leer el body.
   if (!siteSearchOriginAllowed(request.headers, SITE_SEARCH_ALLOWED_ORIGINS)) return rechazarOrigen(request)
@@ -183,7 +192,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   const parsed = siteSearchBeaconSchema.safeParse(json)
-  if (!parsed.success) return NextResponse.json({ error: 'beacon inválido' }, { status: 400, headers })
+  if (!parsed.success) {
+    // Qué campo falló (sin el contenido): 8 de los primeros 20 beacons reales
+    // cayeron acá por un tope de largo y nadie lo vio.
+    avisarBeaconInvalido(parsed.error.issues.slice(0, 5).map(i => `${i.path.join('.')}:${i.code}`))
+    return NextResponse.json({ error: 'beacon inválido' }, { status: 400, headers })
+  }
 
   const resultado = parseSiteSearch(parsed.data, new Date())
   if (resultado.search === null) {
