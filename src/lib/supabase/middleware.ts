@@ -209,5 +209,17 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
-  return supabaseResponse
+  return dropLegacyCloudCookies(request, supabaseResponse)
+}
+
+/**
+ * Tras el corte a Supabase autoalojado (2026-10-19) los navegadores siguen
+ * mandando la sesión vieja de Supabase cloud (cookies sb-phzqsjxouqttpcnqxxuq-*).
+ * No sirven y engordan los encabezados hasta el límite de nginx: se borran.
+ */
+function dropLegacyCloudCookies(request: NextRequest, response: NextResponse): NextResponse {
+  for (const c of request.cookies.getAll()) {
+    if (c.name.startsWith('sb-phzqsjxouqttpcnqxxuq-')) response.cookies.set(c.name, '', { path: '/', maxAge: 0 })
+  }
+  return response
 }
