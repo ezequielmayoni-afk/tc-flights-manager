@@ -135,6 +135,11 @@ Cambios aplicados en el CMS de TC (`scripts/tc-admin/home_edit.py`, backup en `b
 - Solapas "Paquetes seleccionados por destino": las temáticas propias Punta Cana, Cancún, Río, Búzios,
   Florianópolis y Orlando y Disney pasaron a "principal" + "destino" (orden 4 a 9, entre Brasil y Asia);
   la General Disney (322) se quitó de sus dos paquetes y del microsite.
+- Ajuste posterior (pedido de Ezequiel): la sección "SEO Content" de TC es de dos columnas (imagen a la
+  izquierda, texto a la derecha); sin imagen quedaba el texto "de un solo lado". Se le cargó una foto
+  3:2 (IA, `gen_imgs/home-seo.jpg`, subida por URL semilla + archivo) y el texto se acortó a ~190
+  palabras: quién es la agencia + concierge, 17 enlaces a destinos y dos preguntas (qué incluye, cómo
+  cotizo). Se sacaron las preguntas de cuotas y de cupo agotado y las reseñas citadas (ya las muestra GTM).
 - La home se cachea por servidor backend: los cambios aparecen servidor por servidor (hasta unas horas).
 - TC no imprime la etiqueta keywords desde este formulario (trae un párrafo pegado en otro lado);
   irrelevante para Google.
