@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { Header } from '@/components/layout/Header'
-import { AlertTriangle, Megaphone, Plane, Send } from 'lucide-react'
+import { AlertTriangle, Megaphone, Plane, Search, Send } from 'lucide-react'
 import { RequoteTable } from '@/components/packages/RequoteTable'
 import { CuposAgotadosSection } from '@/components/tareas/CuposAgotadosSection'
 import { AdDecisionsSection } from '@/components/tareas/AdDecisionsSection'
 import { MarketingCandidatesSection } from '@/components/tareas/MarketingCandidatesSection'
 import { CupoRequestsTasks } from '@/components/tareas/CupoRequestsTasks'
+import { SeoExpiringSection } from '@/components/tareas/SeoExpiringSection'
 
 export const dynamic = 'force-dynamic'
 
@@ -107,6 +108,15 @@ export default async function TareasPage() {
               <RequoteTable packages={requotePackages} />
             )}
           </div>
+        </section>
+
+        {/* Fichas con tráfico que vencen (Fase 14) */}
+        <section>
+          <div className="flex items-center gap-2 mb-3">
+            <Search className="h-5 w-5 text-indigo-600" />
+            <h2 className="text-lg font-semibold">Fichas con tráfico en Google que vencen</h2>
+          </div>
+          <SeoExpiringSection />
         </section>
 
         {/* Cupos agotados */}

@@ -5,7 +5,8 @@
  * title/description (sólo backoffice)
  * ni temáticas (la taxonomía nueva todavía no existe en TC).
  *
- *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-apply-titles.ts --csv=docs/seo/titulos-propuestos-2026-10-17.csv [--ids=1,2] [--dry-run] [--include-expired]
+ *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-apply-titles.ts --csv=docs/seo/titulos-propuestos-2026-10-17.csv [--ids=1,2] [--dry-run] [--include-expired] [--season]
+ *   --season: reemplaza la fecha exacta del título ("– Salida 5 nov 2026") por la temporada ("– Temporada baja 2026").
  *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-apply-titles.ts --id=62328245 --title="Circuito Madrid y Andalucía: 7 días (opción 1)"
  *
  * Por cada paquete: GET info (título, subtítulo, descripción, temáticas) +
@@ -21,6 +22,7 @@ import { loadEnvConfig } from '@next/env'
 loadEnvConfig('/Users/ezequielmayoni/hub')
 import fs from 'node:fs'
 import { recordExternalCall } from '@/lib/jobs/budget'
+import { tituloSinFecha } from '@/lib/seo/titles'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const BASE = 'https://online.travelcompositor.com/resources'
@@ -113,7 +115,8 @@ function plansFromCsv(file: string, onlyIds: Set<number> | null): Plan[] {
       // En la plantilla de siviajo.com el H1 de la ficha es `largeTitle` (verificado el
       // 2026-10-19 con el paquete 59160593): el título con la palabra clave tiene que ir
       // en los dos campos. La columna large_title_propuesto (beneficios) no se aplica.
-      return { id: Number(r.tc_id), title: r.title_propuesto, largeTitle: r.title_propuesto, salida, nota }
+      const title = flag('season') ? tituloSinFecha(r.title_propuesto, salida) : r.title_propuesto
+      return { id: Number(r.tc_id), title, largeTitle: title, salida, nota }
     })
     .filter(p => p.id && p.title && (!onlyIds || onlyIds.has(p.id)))
 }
@@ -166,6 +169,11 @@ async function main() {
       backup[p.id] = backup[p.id] ?? { fetchedAt: new Date().toISOString(), info: detail, detail: services }
       fs.writeFileSync(backupFile, JSON.stringify(backup, null, 1))
       if (typeof detail.title !== 'string') throw new Error('info sin title: no se escribe')
+      if (flag('season') && detail.title === p.title && detail.largeTitle === p.largeTitle) {
+        console.log(`= ${p.id} sin cambio: "${p.title}"`)
+        resumen.saltados++
+        continue
+      }
       const body: Record<string, unknown> = { active: detail.active ?? true, title: p.title, description: detail.description ?? '' }
       body.largeTitle = p.largeTitle ?? detail.largeTitle ?? p.title
       console.log(`\n${p.id}: "${detail.title}" → "${p.title}"${p.largeTitle ? `\n   largeTitle: "${p.largeTitle}"` : ''}`)

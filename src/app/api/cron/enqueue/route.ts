@@ -63,6 +63,9 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         // Fase 14: Search Console de todo el dominio (páginas, consultas,
         // sitemaps, ~25 inspecciones). Mismo lane y cuota que el de vuelos.
         { kind: 'gsc.site_sync', payload: { at: day }, dedupeKey: `gsc.site_sync:${day}` },
+        // Fase 14: fichas con tráfico cuya salida vence (Slack + /tareas). Lee el
+        // gsc_page_stats de ayer, así que no depende de que el sync de hoy haya corrido.
+        { kind: 'seo.expiring', payload: { at: day }, dedupeKey: `seo.expiring:${day}` },
       ]
     }
     case 'nightly':

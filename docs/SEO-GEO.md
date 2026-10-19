@@ -195,6 +195,31 @@ login web de HUBSIVIAJO pide OTP desde 2026-10-17: hace falta el código del buz
 2FA). Cambiar el título cambia el slug pero la URL vieja sigue respondiendo 200 con canonical a la
 nueva.
 
+## 5b. La URL es el producto, no la salida (regla de oro, 2026-10-19)
+
+TC no redirige: desactivar una ficha es un 404 y se pierde lo ganado. De las 10 fichas con más
+impresiones en 90 días, 3 ya daban 404 (GP México 2026 con 2.673 impresiones, Maragogi + Porto de
+Galinhas con 2.437, Río + Búzios con 423). Los grandes (Despegar, Almundo, TurismoCity) no indexan
+salidas: indexan landings permanentes por destino y refrescan el contenido. En TC el equivalente es:
+la **temática** es la landing permanente (el id no cambia aunque se renombre) y la **ficha** es el
+producto (el id manda; el slug es cosmético).
+
+Reglas:
+1. Una ficha por producto (destino × noches × régimen × origen), con varias salidas en el calendario;
+   no una ficha por fecha. Duplicados detectados: 22 fichas a fusionar en 11 grupos
+   (`docs/seo/fusiones-propuestas-2026-10-19.csv`: ficha madre = la de más impresiones).
+2. Título sin fecha exacta: la temporada con la que se busca ("Verano 2027", "Temporada baja 2026",
+   "Vacaciones de invierno 2027"; "Semana Santa" y las grupales con fecha única se respetan). Aplicado
+   el 2026-10-19 a 49 fichas (`scripts/seo-apply-titles.ts --season`; regla en `src/lib/seo/titles.ts`).
+3. Cupo agotado con tráfico: próxima salida en la misma ficha → "pasó a sistema" → preventa de la
+   temporada siguiente. Nunca desactivar.
+4. Eventos: la misma ficha año a año (Interlagos 39635286 pasa a "F1 Brasil 2027" después de la carrera).
+5. Temáticas estacionales: mismo id, se renombra el año.
+6. Job diario `seo.expiring`: cruza `packages` activos con las impresiones de 28 días y avisa por
+   Slack y en `/tareas` ("Fichas con tráfico en Google que vencen") cuando la última salida vence en
+   ≤ 7 días o ya venció (≥ 20 impresiones). Tabla `seo_expiring_alerts`; se cierran solas al cambiar
+   la fecha. Primera corrida: Praia do Forte (31958325, vencida el 7/10 con 274 impresiones).
+
 ## 6. Técnico (TC, GTM, DNS)
 
 | # | Qué | Cómo | Quién |
