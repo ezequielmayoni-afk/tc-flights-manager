@@ -377,3 +377,12 @@ Después, origen × destino: "Paquetes a Punta Cana desde Córdoba / Rosario / M
 2. GTM: JSON-LD de entidad, producto y reseñas (la SA ya puede publicar).
 3. Reseñas: exportar las de Google (o SerpAPI `google_maps_reviews`) para usarlas por destino.
 4. Decidir la baja de los circuitos mayoristas y aprobar las 22 fusiones.
+
+### 9.x Backoffice de TC por HTTP (2026-10-19)
+
+Lo que la API REST no permite (SEO de temáticas, crear temáticas con imagen, meta título/descripción
+de paquetes, temáticas de un paquete, menú, listado completo de hoteles por destino) se hace con
+`scripts/tc-admin/` replicando los requests JSF del backoffice (ver su README). Necesita la sesión del
+navegador exportada (login con OTP) en `.playwright-mcp/siviajo-admin-state.json`. Ejecución del plan
+de temáticas y resultado: `docs/seo/tematicas-ejecucion-2026-10-19.md`. Regla de oro: el listado de
+paquetes se reordena en vivo; `open_pkg()` verifica el título del formulario antes de guardar.

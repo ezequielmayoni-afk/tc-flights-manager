@@ -42,6 +42,9 @@ const DESTINOS: Array<{ slug: string; lat: number; lng: number; km: number }> = 
   { slug: 'orlando', lat: 28.54, lng: -81.38, km: 45 },
 ]
 
+/** Etiquetas del backoffice → slug usado en los archivos de sitemap (hoteles-{slug}.xml). */
+const DEST_ALIAS: Record<string, string> = { 'san-carlos-de-bariloche': 'bariloche', 'rio-de-janeiro': 'rio-de-janeiro', 'el-calafate': 'el-calafate', 'playa-del-carmen': 'playa-del-carmen', 'punta-cana': 'punta-cana', 'bayahibe': 'bayahibe', 'cancun': 'cancun', 'orlando': 'orlando', 'orlando-fl': 'orlando', 'salta': 'salta' }
+
 function arg(name: string): string | undefined {
   const a = process.argv.find(x => x.startsWith(`--${name}=`))
   return a ? a.slice(name.length + 3) : undefined
@@ -158,14 +161,29 @@ async function hotels(db: Db) {
   const soloDest = arg('dest')?.split(',').map(s => s.trim())
   const concurrency = Number(arg('concurrency') ?? 6)
   const limit = Number(arg('limit') ?? 0)
-  const rows = await dumpAccommodations(dumpFile)
-  console.log(`inventario: ${rows.length} alojamientos`)
-
-  const candidatos = rows
-    // La API devuelve los códigos en mayúsculas (MASTER-163216); la web los usa en minúsculas.
-    .map(r => ({ id: (r[0] ?? '').toLowerCase(), name: r[1], lastUpdate: r[5], dest: destinoDe(r[2], r[3]) }))
-    .filter(c => c.id)
-    .filter(c => c.dest && (!soloDest || soloDest.includes(c.dest)))
+  // --admin=<carpeta>: usa los listados del backoffice (hl_*.json de scripts/tc-admin/hl_list.py,
+  // un archivo por destino con {label, rows:[{code,name}]}) en vez de la API de alojamientos.
+  // Es el universo completo de "Landing del Alojamiento" (la API sólo cubre una parte).
+  const adminDir = arg('admin')
+  const candidatos: Array<{ id: string; name: string; dest: string | null }> = []
+  if (adminDir) {
+    for (const f of fs.readdirSync(adminDir).filter(x => /^hl_.*\.json$/.test(x))) {
+      const j = JSON.parse(fs.readFileSync(`${adminDir}/${f}`, 'utf8')) as { label: string; rows: Array<{ code: string; name: string }> }
+      const dest = DEST_ALIAS[slug(j.label.split(',')[0])] ?? slug(j.label.split(',')[0])
+      for (const r of j.rows) candidatos.push({ id: r.code.toLowerCase(), name: r.name, dest })
+    }
+    console.log(`inventario (backoffice): ${candidatos.length} alojamientos`)
+  } else {
+    const rows = await dumpAccommodations(dumpFile)
+    console.log(`inventario: ${rows.length} alojamientos`)
+    for (const r of rows) {
+      // La API devuelve los códigos en mayúsculas (MASTER-163216); la web los usa en minúsculas.
+      candidatos.push({ id: (r[0] ?? '').toLowerCase(), name: r[1], dest: destinoDe(r[2], r[3]) })
+    }
+  }
+  const filtrados = candidatos.filter(c => c.id).filter(c => c.dest && (!soloDest || soloDest.includes(c.dest)))
+  candidatos.length = 0
+  candidatos.push(...filtrados)
   const porDest = new Map<string, number>()
   for (const c of candidatos) porDest.set(c.dest!, (porDest.get(c.dest!) ?? 0) + 1)
   console.log('candidatos por destino:', JSON.stringify(Object.fromEntries(porDest)))

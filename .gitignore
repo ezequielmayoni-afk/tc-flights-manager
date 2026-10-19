@@ -45,3 +45,12 @@ _backups/
 crm-backend-current/
 crm-frontend-commercial/
 SEO_HOTEL/node_modules/
+.playwright-mcp/
+
+# tc-admin: backups, listados y respuestas capturadas del backoffice
+scripts/tc-admin/backup_*.json
+scripts/tc-admin/hl_*.json
+scripts/tc-admin/*_resp.xml
+scripts/tc-admin/created_themes.json
+scripts/tc-admin/cms_added.json
+scripts/tc-admin/__pycache__/
