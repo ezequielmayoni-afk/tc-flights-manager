@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { enqueueJob } from '@/lib/jobs/queue'
 import { logSyncOperation } from '@/lib/logger'
-import { getBooking, deleteTransport, validateTransportPrice, tcClient } from '@/lib/travelcompositor/client'
-import { mapModalityToTC } from '@/lib/travelcompositor/mapper'
+import { getBooking, validateTransportPrice } from '@/lib/travelcompositor/client'
 import type { TCBookingTransportService, TCBookingResponse } from '@/lib/travelcompositor/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -101,76 +100,6 @@ async function findFlightBySegment(
 }
 
 /**
- * Empuja a TC los lugares que quedan en un cupo.
- *
- * Hasta ahora la reserva descontaba el lugar en hub pero TC seguía publicando
- * la cantidad vieja, así que el cupo seguía vendiéndose allá. Solo se tocaba TC
- * cuando el vuelo se agotaba del todo, para desactivarlo.
- *
- * Nunca lanza: si TC falla, la reserva ya está registrada en hub y lo que
- * corresponde es dejar el vuelo marcado en error para poder reintentarlo, no
- * hacer fallar el webhook (TC lo reintentaría entero y duplicaría el descuento).
- */
-async function pushInventoryToTC(
-  db: ReturnType<typeof createAdminClient>,
-  flightId: number
-): Promise<{ ok: boolean; error?: string; quantity?: number }> {
-  try {
-    const { data: flight } = await db
-      .from('flights')
-      .select('id, base_id, supplier_id, tc_transport_id, start_date, end_date, modalities(*, modality_inventories(*))')
-      .eq('id', flightId)
-      .single()
-
-    if (!flight?.tc_transport_id) {
-      return { ok: false, error: 'El cupo no está sincronizado con TC todavía' }
-    }
-
-    const modality = (flight.modalities || [])[0]
-    if (!modality) {
-      return { ok: false, error: 'El cupo no tiene modalidad cargada' }
-    }
-
-    const tcModality = mapModalityToTC(modality, flight.start_date, flight.end_date)
-    const quantity = tcModality.inventories?.[0]?.quantity
-
-    const result = await tcClient.syncModality(
-      flight.tc_transport_id,
-      tcModality,
-      true, // ya existe: se actualiza
-      flight.supplier_id ?? undefined
-    )
-
-    await db
-      .from('flights')
-      .update({
-        sync_status: result.success ? 'synced' : 'error',
-        sync_error: result.success ? null : result.error,
-        last_sync_at: new Date().toISOString(),
-      })
-      .eq('id', flightId)
-
-    await logSyncOperation({
-      entity_type: 'flight',
-      entity_id: flightId,
-      action: 'update',
-      direction: 'push',
-      status: result.success ? 'success' : 'error',
-      request_payload: { reason: 'reserva', modality: modality.code, quantity },
-      response_payload: { tc_transport_id: flight.tc_transport_id },
-      error_message: result.success ? undefined : result.error,
-    })
-
-    console.log(`[Inventory] Cupo ${flight.base_id} → TC ${flight.tc_transport_id}: ${quantity} lugares (${result.success ? 'ok' : result.error})`)
-    return { ok: result.success, error: result.error, quantity }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error(`[Inventory] No se pudo empujar el cupo ${flightId} a TC:`, message)
-    return { ok: false, error: message }
-  }
-}
-
-/**
  * Aplica un cambio de lugares a las DOS piernas del cupo.
  *
  * Al crear una reserva se recorre cada segmento y se descuenta de la ida y de
@@ -227,9 +156,8 @@ async function updateInventory(
 
   console.log(`[Inventory] Flight ${flightId}: sold=${newSold}, quantity=${quantity}, remaining=${remaining} (atomic update)`)
 
-  // Reflejar en TC los lugares que quedan. Vale tanto para una venta (bajan)
-  // como para una cancelación (vuelven).
-  await pushInventoryToTC(db, flightId)
+  // Las ventas y cancelaciones NO se reflejan en TC: TC descuenta solo sobre el
+  // total cargado una vez. Empujarle "lo que queda" restaba dos veces (2026-10-19).
 
   // Check if sold out (remaining = 0)
   if (soldOut) {
@@ -241,43 +169,11 @@ async function updateInventory(
       .single()
 
     if (flight?.active) {
-      console.log(`[Inventory] Flight ${flightId} is SOLD OUT - deactivating...`)
+      console.log(`[Inventory] Flight ${flightId} agotado en HUB: se marca inactivo acá; en TC no se toca (llega a 0 solo)`)
 
-      // Deactivate flight locally
-      await db
-        .from('flights')
-        .update({ active: false })
-        .eq('id', flightId)
-
-      // Deactivate in TravelCompositor if has tc_transport_id
-      if (tcTransportId) {
-        const deleteResult = await deleteTransport(tcTransportId)
-        if (deleteResult.success) {
-          console.log(`[Inventory] Flight ${flightId} deactivated in TC: ${tcTransportId}`)
-        } else {
-          console.error(`[Inventory] Failed to deactivate in TC: ${deleteResult.error}`)
-        }
-      }
-
-      // Also deactivate paired flight if exists
+      await db.from('flights').update({ active: false }).eq('id', flightId)
       if (flight.paired_flight_id) {
-        const { data: pairedFlight } = await db
-          .from('flights')
-          .select('id, tc_transport_id, active')
-          .eq('id', flight.paired_flight_id)
-          .single()
-
-        if (pairedFlight?.active) {
-          await db
-            .from('flights')
-            .update({ active: false })
-            .eq('id', pairedFlight.id)
-
-          if (pairedFlight.tc_transport_id) {
-            await deleteTransport(pairedFlight.tc_transport_id)
-            console.log(`[Inventory] Paired flight ${pairedFlight.id} deactivated in TC: ${pairedFlight.tc_transport_id}`)
-          }
-        }
+        await db.from('flights').update({ active: false }).eq('id', flight.paired_flight_id).eq('active', true)
       }
 
       // El guard decide qué pasa con los anuncios de los paquetes vinculados
@@ -296,7 +192,7 @@ async function updateInventory(
         direction: 'push',
         status: 'success',
         request_payload: { reason: 'sold_out', remaining: 0, sold: newSold, quantity },
-        response_payload: { deactivated: true, tc_transport_id: tcTransportId },
+        response_payload: { deactivated_in_hub: true, tc_untouched: true, tc_transport_id: tcTransportId },
       })
     }
   }

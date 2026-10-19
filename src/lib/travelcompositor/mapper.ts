@@ -248,9 +248,11 @@ export function mapModalityToTC(modality: DBModality, startDate: string, endDate
       start: inv.start_date,
       end: inv.end_date,
     },
-    // A TC se le manda lo que queda DISPONIBLE (total - vendidos), no el total,
-    // para que el cupo publicado refleje los lugares restantes.
-    quantity: Math.max(0, inv.remaining_seats ?? inv.quantity),
+    // A TC se le manda SIEMPRE el total del cupo (lo cargado una vez, ej. 10).
+    // TC descuenta sus propias ventas sobre ese total; mandarle "lo que queda"
+    // hacía que restara dos veces (pedido de Ezequiel, 2026-10-19). Los vendidos
+    // se llevan sólo en HUB.
+    quantity: Math.max(0, inv.quantity ?? 0),
   })) || [{
     inventoryDate: {
       start: startDate,
