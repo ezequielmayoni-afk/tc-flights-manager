@@ -359,3 +359,8 @@ con el procedimiento de cutover del DNS: `docs/VUELOS-BARATOS.md`.
   con la Management API (`SUPABASE_ACCESS_TOKEN`) o desde el SQL editor. Todas las tablas nuevas llevan RLS.
 - RDS del CRM: sólo lectura, usuario `hub`, credenciales en `~/.config/siviajo/crm-readonly.env` (local) y
   `CRM_PG_*` en `/opt/hub/.env.local` (VPS). Guía: `docs/CRM-DB-READONLY.md`.
+
+## Supabase autoalojado (desde 2026-10-19, en paralelo)
+
+Stack en `/opt/supabase`, aún no es producción. Todo en `docs/SUPABASE-AUTOALOJADO.md`: servicios, volúmenes,
+backups diarios, ensayos y procedimiento de corte y vuelta atrás.
