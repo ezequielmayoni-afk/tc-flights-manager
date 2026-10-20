@@ -24,8 +24,8 @@ const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1)
 export function grupoDestino(destinos: string[], pais?: string): GrupoDestino {
   const s = [...destinos, pais ?? ''].join(' ').toLowerCase()
   if (/orlando|disney|miami|florida/.test(s)) return 'orlando'
-  if (/estambul|istanbul|turqu|egipto|egypt|cairo|dub[aá]i|emiratos|china|pek[ií]n|beijing|shangh|jap[oó]n|tailandia|bangkok|bali|vietnam|\bindia\b|sud[aá]frica|south africa|marruecos|grecia|atenas|santorini|cabo verde|isla de sal|jordania|per[uú]|cusco|lima|machu/.test(s)) return 'exotico'
-  if (/espa[ñn]a|spain|madrid|barcelona|italia|italy|roma|rome|mil[aá]n|venecia|venice|florencia|par[ií]s|francia|france|portugal|lisboa|lisbon|londres|london|[aá]msterdam|alemania|suiza|z[uú]rich|praga|viena|budapest|europa|europe/.test(s)) return 'europa'
+  if (/estambul|istanbul|turqu|egipto|egypt|cairo|dub[aá]i|emiratos|china|pek[ií]n|beijing|shangh|jap[oó]n|tailandia|bangkok|bali|vietnam|\bindia\b|sud[aá]frica|south africa|marruecos|grecia|atenas|santorini|cabo verde|isla de sal|ilha do sal|sal island|jordania|per[uú]|cusco|lima|machu/.test(s)) return 'exotico'
+  if (/espa[ñn]a|spain|madrid|barcelona|italia|italy|roma|rome|mil[aá]n|venecia|venice|florencia|par[ií]s|francia|france|burdeos|bordeaux|portugal|lisboa|lisbon|londres|london|[aá]msterdam|alemania|suiza|z[uú]rich|praga|viena|budapest|europa|europe/.test(s)) return 'europa'
   if (/bariloche|calafate|ushuaia|iguaz[uú]|mendoza|salta|jujuy|c[oó]rdoba|mar del plata|argentina|patagonia/.test(s)) return 'argentina'
   if (/brasil|brazil|b[uú]zios|r[ií]o de janeiro|rio de janeiro|florian|porto seguro|arraial|macei|maragogi|galinhas|natal|pipa|praia do forte|sau[ií]pe|imbassa[ií]|salvador|fortaleza|jericoacoara/.test(s)) return 'brasil'
   return 'caribe'
