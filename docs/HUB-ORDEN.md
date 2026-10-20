@@ -132,3 +132,23 @@ El kernel de jobs con kill switches y presupuestos; Tendencias como única fuent
 criterio "HUB propone, humano activa" para Meta; la regla "la URL es el producto"; la medición de
 Fase 14 (Search Console, SERP, IA) y la taxonomía de temáticas aplicada hoy; el cotizador por HTTP
 sin navegador; la reconciliación nocturna. Nada de esto se rehace: se conecta.
+
+## 6. Comprobado en TC (2026-10-20, fichas reales)
+
+- **Una ficha, varias fechas, precio por fecha.** 25683099 (Punta Cana desde Córdoba, rango 1/10/2026 a
+  31/3/2027): en "Reservar | Ver fechas" elegí el 22/2 en vez del 15/2 y TC rearmó el viaje con los mismos
+  servicios: Arajet DM 6463 del 22/2 a US$ 1.854 (vs 2.139), paquete US$ 1.889 (vs 2.139). El calendario
+  sale de `dateSettings` (rango, días de operación, stop sales). El pedido es un POST `startTrip` con
+  `departureDateMultidestination` que termina en `summary.xhtml` con el precio.
+- **Fecha con cupo vivo cotiza con el cupo.** 52387037 (Punta Cana Verano 2027, 13/2, quedan 2 lugares):
+  "Contract Transport Sí, viajo - TRANSPORT-410660: US$ 1.870 RT", paquete US$ 1.918 (ficha dice 1.889).
+- **Fecha con cupo agotado NO dice "sin disponibilidad": cae a tarifa de sistema.** 52574571 (Punta Cana y
+  Bayahibe, único cupo 17/1 con 16/16 vendidos): TC cotizó el 17/1 con Sabre a US$ 3.046 y el paquete pasó
+  de US$ 2.149 a US$ 2.868 con el aviso "el precio por persona ha cambiado". La ficha sigue mostrando
+  "desde 2.149". Hoy hay 6 fichas activas en esa situación (Río 22/11 ×3, Natal 4/12, Bayahibe 17/1,
+  Punta Cana y Bayahibe 17/1), 3 de ellas en marketing; el guard está en sombra y no actúa.
+
+Regla operativa que sale de esto: en la ficha canónica, cuando un cupo se agota HUB tiene que poner un
+stop sale en esa fecha (o quitarle el día de operación) para que el calendario no la ofrezca a precio de
+sistema; agotados todos, "pasar a sistema" explícito con precio nuevo en la ficha y en la placa. La URL
+nunca se rompe sola: el riesgo es el precio, no el 404.
