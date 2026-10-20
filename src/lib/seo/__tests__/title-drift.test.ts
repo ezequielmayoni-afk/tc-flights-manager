@@ -37,7 +37,7 @@ describe('etiquetaEsperada', () => {
   it('con un rango de salidas corto manda la próxima; con uno largo, "Salidas {año}"', () => {
     expect(etiquetaEsperada({ ...base, departureDate: '2027-02-10', dateRangeEnd: '2027-03-31' })?.label).toBe('Verano 2027')
     expect(etiquetaEsperada({ ...base, departureDate: '2026-10-19', dateRangeEnd: '2026-12-20' })?.label).toBe('Temporada baja 2026')
-    expect(etiquetaEsperada({ ...base, departureDate: '2026-05-23', dateRangeEnd: '2026-12-05' })?.label).toBe('Salidas 2026')
+    expect(etiquetaEsperada({ ...base, departureDate: '2026-05-23', dateRangeEnd: '2026-12-22' })?.label).toBe('Salidas 2026')
     expect(etiquetaEsperada({ ...base, departureDate: '2026-11-11', dateRangeEnd: '2027-06-30' })?.label).toBe('Salidas 2026 y 2027')
     // Vigencia genérica de TC (años): vuelve a mandar la próxima salida.
     expect(etiquetaEsperada({ ...base, destinations: ['Isla de Sal (Cabo Verde)', 'Lisboa'], departureDate: '2026-11-04', dateRangeEnd: '2028-08-31' })?.label).toBe('Noviembre 2026')

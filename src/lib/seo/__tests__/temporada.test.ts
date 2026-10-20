@@ -36,12 +36,16 @@ describe('grupoDestino', () => {
 
 describe('temporada', () => {
   it('Caribe, Brasil y Argentina: calendario argentino', () => {
-    expect(temporada('2026-12-20')).toBe('Verano 2027')
+    expect(temporada('2026-12-05')).toBe('Temporada baja 2026')
+    expect(temporada('2026-12-19')).toBe('Temporada baja 2026')
+    expect(temporada('2026-12-20')).toBe('Fin de año 2026')
+    expect(temporada('2026-12-31', { grupo: 'brasil' })).toBe('Fin de año 2026')
     expect(temporada('2027-01-17')).toBe('Verano 2027')
+    expect(temporada('2027-03-02', { grupo: 'caribe' })).toBe('Verano 2027')
     expect(temporada('2027-07-10')).toBe('Vacaciones de invierno 2027')
     expect(temporada('2026-11-05')).toBe('Temporada baja 2026')
     expect(temporada('2027-02-08', { grupo: 'argentina', noches: 3 })).toBe('Verano 2027')
-    expect(temporada('2027-03-11', { grupo: 'brasil' })).toBe('Marzo 2027')
+    expect(temporada('2027-03-11', { grupo: 'brasil' })).toBe('Verano 2027')
   })
   it('Semana Santa gana sobre el mes', () => {
     expect(temporada('2027-03-24', { grupo: 'caribe', noches: 7 })).toBe('Semana Santa 2027')

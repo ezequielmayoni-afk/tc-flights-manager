@@ -6,8 +6,9 @@
  * sale del título y entra la temporada con la que la gente busca.
  *
  * La temporada depende del destino (acordado con Ezequiel el 2026-10-20):
- * - Caribe, Brasil y Argentina: alta = Verano (dic–feb), Semana Santa y Vacaciones
- *   de invierno (julio); marzo fuera de Semana Santa = "Marzo"; el resto = "Temporada baja".
+ * - Caribe, Brasil y Argentina: "Verano" (enero a marzo), "Fin de año" (20 al 31 de
+ *   diciembre), "Semana Santa" y "Vacaciones de invierno" (julio), que ganan sobre el mes;
+ *   el resto, incluido diciembre hasta el 19, = "Temporada baja" (cambio del 2026-10-20).
  * - Europa y circuitos: "Verano europeo" (jun–sep), "Primavera" (abr–may), "Otoño" (oct),
  *   "Fin de año" (del 10 de diciembre en adelante), "Temporada baja" (nov–mar).
  * - Exóticos (Turquía, Egipto, Dubái, Asia, África, Perú…) y Orlando: nunca "temporada
@@ -95,9 +96,10 @@ export function temporada(salida: string, opts: TemporadaOpts = {}): string {
       if (m === 12 && d >= 15) return `Fin de año ${y}`
       return mes
     default:
-      if (m === 12) return `Verano ${y + 1}`
-      if (m === 1 || m === 2) return `Verano ${y}`
-      if (m === 3) return `Marzo ${y}`
+      // Desde el 2026-10-20 (Ezequiel): diciembre es baja hasta el 19, del 20 al 31 es fin de año y
+      // enero–marzo es verano. Semana Santa (arriba) y vacaciones de invierno ganan sobre esto.
+      if (m === 12) return d >= 20 ? `Fin de año ${y}` : `Temporada baja ${y}`
+      if (m >= 1 && m <= 3) return `Verano ${y}`
       if (m === 7) return `Vacaciones de invierno ${y}`
       return `Temporada baja ${y}`
   }
