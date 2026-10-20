@@ -146,3 +146,14 @@ Cambios aplicados en el CMS de TC (`scripts/tc-admin/home_edit.py`, backup en `b
 
 Pendiente: FAQ y TravelAgency en JSON-LD dentro del HTML (probar sección "Custom Html"), fotos reales
 para las portadas, y quitar del microsite las otras General reemplazadas cuando las nuevas indexen.
+
+## 9. Temporadas en los títulos (2026-10-20)
+
+La primera regla era por mes de salida con el calendario argentino, sin mirar el destino. Ezequiel
+aprobó la regla por destino que ahora vive en `src/lib/seo/titles.ts` (`grupoDestino`, `temporada`,
+`esSemanaSanta` con cálculo de Pascua): Caribe/Brasil/Argentina = Verano, Semana Santa, Vacaciones
+de invierno, Marzo, Temporada baja; Europa = Verano europeo, Primavera, Otoño, Fin de año, Temporada
+baja; exóticos y Orlando = el mes (nunca "temporada baja"); eventos y grupales = la fecha. Corregidas
+por API y back: 59880752, 59882867, 65642676, 65646093 → "Semana Santa 2027"; 45858060 → "Salidas 2026";
+45798855 y 62478698 → "Noviembre 2026"; 54204421 → "Salidas 2026 y 2027"; meta título de 65642676 y
+meta descripción de 45858060. Listado completo: `titulos-aplicados-2026-10-19.csv`.
