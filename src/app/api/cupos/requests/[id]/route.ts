@@ -29,7 +29,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
 const patchSchema = z.object({
   title: z.string().trim().min(3).max(120).optional(), months: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(6).optional(), weekdays: z.array(z.number().int().min(0).max(6)).min(1).optional(),
   nights: z.number().int().min(1).max(30).optional(), seatsRequested: z.number().int().min(1).max(500).optional(), adults: z.number().int().min(1).max(9).optional(), airlinePref: z.array(z.string()).max(5).optional(),
-  probeGroups: probeGroupsSchema.optional(), directOnly: z.boolean().optional(), maxOptions: z.number().int().min(3).max(12).optional(), notes: z.string().max(600).nullable().optional(), status: z.enum(['closed', 'cancelled']).optional(),
+  probeGroups: probeGroupsSchema.optional(), singleAirline: z.boolean().optional(), directOnly: z.boolean().optional(), maxOptions: z.number().int().min(3).max(12).optional(), notes: z.string().max(600).nullable().optional(), status: z.enum(['closed', 'cancelled']).optional(),
 })
 
 /** PATCH — edita el borrador (o cierra / cancela). */
@@ -51,6 +51,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const map: Array<[keyof typeof p, string]> = [['title', 'title'], ['months', 'months'], ['weekdays', 'weekdays'], ['nights', 'nights'], ['seatsRequested', 'seats_requested'], ['adults', 'adults'], ['airlinePref', 'airline_pref'], ['directOnly', 'direct_only'], ['maxOptions', 'max_options'], ['notes', 'notes']]
       for (const [k, col] of map) if (p[k] !== undefined) row[col] = p[k]
       if (p.probeGroups) Object.assign(row, requestColumnsFromGroups(p.probeGroups))
+      if (p.singleAirline !== undefined) row.single_airline = p.singleAirline
     } else if (p.notes !== undefined) row.notes = p.notes
     const { error } = await db.from('cupo_requests').update(row).eq('id', id)
     if (error) throw new Error(error.message)

@@ -27,6 +27,7 @@ export function NewCupoRequestDialog({ open, onOpenChange, onCreated }: { open: 
   const [seats, setSeats] = useState(10)
   const [adults, setAdults] = useState(2)
   const [notes, setNotes] = useState('')
+  const [singleAirline, setSingleAirline] = useState(true)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -48,7 +49,7 @@ export function NewCupoRequestDialog({ open, onOpenChange, onCreated }: { open: 
     setSaving(true)
     try {
       const probeGroups = groups.map(g => ({ months: [...g.months].sort(), nights: Number(g.nights), count: Number(g.count), weekdays: g.weekdays, airlinePref: g.airlinePref.split(',').map(x => x.trim()).filter(Boolean), directOnly: g.directOnly, seats: g.seats ? Number(g.seats) : null }))
-      const res = await fetch('/api/cupos/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ originCode: origin, originName: ORIGINS.find(o => o.code === origin)?.name, destinationCode: p.tc_destination_code, destinationName: p.name, destinationProfileCode: p.code, probeGroups, seatsRequested: seats, adults, notes: notes || null, probeNow: true }) })
+      const res = await fetch('/api/cupos/requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ originCode: origin, originName: ORIGINS.find(o => o.code === origin)?.name, destinationCode: p.tc_destination_code, destinationName: p.name, destinationProfileCode: p.code, probeGroups, singleAirline, seatsRequested: seats, adults, notes: notes || null, probeNow: true }) })
       const data = await res.json()
       if (!res.ok) { toast.error(data.error || 'No se pudo crear el pedido'); return }
       toast.success(`Pedido #${data.id} creado: el cotizador arma las tiradas (unos minutos)`)
@@ -96,6 +97,7 @@ export function NewCupoRequestDialog({ open, onOpenChange, onCreated }: { open: 
             <Button type="button" size="sm" variant="outline" onClick={() => setGroups([...groups, newGroup(groups[groups.length - 1]?.nights ?? 7, groups[groups.length - 1]?.months ?? [])])}><Plus className="h-3.5 w-3.5 mr-1" />Agregar sondeo</Button>
             <p className="text-[11px] text-muted-foreground">Cada sondeo prueba esa cantidad de fechas, repartidas de forma pareja en los meses y días elegidos. Ej.: enero, 5 fechas de 7 noches + 8 fechas de 9 noches.</p>
           </div>
+          <label className="flex items-start gap-2 rounded border bg-blue-50/40 p-2 text-sm"><input type="checkbox" className="mt-0.5" checked={singleAirline} onChange={e => setSingleAirline(e.target.checked)} /><span><b>Misma aerolínea en todas las tiradas.</b> <span className="text-xs text-muted-foreground">HUB compara las aerolíneas en todas las fechas (cuántas cubre, precio, directos e historial de la ruta) y arma el pedido con la que más conviene. Después se puede cambiar sin volver a sondear.</span></span></label>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1"><Label>Lugares a pedir por salida</Label><Input type="number" min={1} value={seats} onChange={e => setSeats(Number(e.target.value))} /></div>
             <div className="space-y-1"><Label>Adultos por reserva</Label><Input type="number" min={1} max={9} value={adults} onChange={e => setAdults(Number(e.target.value))} /></div>

@@ -11,6 +11,7 @@ import { OPTION_STATUS_LABELS, REQUEST_STATUS_LABELS, groupsFor, probeGroupLabel
 import type { ReplyProposal, ParsedTerms } from '@/lib/cupos/reply-extract'
 import { ReplyReader } from './ReplyReader'
 import { CupoMailPreview } from './CupoMailPreview'
+import { AirlineAnalysisPanel, type Analysis } from './AirlineAnalysisPanel'
 
 type Detail = { request: CupoRequest; options: CupoRequestOption[]; waitingHours: number | null; probeJob: { id: number; status: string; last_error: string | null } | null; recipients: Array<{ id: number; airline: string; name: string | null; email: string }> }
 
@@ -110,11 +111,11 @@ export function CupoRequestDetail({ id }: { id: number }) {
           <thead className="bg-muted/40 text-xs uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-left">#</th><th className="px-3 py-2 text-left">Salida</th><th className="px-3 py-2 text-left">Regreso</th><th className="px-3 py-2 text-right">Noches</th><th className="px-3 py-2 text-left">Aerolínea · vuelos</th><th className="px-3 py-2 text-left">Horarios</th>
-              <th className="px-3 py-2 text-right">Sistema pp</th><th className="px-3 py-2 text-right">Aéreos pp</th><th className="px-3 py-2 text-right">Δ</th><th className="px-3 py-2 text-left">Estado</th><th className="px-3 py-2 text-right">Acciones</th>
+              <th className="px-3 py-2 text-right">Sistema pp</th><th className="px-3 py-2 text-right" title="Mediana de lo observado para esa fecha y noches: Sabre, búsquedas web, cotizaciones del bot y sondas">Mercado pp</th><th className="px-3 py-2 text-right">Aéreos pp</th><th className="px-3 py-2 text-right">Δ</th><th className="px-3 py-2 text-left">Estado</th><th className="px-3 py-2 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {options.length === 0 && <tr><td colSpan={11} className="px-3 py-8 text-center text-muted-foreground">{r.status === 'probing' ? 'Sondeando…' : 'Sin tiradas todavía'}</td></tr>}
+            {options.length === 0 && <tr><td colSpan={12} className="px-3 py-8 text-center text-muted-foreground">{r.status === 'probing' ? 'Sondeando…' : 'Sin tiradas todavía'}</td></tr>}
             {options.map(o => {
               const delta = o.delta_pct
               return (
@@ -126,6 +127,7 @@ export function CupoRequestDetail({ id }: { id: number }) {
                   <td className="px-3 py-2"><div className="font-medium">{o.airline ?? '?'}</div><div className="text-xs text-muted-foreground">{[o.flight_out, o.flight_back].filter(Boolean).join(' / ')} · {o.direct ? 'directo' : `escala${o.stops_out ? ` (${o.stops_out})` : ''}`}{o.checked_bag ? ' · con valija' : ''}</div></td>
                   <td className="px-3 py-2 text-xs text-muted-foreground whitespace-nowrap">{o.depart_out ?? '–'}→{o.arrive_out ?? '–'}<br />{o.depart_back ?? '–'}→{o.arrive_back ?? '–'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{o.system_price_pp !== null ? `USD ${Math.round(o.system_price_pp)}` : '–'}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-muted-foreground" title={o.market_source ? `Fuente: ${o.market_source}` : undefined}>{o.market_price_pp !== null && o.market_price_pp !== undefined ? `USD ${Math.round(Number(o.market_price_pp))}` : '–'}</td>
                   <td className="px-3 py-2 text-right">
                     {canAnswer && o.status !== 'rejected' && o.status !== 'loaded' ? (
                       <div className="flex flex-col items-end gap-1">
@@ -148,9 +150,10 @@ export function CupoRequestDetail({ id }: { id: number }) {
           </tbody>
         </table>
       </div>
+      {r.airline_analysis && <AirlineAnalysisPanel requestId={id} analysis={r.airline_analysis as unknown as Analysis} canChange={['draft', 'ready'].includes(r.status)} onChanged={load} />}
       {canAnswer && <ReplyReader requestId={id} onApplied={load} />}
       {r.notes && <p className="text-sm text-muted-foreground">📝 {r.notes}</p>}
-      <p className="text-xs text-muted-foreground">Precio de sistema: la tarifa de línea más barata que el cotizador encontró para esa fecha (ida y vuelta, por persona). Δ = cuánto más (o menos) pide aéreos respecto del sistema: negativo es buen negocio.</p>
+      <p className="text-xs text-muted-foreground">Precio de sistema: la tarifa de la aerolínea del pedido que el cotizador encontró para esa fecha (ida y vuelta, por persona). Mercado: la mediana de lo observado para esa fecha en Sabre, la web, el bot y las sondas. Δ = cuánto más (o menos) pide aéreos respecto del sistema: negativo es buen negocio.</p>
     </div>
   )
 }

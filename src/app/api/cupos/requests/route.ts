@@ -44,6 +44,8 @@ const createSchema = z.object({
   destinationProfileCode: z.string().trim().max(20).nullable().optional(),
   // Sondeos (nuevo): cada uno con meses, noches, cantidad de fechas, días, aerolínea, directo y lugares.
   probeGroups: probeGroupsSchema.optional(),
+  // Misma aerolínea en todas las tiradas (la que más conviene según el análisis). Por defecto sí.
+  singleAirline: z.boolean().default(true),
   // Forma vieja de un solo sondeo; se usa si no vienen probeGroups.
   months: z.array(z.string().regex(/^\d{4}-\d{2}$/)).min(1).max(6).optional(),
   weekdays: z.array(z.number().int().min(0).max(6)).min(1).max(7).default([4, 6]),
@@ -74,7 +76,7 @@ export async function POST(request: NextRequest) {
     const actor = user?.email ?? 'ui'
     const { data, error } = await db.from('cupo_requests').insert({
       title, origin_code: p.originCode.toUpperCase(), origin_name: p.originName ?? null, destination_code: p.destinationCode, destination_name: p.destinationName, destination_profile_code: p.destinationProfileCode ?? null,
-      ...cols, seats_requested: p.seatsRequested, adults: p.adults, children_ages: p.childrenAges, notes: p.notes ?? null, requested_by: actor,
+      ...cols, single_airline: p.singleAirline, seats_requested: p.seatsRequested, adults: p.adults, children_ages: p.childrenAges, notes: p.notes ?? null, requested_by: actor,
     }).select('id').single()
     if (error || !data) throw new Error(error?.message ?? 'No se pudo crear el pedido')
     let jobId: number | null = null

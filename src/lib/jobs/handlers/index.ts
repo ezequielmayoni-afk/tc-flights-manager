@@ -21,6 +21,7 @@ import { marketingEvaluateHandler } from './marketing-evaluate'
 import { marketingActivateHandler, marketingLaunchHandler } from './marketing-launch'
 import { cupoProbeHandler } from './cupo-probe'
 import { crmRollupHandler } from './crm-rollup'
+import { crmFlightQuotesHandler } from './crm-flight-quotes'
 import { cupoRiskEvalHandler } from './cupo-risk-eval'
 import { ideaQuoteHandler } from './idea-quote'
 import { profileAuditHandler } from './profile-audit'
@@ -66,6 +67,7 @@ const HANDLERS: HandlerDefinition[] = [
   marketingActivateHandler,
   cupoProbeHandler,
   crmRollupHandler,
+  crmFlightQuotesHandler,
   cupoRiskEvalHandler,
   ideaQuoteHandler,
   profileAuditHandler,
