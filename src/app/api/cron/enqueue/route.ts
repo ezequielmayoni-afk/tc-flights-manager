@@ -66,6 +66,9 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
         // Fase 14: fichas con tráfico cuya salida vence (Slack + /tareas). Lee el
         // gsc_page_stats de ayer, así que no depende de que el sync de hoy haya corrido.
         { kind: 'seo.expiring', payload: { at: day }, dedupeKey: `seo.expiring:${day}` },
+        // Fase 14: títulos cuya temporada quedó desfasada respecto de la salida cargada en TC
+        // (lane tc, ~1 llamada por paquete propio). Propone; aplica título/H1 si automation.seo_title_autoapply.
+        { kind: 'seo.title_drift', payload: { at: day }, dedupeKey: `seo.title_drift:${day}` },
       ]
     }
     case 'nightly':

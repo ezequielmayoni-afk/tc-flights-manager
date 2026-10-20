@@ -2,7 +2,7 @@
  * Corre a mano los agentes de la Fase 14 (SEO + GEO) sin pasar por el runner
  * del VPS: sirve para la primera corrida (baseline) y para probar cambios.
  *
- *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-baseline.ts [gsc|serp|geo|expiring|all] [--engines=chatgpt,gemini,claude]
+ *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-baseline.ts [gsc|serp|geo|expiring|drift|all] [--engines=chatgpt,gemini,claude]
  *
  * Carga `.env.local` como lo hace Next (`@next/env`): un `source` de shell
  * rompe el JSON de GOOGLE_DRIVE_CREDENTIALS. `--engines` limita las sondas de
@@ -24,6 +24,7 @@ const KINDS: Record<string, string[]> = {
   serp: ['serp.track'],
   geo: ['geo.probe'],
   expiring: ['seo.expiring'],
+  drift: ['seo.title_drift'],
   all: ['gsc.site_sync', 'serp.track', 'geo.probe', 'seo.expiring'],
 }
 

@@ -33,6 +33,7 @@ import { gscSiteSyncHandler } from './gsc-site-sync'
 import { serpTrackHandler } from './serp-track'
 import { geoProbeHandler } from './geo-probe'
 import { seoExpiringHandler } from './seo-expiring'
+import { seoTitleDriftHandler } from './seo-title-drift'
 
 /**
  * Registro de handlers: un archivo por `kind`. Las fases del loop van sumando
@@ -79,6 +80,7 @@ const HANDLERS: HandlerDefinition[] = [
   serpTrackHandler,
   geoProbeHandler,
   seoExpiringHandler,
+  seoTitleDriftHandler,
 ]
 
 const byKind = new Map(HANDLERS.map(h => [h.kind, h]))

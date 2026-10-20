@@ -498,6 +498,27 @@ class TCClient {
   }
 
   /**
+   * Cambia título y H1 (largeTitle) de un paquete sin tocar temáticas, meta ni
+   * descripción: PUT {active, title, largeTitle, description} con lo que devuelve
+   * /info. Verificado el 2026-10-19 sobre 96 fichas (Fase 14).
+   */
+  async updatePackageTitle(packageId: number, title: string): Promise<{ success: boolean; error?: string; before?: string }> {
+    try {
+      const info = await this.getPackageInfo(packageId)
+      const extra = info as unknown as { description?: string }
+      if (typeof info.title !== 'string') throw new Error('info sin title: no se escribe')
+      const body: Record<string, unknown> = { active: info.active ?? true, title, largeTitle: title, description: extra.description ?? '' }
+      console.log(`[TC] Updating title of package ${packageId}: "${info.title}" → "${title}"`)
+      await this.request(`/package/${TC_MICROSITE_ID}/${packageId}`, { method: 'PUT', body: JSON.stringify(body) })
+      return { success: true, before: info.title }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error(`[TC] Failed to update title of package ${packageId}:`, errorMessage)
+      return { success: false, error: errorMessage }
+    }
+  }
+
+  /**
    * Deactivate (hide) a package in TravelCompositor
    * Sets active=false to hide it from the microsite
    * @param packageId - The TC package ID
@@ -618,6 +639,7 @@ export const getAllPackagesByUser = (username: string, options?: { onlyVisible?:
 export const getAllPackagesExcludingUsers = (excludeUsers: string[], options?: { onlyVisible?: boolean }) => tcClient.getAllPackagesExcludingUsers(excludeUsers, options)
 export const getPackageDetail = (packageId: number) => tcClient.getPackageDetail(packageId)
 export const getPackageInfo = (packageId: number) => tcClient.getPackageInfo(packageId)
+export const updatePackageTitle = (packageId: number, title: string) => tcClient.updatePackageTitle(packageId, title)
 export const deactivatePackage = (packageId: number) => tcClient.deactivatePackage(packageId)
 export const activatePackage = (packageId: number) => tcClient.activatePackage(packageId)
 export const updatePackageThemes = (packageId: number, themes: string[]) => tcClient.updatePackageThemes(packageId, themes)
