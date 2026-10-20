@@ -157,3 +157,24 @@ baja; exóticos y Orlando = el mes (nunca "temporada baja"); eventos y grupales 
 por API y back: 59880752, 59882867, 65642676, 65646093 → "Semana Santa 2027"; 45858060 → "Salidas 2026";
 45798855 y 62478698 → "Noviembre 2026"; 54204421 → "Salidas 2026 y 2027"; meta título de 65642676 y
 meta descripción de 45858060. Listado completo: `titulos-aplicados-2026-10-19.csv`.
+
+## 10. Cuando cambia la fecha de un paquete (job `seo.title_drift`, 2026-10-20)
+
+Pregunta de Ezequiel: si a 38204302 le cambia la salida a abril de 2027, ¿sigue con el mismo id y cómo
+se actualiza el SEO? Sí: la URL se resuelve por id, el slug es cosmético y Google conserva lo ganado.
+Lo que tiene que seguir a la fecha es la etiqueta de temporada del título, el H1 y los meta.
+
+Mecanismo: job diario `seo.title_drift` (lane tc, después de `seo.expiring`). Lee en TC la salida
+cargada hoy de cada paquete propio activo, calcula la temporada que corresponde (regla por destino de
+`titles.ts`; rangos de salidas de hasta 120 días mandan la próxima salida, de 120 a 400 días "Salidas
+{año}") y la compara con la etiqueta del título. Si difiere: fila en `seo_title_drift` con título y meta
+propuestos, aviso por Slack y sección "Fichas con la temporada del título desfasada" en /tareas.
+Con el flag `automation.seo_title_autoapply` prendido (hoy apagado) cambia solo título y H1 por API;
+los meta se pegan en el back (`scripts/tc-admin/set_pkg_meta.py`) porque la API no los escribe.
+Primera corrida: 7 desfasajes reales (Orlando y Estambul/Egipto corregidos en el acto; Montego Bay,
+Sudáfrica, Imbassaí y Europa 56242150 quedan como propuesta porque dependen de si el rango de salidas
+cargado en TC es real).
+
+Qué es "performa bien" en Search Console: HUB guarda impresiones y clics por URL (`gsc_page_stats`,
+tablero /producto/seo). Umbral práctico: ≥ 20 impresiones en 28 días = Google la está mostrando, no
+tocar la URL; ≥ 5 clics = trae gente. Los dos jobs incluyen esos números en cada aviso.
