@@ -178,3 +178,19 @@ cargado en TC es real).
 Qué es "performa bien" en Search Console: HUB guarda impresiones y clics por URL (`gsc_page_stats`,
 tablero /producto/seo). Umbral práctico: ≥ 20 impresiones en 28 días = Google la está mostrando, no
 tocar la URL; ≥ 5 clics = trae gente. Los dos jobs incluyen esos números en cada aviso.
+
+## 11. URLs con tráfico que daban 404 (2026-10-20)
+
+`scripts/seo-dead-pages.ts` cruza Search Console (90 d y 12 m, 3.718 URLs) con el estado real. Resultado:
+- Blog viejo en www.siviajo.com/blog/* (116 URLs, 293k impresiones/12 m): Google ya pasó el ranking a
+  blog.siviajo.com (la nota de clima en Bayahibe trae 1.201 clics/90 d en la URL nueva). Sólo falta un
+  301 de higiene, que TC no ofrece (soporte de TC o Cloudflare).
+- 44 fichas desactivadas que seguían rankeando. Reactivadas por API (PUT active+visible con título,
+  H1 y descripción de /info; backup en `scripts/_seo_reactivated_backup_2026-10-20.json`): las 14 con
+  fecha futura + Porto de Galinhas verano 2026 (28405754, 13.7k impresiones, hay que cargarle salida).
+  Quedaron fuera a pedido de Ezequiel: GP Madrid, GP Barcelona, Mundial 2026 (incl. Dallas), Miami y
+  Punta Cana, Moto GP Goiânia, Samaná 2025 y las demás vencidas con menos de 10 clics. En HUB se
+  marcaron tc_active=true para que `tc.reconcile` no las reporte.
+- Dos páginas muertas con tráfico que no se pueden recrear: `/es/theme/44739/...` (brand: "si viajo",
+  "opiniones de sí, viajo", 83 clics/90 d) y `/es/closedtour/pro/17586134/...` (F1 Brasil 2025).
+  Opción: redirección JS desde GTM en la página 404 de TC (que carga el contenedor). Pendiente de ok.
