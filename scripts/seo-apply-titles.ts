@@ -6,7 +6,8 @@
  * ni temáticas (la taxonomía nueva todavía no existe en TC).
  *
  *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-apply-titles.ts --csv=docs/seo/titulos-propuestos-2026-10-17.csv [--ids=1,2] [--dry-run] [--include-expired] [--season]
- *   --season: reemplaza la fecha exacta del título ("– Salida 5 nov 2026") por la temporada ("– Temporada baja 2026").
+ *   --season: reemplaza la fecha exacta del título ("– Salida 5 nov 2026") por la temporada según destino
+ *   ("– Temporada baja 2026", "– Semana Santa 2027", "– Noviembre 2026" en exóticos; ver src/lib/seo/titles.ts).
  *   npx -y tsx@4 --tsconfig tsconfig.json scripts/seo-apply-titles.ts --id=62328245 --title="Circuito Madrid y Andalucía: 7 días (opción 1)"
  *
  * Por cada paquete: GET info (título, subtítulo, descripción, temáticas) +
@@ -22,7 +23,7 @@ import { loadEnvConfig } from '@next/env'
 loadEnvConfig('/Users/ezequielmayoni/hub')
 import fs from 'node:fs'
 import { recordExternalCall } from '@/lib/jobs/budget'
-import { tituloSinFecha } from '@/lib/seo/titles'
+import { grupoDestino, tituloSinFecha } from '@/lib/seo/titles'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const BASE = 'https://online.travelcompositor.com/resources'
@@ -115,7 +116,11 @@ function plansFromCsv(file: string, onlyIds: Set<number> | null): Plan[] {
       // En la plantilla de siviajo.com el H1 de la ficha es `largeTitle` (verificado el
       // 2026-10-19 con el paquete 59160593): el título con la palabra clave tiene que ir
       // en los dos campos. La columna large_title_propuesto (beneficios) no se aplica.
-      const title = flag('season') ? tituloSinFecha(r.title_propuesto, salida) : r.title_propuesto
+      // Temporada por destino (Caribe/Brasil/Argentina, Europa, exóticos, Orlando) y noches del viaje.
+      const destinos = (datos.match(/destinos=([^|]+)/)?.[1] ?? '').split(/\s*(?:,|\sy\s)\s*/).map(x => x.trim()).filter(Boolean)
+      const pais = datos.match(/pa[ií]s=([^|]+)/)?.[1]?.trim()
+      const noches = Number(datos.match(/noches=(\d+)/)?.[1] ?? 7)
+      const title = flag('season') ? tituloSinFecha(r.title_propuesto, salida, { grupo: grupoDestino(destinos, pais), noches }) : r.title_propuesto
       return { id: Number(r.tc_id), title, largeTitle: title, salida, nota }
     })
     .filter(p => p.id && p.title && (!onlyIds || onlyIds.has(p.id)))
