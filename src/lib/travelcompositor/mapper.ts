@@ -190,6 +190,15 @@ export function mapFlightToTransport(flight: DBFlight): TCTransport {
   // Sort segments by sort_order
   const sortedSegments = [...flight.flight_segments].sort((a, b) => a.sort_order - b.sort_order)
 
+  // Cupo ida/vuelta (regla de Ezequiel, 2026-10-21): la IDA casada lleva precio sólo ida = precio ida y
+  // vuelta del cupo y venta sólo ida encendida. Si no, TC vende la ida suelta casi gratis y la combina con
+  // vueltas de otras aerolíneas; así, al tomar la ida del cupo, la vuelta que arma TC es la del cupo.
+  // La VUELTA queda como siempre (sin venta sólo ida) y el casado va de un solo lado (ida → vuelta).
+  const cupoIda = flight.leg_type === 'outbound' && Boolean(flight.paired_flight_id) && (flight.allow_rt_price ?? true) && (flight.base_adult_rt_price || 0) > 0
+  const owAdult = cupoIda ? (flight.base_adult_price || flight.base_adult_rt_price || 0) : (flight.base_adult_price || 0)
+  const owChildren = cupoIda ? (flight.base_children_price || flight.base_children_rt_price || 0) : (flight.base_children_price || 0)
+  const owInfant = cupoIda ? (flight.base_infant_price || flight.base_infant_rt_price || 0) : (flight.base_infant_price || 0)
+
   // Build base transport object
   // TC requires id to be empty string for new transports, not undefined/null
   const transport: TCTransport = {
@@ -205,9 +214,9 @@ export function mapFlightToTransport(flight: DBFlight): TCTransport {
     productTypes: (flight.product_types || ['ONLY_FLIGHT', 'FLIGHT_HOTEL', 'MULTI', 'MAGIC_BOX', 'ROUTING']) as TCTransport['productTypes'],
     currency: flight.currency || 'USD',
     vehiclePrice: 0,
-    baseAdultPrice: flight.base_adult_price || 0,
-    baseChildrenPrice: flight.base_children_price || 0,
-    baseInfantPrice: flight.base_infant_price || 0,
+    baseAdultPrice: owAdult,
+    baseChildrenPrice: owChildren,
+    baseInfantPrice: owInfant,
     baseAdultRTPrice: flight.base_adult_rt_price || 0,
     baseChildrenRTPrice: flight.base_children_rt_price || 0,
     baseInfantRTPrice: flight.base_infant_rt_price || 0,
@@ -228,10 +237,10 @@ export function mapFlightToTransport(flight: DBFlight): TCTransport {
     maxChildAge: flight.max_child_age ?? 11,
     minInfantAge: flight.min_infant_age ?? 0,
     maxInfantAge: flight.max_infant_age ?? 2,
-    allowOWPrice: flight.allow_ow_price ?? false,
+    allowOWPrice: cupoIda ? true : (flight.allow_ow_price ?? false),
     allowRTPrice: flight.allow_rt_price ?? true,
     cancellationRanges,
-    combinableRtContracts: flight.combinable_rt_contracts || [],
+    combinableRtContracts: flight.leg_type === 'return' ? [] : (flight.combinable_rt_contracts || []),
     segments: sortedSegments.map(mapSegment),
   }
 
