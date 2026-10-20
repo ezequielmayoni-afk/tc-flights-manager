@@ -72,7 +72,9 @@ async function getFlights(): Promise<FlightWithSegments[]> {
       modalities(baggage_allowance, includes_backpack, carryon_weight, checked_bag_weight, checked_bags_quantity, modality_inventories(quantity, sold, remaining_seats))
     `)
     .order('created_at', { ascending: false })
-    .limit(100)
+    // Sin tope chico: con .limit(100) los vuelos más viejos (los ya volados y
+    // algunos por volar) nunca llegaban a la tabla y "Mostrar todos" no cambiaba nada.
+    .range(0, 4999)
 
   if (error) {
     console.error('Error fetching flights:', error)
