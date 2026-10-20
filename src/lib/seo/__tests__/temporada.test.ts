@@ -26,6 +26,7 @@ describe('grupoDestino', () => {
     expect(grupoDestino(['Roma', 'Milán', 'Venecia', 'Florencia'])).toBe('europa')
     expect(grupoDestino(['Estambul', 'El Cairo'])).toBe('exotico')
     expect(grupoDestino(['Isla de Sal (Cabo Verde)', 'Lisboa'])).toBe('exotico')
+    expect(grupoDestino(['Isla de Sal', 'Lisboa'])).toBe('exotico')
     expect(grupoDestino(['Lima', 'Cusco'])).toBe('exotico')
     expect(grupoDestino(['Orlando'])).toBe('orlando')
   })
