@@ -1,0 +1,37 @@
+grupo,salida,vuelo,destino,lugares,total,fichas_que_cubren
+crear,2027-01-01,JA-EZE/RIO/EZE,Río de Janeiro,10,10,
+crear,2027-02-02,JA-EZE/REC/EZE,Recife (Porto de Galinhas),10,10,
+crear,2027-02-07,JA-AEP/REC/AEP,Recife (Porto de Galinhas),10,10,
+crear,2027-02-24,JA-AEP/REC/AEP,Recife (Porto de Galinhas),10,10,
+crear,2027-02-25,JA-AEP/RIO/AEP,Río de Janeiro,10,10,
+crear,2027-03-19,ET-EZE/BKK/EZE,Bangkok,3,21,
+crear,2027-03-22,JA-AEP/NAT/AEP,Natal,10,10,
+crear,2027-03-24,JA-EZE/GIG/EZE,Río de Janeiro,10,10,
+crear,2027-03-24,JA-AEP/GIG/AEP,Río de Janeiro,10,10,
+vincular,2027-01-18,JA-EZE/BPS/EZE,Porto Seguro,10,10,52956267 Paquete a Porto Seguro con desayuno: 7 noches – Ve; 65158083 Paquete a Porto Seguro All Inclusive: 7 noches – V; 65264574 Paquete a Arraial d'Ajuda con desayuno: 7 noches –
+vincular,2027-01-20,JA-AEP/RIO/AEP,Río de Janeiro,1,16,38742558 Paquete a Búzios con desayuno: 7 noches – Verano 2; 52677840 Paquete a Río de Janeiro y Búzios con desayuno: 7 ; 53851731 Paquete a Río de Janeiro con desayuno: 7 noches – 
+vincular,2027-01-24,JA-EZE/FLN/EZE,Florianópolis,14,16,54580697 Paquete a Florianópolis con desayuno: 7 noches – V; 55062923 Paquete a Florianópolis All Inclusive: 7 noches – ; 55089887 Paquete a Florianópolis con desayuno: 7 noches – V
+vincular,2027-01-28,JA-EZE/MCZ/EZE,Maceió (Maragogi),10,10,28398899 Paquete a Maceio 7 noches todo incluido Verano 202
+vincular,2027-02-02,JA-EZE/BPS/EZE,Porto Seguro,7,10,52956267 Paquete a Porto Seguro con desayuno: 7 noches – Ve; 65158083 Paquete a Porto Seguro All Inclusive: 7 noches – V; 65264574 Paquete a Arraial d'Ajuda con desayuno: 7 noches –
+vincular,2027-02-02,JA-EZE/MCZ/EZE,Maceió (Maragogi),1,10,28398899 Paquete a Maceio 7 noches todo incluido Verano 202; 59160593 Paquete a Maceió con desayuno: 7 noches – Verano 2; 59255882 Paquete a Maceió All Inclusive: 7 noches – Verano 
+vincular,2027-02-04,LA-EZE/MBJ/EZE,Montego Bay,10,10,41866992 Paquete a Montego Bay All Inclusive: 7 noches – Te; 59817023 Paquete a Jamaica All Inclusive: 7 noches – Verano
+vincular,2027-02-08,JA-EZE/MCZ/EZE,Maceió (Maragogi),10,10,28398899 Paquete a Maceio 7 noches todo incluido Verano 202; 59160593 Paquete a Maceió con desayuno: 7 noches – Verano 2; 59255882 Paquete a Maceió All Inclusive: 7 noches – Verano 
+vincular,2027-02-18,EK-EZE/DXB/EZE,Dubái,16,21,"56433742 Salida grupal acompañada a Dubái: 10 días, 18 feb "
+vincular,2027-02-20,JA-AEP/RIO/AEP,Río de Janeiro,8,10,38742558 Paquete a Búzios con desayuno: 7 noches – Verano 2; 52677840 Paquete a Río de Janeiro y Búzios con desayuno: 7 ; 53851731 Paquete a Río de Janeiro con desayuno: 7 noches – 
+vincular,2027-03-20,PU-EZE/MAD/EZE,Madrid,24,32,"56242150 Paquete a Europa con desayuno: 13 noches – Fin de ; 58616844 Salida grupal acompañada a Europa: 17 días, 20 de "
+vincular,2027-03-21,EK-EZE/DXB/EZE,Dubái,16,21,"56433742 Salida grupal acompañada a Dubái: 10 días, 18 feb "
+vincular,2027-03-24,JA-EZE/MCZ/EZE,Maceió (Maragogi),8,10,28398899 Paquete a Maceio 7 noches todo incluido Verano 202
+vincular,2027-04-17,IB-EZE/LHR//MAD/EZE,Londres,27,32,"59599262 Salida grupal acompañada a Europa: 18 días, 17 de "
+vincular,2027-05-08,PU-EZE/MAD/EZE,Madrid,23,32,"56242150 Paquete a Europa con desayuno: 13 noches – Fin de ; 58651323 Salida grupal acompañada a Europa: 17 días, 8 de m"
+vincular,2027-05-10,IB-EZE/BRU//BUD/EZE,Bruselas,14,16,"60267197 Salida grupal acompañada a Europa: 15 días, 10 de "
+agotados_sin,2026-10-22,JA-AEP/RIO/AEP,Río de Janeiro,0,10,
+agotados_sin,2026-10-23,JA-AEP/NAT/AEP,Natal,0,10,
+agotados_sin,2026-11-05,CHARTERSIVF1,,0,186,
+agotados_sin,2026-11-29,JA-AEP/REC/AEP,Recife (Porto de Galinhas),0,10,
+agotados_sin,2026-12-05,JA-AEP/GIG/AEP,Río de Janeiro,0,10,
+agotados_sin,2027-01-02,JA-EZE/MCZ/EZE (Ida),Maceió (Maragogi),0,10,
+agotados_sin,2027-01-05,JA-AEP/RIO/AEP (Ida),Río de Janeiro,0,16,
+agotados_sin,2027-01-07,JA-AEP/REC/AEP (Ida),Recife (Porto de Galinhas),0,12,
+agotados_sin,2027-01-09,DM-EZE/PUJ/EZE (Ida),Punta Cana,0,16,
+agotados_sin,2027-01-11,JA-EZE/BPS/EZE,Porto Seguro,0,10,
+agotados_sin,2027-02-01,DM-EZE/PUJ/EZE (Ida),Punta Cana,0,16,
