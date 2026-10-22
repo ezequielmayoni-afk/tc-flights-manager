@@ -32,3 +32,13 @@ y los `<update>` de la respuesta parcial.
 - Las 16 temáticas "General" (Caribe, Brasil, Europe, Punta Cana, Cancún, Río, Búzios, Disney…) no se
   pueden editar: se reemplazan por temáticas propias.
 - Guardar siempre un backup (`backup_theme_<id>.json`, `backup_pkg_<id>.json`) antes de escribir.
+
+## apply_calendar.py — calendario de una ficha = fechas de cupo
+`python3 apply_calendar.py dry|apply targets.json` con `{"<idFicha>": ["2027-01-18","2027-02-02",...]}`.
+Deja la ficha ofreciendo exactamente esas fechas: rango = min..max, días de operación = los días de semana de
+esas fechas, y stop sales en los huecos (acotados a días de operación: TC rechaza un stop sale cuyo inicio o
+fin no sea día de operación, y rechaza solapamientos). Orden: borra los stop sales actuales
+(`tableStopSalesDate:{i}:removeStopSale`), guarda días + rango, reabre, agrega stop sales
+(`stopSalesSettings:stopSales` con `startDateStopSale_input`/`endDateStopSale_input`, execute/render
+`stop_sales_panel`), guarda. `dry` sólo imprime actual vs objetivo. Verificar después con la API
+(`dateSettings`): fechas ofrecidas = rango ∩ días − stop sales. Usado el 2026-10-22 en 12 fichas.

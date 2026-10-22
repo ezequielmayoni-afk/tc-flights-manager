@@ -182,3 +182,29 @@ Conclusión: el modelo "una URL por producto y temporada con varias fechas de cu
 condiciones: (1) el cupo tiene que ser la opción más barata del día en TC, o TC no lo elige solo; (2) los
 cupos tienen que salir de la misma base que la ficha (AEP ≠ EZE). Mientras no se cumplan, el 1/1 y el 25/2
 venden a tarifa de sistema sin consumir cupo.
+
+### 6.2 Matcheo cupos ↔ fichas (2026-10-22)
+
+Regla aplicada: cada ficha restringida a cupos ofrece exactamente las fechas de los cupos **con lugares** de su
+destino, temporada, noches y **misma base** (AEP/EZE); las fechas con cupo en 0 se sacan del calendario; en HUB
+se vincula cada cupo con las fichas que lo venden (`flight_package_links`, manual, confirmado). Hecho con
+`scripts/tc-admin/apply_calendar.py` y verificado por API en las 12 fichas:
+
+| Ficha | Ofrece ahora | Qué cambió |
+|---|---|---|
+| Porto Seguro AI 65158083, BB 52956267, Arraial 65264574 | 18/1, 2/2, 22/2 | se sacó el 11/1 (cupo 0/10) |
+| Maceió BB 59160593, AI 59255882 | 28/1, 2/2, 21/2 | se abrió el 28/1 (10 lugares) |
+| Maragogi 9 n 27778058 | 27/1, 7/2, 24/2 | se abrieron 7/2 y 24/2 |
+| Porto de Galinhas 9 n 57074848 | 27/1, 7/2, 24/2 | no ofrecía nada (día "sábado" para un miércoles) |
+| Río 53851731, Río y Búzios 52677840 | 20/1, 13/2, 20/2, 25/2 | se abrió el 25/2 |
+| Búzios 38742558 | 20/1, 13/2, 20/2, 25/2 | se cerró el 1/1 (cupo desde EZE, ficha base AEP) |
+| Natal AI 63713647 | 4/2 | no tenía calendario |
+| Porto Seguro AI Semana Santa 65642676 | 23/3 | día "miércoles" para un martes: no ofrecía nada |
+
+Sin tocar: fichas con rango amplio (sistema: Aruba 48347170 y 37701433, Maceió 28398899, Punta Cana Córdoba
+25683099, Punta Cana y Miches 37688104) y fichas cuyo único cupo está agotado (Bayahibe 9 n 52387913, Punta
+Cana y Bayahibe 52574571, Búzios temporada baja 49831845, Maragogi y Porto de Galinhas 48454926, Combinado
+Río–Búzios 49838169): cerrar la fecha las dejaría sin ninguna; deciden pasar a sistema o nuevo cupo.
+Cupos con lugares sin ficha que los venda: Recife 2/2 (7 n EZE), Natal 3/2 (8 n AEP) y 22/3 (9 n AEP),
+Maceió 8/2 (9 n EZE) y 24/3 (7 n EZE), Río 24/3 (9 n AEP y 7 n EZE), Bangkok 19/3, Río 1/1 (EZE: las fichas
+de Río son base AEP). Precios de cupos: no se tocaron.
