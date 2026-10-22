@@ -166,10 +166,19 @@ Cotizaciones desde "Reservar | Ver fechas":
 | 1/1 | TRANSPORT-435003 JA 3816 12:52 EZE→GIG (527 RT) | JA 3812 04:17 AEP / JA 3813 → **sistema**, hotel cambiado | 1.216 |
 | 25/2 | TRANSPORT-435008 JA 3816 12:57 AEP→GIG (340 RT) | JA 711 10:30 / JA 3811 GIG→EZE → **sistema** | 938 |
 
-Conclusión: al recotizar otra fecha, TC busca vuelos en el GDS a partir del transporte original de la ficha y
-no elige los contratos propios aunque existan para esa fecha y sean más baratos. La fecha propia (13/2)
-usa el cupo porque el transporte de la ficha *es* ese contrato. Esto invalida la idea "una ficha, varios
-cupos por fecha" tal como está: para vender el cupo del 1/1 o del 25/2 hace falta una ficha cuyo transporte
-sea ese contrato (una ficha por cupo, o un solo contrato con varias fechas e inventario por fecha como
-transporte fijo de la ficha). Las fechas sin cupo siguen sin ofrecerse (stop sales); el 1/1 y el 25/2 quedan
-abiertos a tarifa de sistema hasta que Ezequiel decida.
+Después miré las alternativas de vuelo ("Edita" sobre el transporte en el resumen):
+
+- **25/2:** el contrato del cupo sí aparece como alternativa ("JA 3816 12:57 AEP, Equipaje, +US$ 51") y al
+  elegirlo TC ofrece la vuelta del cupo (JA 3817 13:50). TC no lo eligió solo porque la tarifa BASIC de
+  JetSmart en el GDS ese día es US$ 51 más barata que el precio que le pusimos al cupo.
+- **1/1:** el contrato (JA 3816 12:52 **desde Ezeiza**) no aparece entre las alternativas; sólo vuelos del GDS
+  (3812 AEP, 3810 EZE, 3796, 711). La ficha está armada con base Aeroparque y TC busca los contratos propios
+  por esa base; los vuelos del GDS sí los busca por ciudad.
+- Regla de selección que se ve: TC mantiene el número de vuelo original de la ficha si existe ese día
+  (en el 1/1 dejó el JA 3812 aunque había uno US$ 134 más barato); si no existe, toma el más barato.
+
+Conclusión: el modelo "una URL por producto y temporada con varias fechas de cupo" **sí funciona** en TC
+(el calendario ofrece sólo las fechas con cupo y el contrato es reservable en esa fecha), con dos
+condiciones: (1) el cupo tiene que ser la opción más barata del día en TC, o TC no lo elige solo; (2) los
+cupos tienen que salir de la misma base que la ficha (AEP ≠ EZE). Mientras no se cumplan, el 1/1 y el 25/2
+venden a tarifa de sistema sin consumir cupo.
