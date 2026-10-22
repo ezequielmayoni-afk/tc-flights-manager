@@ -3,12 +3,15 @@
  * sus anuncios, vínculos de cupo, salidas hermanas e insights, y devuelven
  * decisiones. Quién las aplica y en qué modo lo decide evaluate.ts.
  *
- *   expired / not_visible / tc_inactive  → pausar (o redirigir si hay otra salida)
- *   sold_out (vínculo confirmado o alta) → redirigir si hay otra salida; si no, pausar
+ *   expired / not_visible / tc_inactive  → pausar (o redirigir si hay otra salida de la misma temporada)
+ *   sold_out (vínculo confirmado o alta) → avisar y pausar; NUNCA redirige (el bot del CRM sigue leyendo
+ *                                          el mismo SIV). Si hay otra salida de la MISMA temporada con lugar, va en el aviso.
  *   sold_out con vínculo media            → sólo avisar (la tarea de cupos agotados ya existe)
  *   price_drift                           → pedir creatividad; pausar sólo si el precio subió
  *   underperforming                       → sólo avisar
  */
+
+import { grupoDestino, temporada } from '@/lib/seo/titles'
 
 export type GuardRule = 'expired' | 'not_visible' | 'tc_inactive' | 'sold_out' | 'sold_out_unconfirmed' | 'price_drift' | 'underperforming'
 export type GuardAction = 'pause' | 'redirect' | 'request_creative' | 'alert' | 'hide_in_tc'
@@ -110,11 +113,22 @@ function activeAds(input: GuardInput): GuardAd[] {
   return input.ads.filter(a => a.status === 'ACTIVE' && a.autoManaged)
 }
 
-/** La siguiente salida del mismo producto con lugares: primero las posteriores a la actual, después cualquiera. */
+/** Temporada comercial de una salida (misma regla que los títulos: Verano, Fin de año, Temporada baja, Semana Santa…). */
+export function temporadaDe(title: string, date: string | null): string | null {
+  if (!date) return null
+  return temporada(date, { grupo: grupoDestino([title]) })
+}
+
+/**
+ * La siguiente salida del mismo producto con lugares y de la MISMA temporada (pedido de Ezequiel, 2026-10-22:
+ * un Búzios de noviembre no se reemplaza por uno de febrero). Primero las posteriores a la actual.
+ */
 function nextSibling(input: GuardInput): GuardSibling | null {
   const current = input.package.departureDate ?? ''
+  const season = temporadaDe(input.package.title, input.package.departureDate)
   const candidates = input.siblings
     .filter(s => s.sellable && s.hasSeats && s.packageId !== input.package.id && (s.departureDate ?? '') !== current)
+    .filter(s => season !== null && temporadaDe(input.package.title, s.departureDate) === season)
     .sort((a, b) => (a.departureDate ?? '9999').localeCompare(b.departureDate ?? '9999'))
   return candidates.find(s => (s.departureDate ?? '') > current) ?? candidates[0] ?? null
 }
@@ -189,9 +203,20 @@ export function evaluatePackage(input: GuardInput): GuardDecision[] {
   if (confirmedSoldOut.length > 0) {
     const link = confirmedSoldOut[0]
     const reason = `El cupo ${link.flightLabel} se agotó (${link.totalSeats} lugares vendidos)`
+    // Cupo agotado: HUB avisa y pausa los anuncios, pero no redirige el SIV: el bot del CRM sólo lee HUB
+    // y tiene que seguir respondiendo con este paquete (pedido de Ezequiel, 2026-10-22).
     const sibling = nextSibling(input)
-    if (sibling) return redirectTo(input, 'sold_out', sibling, reason, { flightId: link.flightId })
-    const decisions = pauseAll(input, 'sold_out', reason, 'critical', { flightId: link.flightId })
+    const season = temporadaDe(p.title, p.departureDate)
+    const decisions: GuardDecision[] = [{
+      rule: 'sold_out',
+      action: 'alert',
+      severity: 'critical',
+      reason: `${reason}. El bot sigue respondiendo con este paquete (no se redirige). ${sibling ? `Otra salida de la misma temporada${season ? ` (${season})` : ''} con lugar: ${sibling.departureDate ?? 's/f'} (SIV ${sibling.tcPackageId})` : `No hay otra salida de la misma temporada${season ? ` (${season})` : ''} con lugar`}`,
+      dedupeKey: `guard:sold_out:pkg:${p.id}:${link.flightId}`,
+      metaAdId: null,
+      deterministic: true,
+      inputs: { packageId: p.id, tcPackageId: p.tcPackageId, flightId: link.flightId, season, sameSeasonSibling: sibling ? { tcPackageId: sibling.tcPackageId, departureDate: sibling.departureDate } : null },
+    }, ...pauseAll(input, 'sold_out', reason, 'critical', { flightId: link.flightId })]
     if (input.settings.autoHideInTcOnSoldOut) {
       decisions.push({
         rule: 'sold_out',
