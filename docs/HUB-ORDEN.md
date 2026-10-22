@@ -152,3 +152,24 @@ Regla operativa que sale de esto: en la ficha canónica, cuando un cupo se agota
 stop sale en esa fecha (o quitarle el día de operación) para que el calendario no la ofrezca a precio de
 sistema; agotados todos, "pasar a sistema" explícito con precio nuevo en la ficha y en la placa. La URL
 nunca se rompe sola: el riesgo es el precio, no el 404.
+
+### 6.1 Corrección (2026-10-22): una ficha sólo usa el cupo de la fecha con la que fue armada
+
+Prueba real en 38742558 (Búzios con desayuno, armada con el cupo del 13/2, contrato TRANSPORT-398345 =
+JA 3812 04:15 AEP→GIG). Se amplió el rango a 1/1–25/2, se habilitaron jueves y viernes y se bloquearon con
+stop sales todas las fechas sin cupo; el calendario público quedó ofreciendo sólo 1/1, 20/1, 13/2, 20/2 y 25/2.
+Cotizaciones desde "Reservar | Ver fechas":
+
+| Fecha | Cupo cargado en TC | Lo que cotizó TC | Precio pp |
+|---|---|---|---|
+| 13/2 | TRANSPORT-398345 JA 3812 04:15 | JA 3812 04:15 / JA 3815 20:05 → **usa el cupo** | 1.013 |
+| 1/1 | TRANSPORT-435003 JA 3816 12:52 EZE→GIG (527 RT) | JA 3812 04:17 AEP / JA 3813 → **sistema**, hotel cambiado | 1.216 |
+| 25/2 | TRANSPORT-435008 JA 3816 12:57 AEP→GIG (340 RT) | JA 711 10:30 / JA 3811 GIG→EZE → **sistema** | 938 |
+
+Conclusión: al recotizar otra fecha, TC busca vuelos en el GDS a partir del transporte original de la ficha y
+no elige los contratos propios aunque existan para esa fecha y sean más baratos. La fecha propia (13/2)
+usa el cupo porque el transporte de la ficha *es* ese contrato. Esto invalida la idea "una ficha, varios
+cupos por fecha" tal como está: para vender el cupo del 1/1 o del 25/2 hace falta una ficha cuyo transporte
+sea ese contrato (una ficha por cupo, o un solo contrato con varias fechas e inventario por fecha como
+transporte fijo de la ficha). Las fechas sin cupo siguen sin ofrecerse (stop sales); el 1/1 y el 25/2 quedan
+abiertos a tarifa de sistema hasta que Ezequiel decida.
