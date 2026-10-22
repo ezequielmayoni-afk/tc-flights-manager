@@ -21,17 +21,27 @@ export async function GET() {
     // Fetch all active ads from Meta ad account with insights from last 7 days
     const ads = await metaClient.getActiveAdsWithInsights()
 
-    // Get all meta_ad_ids we have in our DB to cross-reference
+    // Cruce con HUB en dos consultas: meta_ads no tiene clave foránea a packages (hay anuncios de paquetes
+    // borrados), así que el embed `packages:package_id(...)` de PostgREST falla y dejaba todo "sin vincular".
     const metaAdIds = ads.map(ad => ad.id)
-    const { data: linkedAds } = await db
-      .from('meta_ads')
-      .select('meta_ad_id, package_id, packages:package_id(id, tc_package_id, title)')
-      .in('meta_ad_id', metaAdIds.length > 0 ? metaAdIds : ['__none__'])
+    const linkedAds: Array<{ meta_ad_id: string; package_id: number | null }> = []
+    for (let i = 0; i < metaAdIds.length; i += 100) {
+      const { data, error } = await db.from('meta_ads').select('meta_ad_id, package_id').in('meta_ad_id', metaAdIds.slice(i, i + 100))
+      if (error) throw new Error(`No se pudieron cruzar los anuncios con HUB: ${error.message}`)
+      linkedAds.push(...((data ?? []) as Array<{ meta_ad_id: string; package_id: number | null }>))
+    }
+    const packageIds = [...new Set(linkedAds.map(a => a.package_id).filter((x): x is number => typeof x === 'number'))]
+    const packagesById = new Map<number, { id: number; tc_package_id: number; title: string }>()
+    if (packageIds.length) {
+      const { data: pkgs, error } = await db.from('packages').select('id, tc_package_id, title').in('id', packageIds)
+      if (error) throw new Error(`No se pudieron leer los paquetes: ${error.message}`)
+      for (const p of (pkgs ?? []) as Array<{ id: number; tc_package_id: number; title: string }>) packagesById.set(p.id, p)
+    }
 
     // Build a lookup map
     const linkedMap: Record<string, { package_id: number; tc_package_id: number; title: string }> = {}
-    for (const ad of linkedAds || []) {
-      const pkg = ad.packages as unknown as { id: number; tc_package_id: number; title: string } | null
+    for (const ad of linkedAds) {
+      const pkg = ad.package_id !== null ? packagesById.get(ad.package_id) : undefined
       if (pkg) {
         linkedMap[ad.meta_ad_id] = {
           package_id: pkg.id,
