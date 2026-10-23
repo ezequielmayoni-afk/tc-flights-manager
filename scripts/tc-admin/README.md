@@ -42,3 +42,16 @@ fin no sea día de operación, y rechaza solapamientos). Orden: borra los stop s
 (`stopSalesSettings:stopSales` con `startDateStopSale_input`/`endDateStopSale_input`, execute/render
 `stop_sales_panel`), guarda. `dry` sólo imprime actual vs objetivo. Verificar después con la API
 (`dateSettings`): fechas ofrecidas = rango ∩ días − stop sales. Usado el 2026-10-22 en 12 fichas.
+
+## login_http.py — sesión nueva sin navegador (2026-10-23)
+`TC_USERNAME`/`TC_PASSWORD` en el entorno; correr en el VPS (`/root/tc-admin`, con `tcadmin.py` apuntando
+`STATE='/root/tc-admin/state.json'`): hace login, pide el código por mail (EMAIL), espera `otp.txt` hasta 30 min,
+manda cada dígito (`marcadorCodigo:{i}:d`, evento `change`) y reenvía `login:signin`; guarda las cookies en `state.json`.
+Por HTTP no hay contador de página: con Playwright la pantalla de login muestra "La sesión expiró" a los pocos minutos
+y el código llega tarde. El formulario ignora Enter. No volcar la página de login: trae la contraseña en el campo.
+
+## set_range.py — rango de fechas de fichas
+`python3 set_range.py dry|apply <ids...>` cambia `startDate`/`endDate` del editor (rango de la ficha) con backup
+`backup_range_<id>.json` y verificación al reabrir. La API REST de TC no permite cambiar fechas (el PUT de paquete
+sólo acepta título, descripciones, temáticas, visible y orden). El viaje base (vuelos y hotel) no cambia: hay que
+recotizar en TC para moverlo dentro del rango nuevo. Usado el 2026-10-23 en 7 fichas "Temporada baja 2026" → 15/03–30/06/2027.
