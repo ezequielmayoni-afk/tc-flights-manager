@@ -127,10 +127,19 @@ export function useAuth(): UseAuthReturn {
     }
     init()
 
-    // Listen for auth changes
+    // Listen for auth changes.
+    // OJO: este callback corre mientras supabase-js tiene tomado el lock de la sesión. Si adentro se
+    // espera otra llamada a Supabase (la consulta de `profiles`), esa llamada espera el lock y el lock
+    // espera al callback: se traba todo el cliente del navegador (el menú queda vacío y las tablas
+    // cargando). Pasaba al refrescar con el token por vencer (evento TOKEN_REFRESHED). Por eso el
+    // trabajo se difiere con setTimeout y las renovaciones de token del mismo usuario se ignoran.
+    let lastUserId: string | null | undefined
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_, session) => {
-        await fetchUserWithRole(session?.user || null)
+      (event, session) => {
+        const nextId = session?.user?.id ?? null
+        if (event === 'TOKEN_REFRESHED' && nextId === lastUserId) return
+        lastUserId = nextId
+        setTimeout(() => { void fetchUserWithRole(session?.user || null) }, 0)
       }
     )
 
