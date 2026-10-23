@@ -51,3 +51,32 @@ Estas landings son permanentes. Google acumula autoridad en la URL, no en la fec
 - Paquetes, hoteles, aerolíneas y precios: export de paquetes activos de TC (17/10/2026) y títulos aprobados en `../titulos-propuestos-2026-10-17.csv` (columna `title_propuesto`, actualizada por temporada el 19/10).
 - Preguntas frecuentes: preguntas reales de "Otras preguntas de los usuarios" en Google (tabla `serp_checks`, semana 2026-W42).
 - Enlaces del blog: sólo URLs presentes en `https://blog.siviajo.com/post-sitemap.xml`.
+
+## Estado 2026-10-23: seis landings publicadas por HTTP
+
+| Landing | id | URL | Menú |
+|---|---|---|---|
+| Punta Cana | 20370 | /es/landing/20370/paquetes-a-punta-cana | Caribe → Punta Cana |
+| Bayahibe | 34404 | /es/landing/34404/paquetes-a-bayahibe | Caribe → Bayahibe |
+| Cancún y Riviera Maya | 34407 | /es/landing/34407/paquetes-a-cancun-y-riviera-maya | Caribe → Cancún |
+| Brasil | 34410 | /es/landing/34410/paquetes-a-brasil | pendiente (ítem de primer nivel "Paquetes a Brasil") |
+| Aruba y Curazao | 34413 | /es/landing/34413/paquetes-a-aruba-y-curazao | Caribe → Aruba y Curaçao |
+| Fórmula 1 | 23730 (la landing que ya existía) | /es/landing/23730/paquetes-a-la-formula-1 | Fórmula 1 → Todos los GP |
+
+Cómo se cargan de verdad (gestor de landings de TC, replicado por HTTP en `scripts/tc-admin/landing_edit.py`):
+- Una landing personalizada tiene **título/slug/H1/subtítulo/meta por idioma** (pestaña Titulo; Spanish =
+  `tabTranslations:1`; el slug lo genera TC con el evento blur de `urlTitle`), **imagen principal** (≥ 1920 px
+  de ancho, por URL + recorte) y **secciones** (`SEO Content`: título H2, subtítulo, descripción Quill de
+  **máximo 4.096 caracteres**, imagen ≥ 999×655). Español en las secciones = `tabSectionLanguages:0`.
+- Por el tope de 4.096 el texto va en **cuatro secciones**: salidas (intro + lista de fichas vigentes),
+  qué incluye + cuándo conviene, preguntas frecuentes, reseñas + otros destinos + WhatsApp.
+  `scripts/tc-admin/landing_sections.py` las genera desde el `.md` con precios y fechas vigentes y reseñas
+  reales (SerpAPI `google_maps_reviews`, data_id `0x95bccad1d9fab485:0x12acf3a6fbdfe552`); sin emojis
+  (TC los rechaza).
+- No se puede meter `<script>` (JSON-LD de FAQ) en Quill: queda para GTM o para pedirlo a TC.
+- La página pública se **cachea por servidor backend** (cookie `backend`): después de guardar, cada
+  instancia tarda hasta ~1 h en mostrar la versión nueva. `landing_edit.public_check()` lo muestra.
+- Sitemap: las URLs van a `seo_sitemap_entries` (`kind='landing'`, archivo `landings`) y salen en
+  `https://hub.siviajo.com/sitemaps/landings.xml`.
+- Imágenes: fichas propias de TC cuando miden ≥ 1920 px; si no, Wikimedia Commons con licencia CC0 /
+  dominio público (Ipanema, Porto de Galinhas, divi tree de Aruba) o CC BY con crédito en el texto (Kenepa).
