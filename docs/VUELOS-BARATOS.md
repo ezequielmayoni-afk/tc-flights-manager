@@ -346,6 +346,13 @@ que mide el barrido: se guarda como una observación más y el barrido no gasta 
 
 ## Search Console
 
+**Lección del 2026-10-24**: durante cinco semanas Google no indexó nada porque `robots.txt` tenía `Disallow: /` sin
+permitir la raíz, y Googlebot entra al host por `https://vuelos.siviajo.com/` (URL Inspection: "Bloqueada por
+robots.txt"; las URLs del sitemap quedaron "desconocidas"). Desde entonces `robots.ts` permite `/$` y `/favicon.ico`,
+y la raíz del host público redirige con 308 a `/vuelos-baratos` (antes era un rewrite que servía un duplicado). Si
+el sitemap vuelve a quedar "pendiente" semanas, mirar primero la raíz en URL Inspection.
+
+
 La landing se mide sola contra Google: el job diario `gsc.vuelos_sync` habla con la API de Search Console
 y guarda las respuestas en `gsc_page_stats`, `gsc_url_status` y `gsc_sitemap_status`
 (`supabase/migrations/20260925_gsc_vuelos.sql`).
