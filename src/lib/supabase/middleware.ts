@@ -93,12 +93,15 @@ export async function updateSession(request: NextRequest) {
   const host = normalizeHost(request.headers.get('host'))
   if (publicHost && host === publicHost) {
     if (pathname === '/') {
-      // Con `new URL('/vuelos-baratos', request.url)` se perdían `?from=`, los
+      // Redirección permanente, no rewrite: Google entra al host por la raíz
+      // (robots.txt la permite con `/$`) y así consolida en la URL canónica
+      // en vez de ver dos URLs con el mismo contenido. Con
+      // `new URL('/vuelos-baratos', request.url)` se perdían `?from=`, los
       // `utm_*` y el `gclid` de la campaña: se clona la URL y sólo se cambia
       // el path.
       const url = request.nextUrl.clone()
       url.pathname = '/vuelos-baratos'
-      return NextResponse.rewrite(url)
+      return NextResponse.redirect(url, 308)
     }
     if (!isPublicPath && !pathname.startsWith('/api/vuelos-baratos') && !pathname.startsWith('/_next')) {
       return NextResponse.redirect(new URL('/vuelos-baratos', request.url), 307)
