@@ -15,13 +15,29 @@ import { publicBaseUrl } from '@/lib/vuelos-baratos/config'
  * (las URLs del sitemap quedaron "desconocidas para Google"). En el host
  * público la raíz redirige (308) a `/vuelos-baratos`; en hub.siviajo.com
  * redirige al login, que sigue bloqueado por el `disallow`.
+ *
+ * `/sitemap.xml` también: es el sitemap que se declara acá abajo y Search
+ * Console lo daba con error porque el `disallow` no le dejaba bajarlo. Y los
+ * íconos (`/favicon.ico`, `/icon.png`, `/apple-icon.png`): sin poder bajarlos,
+ * Google muestra el globo genérico en lugar del isologo en los resultados.
  */
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
       {
         userAgent: '*',
-        allow: ['/$', '/vuelos-baratos', '/vuelos-baratos/', '/sitemaps/', '/_next/static/', '/_next/image', '/favicon.ico'],
+        allow: [
+          '/$',
+          '/vuelos-baratos',
+          '/vuelos-baratos/',
+          '/sitemap.xml',
+          '/sitemaps/',
+          '/_next/static/',
+          '/_next/image',
+          '/favicon.ico',
+          '/icon.png',
+          '/apple-icon.png',
+        ],
         disallow: ['/'],
       },
     ],
