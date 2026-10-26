@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
-import {
+import { Building2,
   Plane,
   LayoutDashboard,
   LogOut,
@@ -45,6 +45,7 @@ const cuposItems: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, section: 'cupos' },
   { name: 'Vuelos', href: '/flights', icon: Plane, section: 'cupos' },
   { name: 'Pedidos a aéreos', href: '/flights/pedidos', icon: Send, section: 'aereos' },
+  { name: 'Cupos de operadores', href: '/flights/operadores', icon: Building2, section: 'aereos' },
   { name: 'Reservas', href: '/reservations', icon: Ticket, section: 'cupos' },
   { name: 'Logs', href: '/logs', icon: FileText, section: 'cupos' },
   { name: 'Automatización', href: '/automatizacion', icon: Cog, section: 'automatizacion' },

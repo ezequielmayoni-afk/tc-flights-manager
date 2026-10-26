@@ -31,6 +31,7 @@ const ADMIN_ROUTES = ['/users']
 const SECTION_ROUTES: Record<string, string> = {
   '/dashboard': 'cupos',
   '/flights/pedidos': 'aereos',
+  '/flights/operadores': 'aereos',
   '/flights': 'cupos',
   '/reservations': 'cupos',
   '/logs': 'cupos',
