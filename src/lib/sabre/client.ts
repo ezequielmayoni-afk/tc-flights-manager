@@ -98,6 +98,8 @@ export interface BfmInput {
   returnDate: string
   adults?: number
   maxItineraries?: number
+  /** Sólo esta aerolínea (VendorPref Only): para verificar un vuelo puntual. */
+  airlineCode?: string
 }
 
 export interface BfmItinerary {
@@ -115,6 +117,21 @@ export interface BfmItinerary {
   flightNumbersBack: string[]
   departOut: string
   arriveBack: string
+  /** Tramos con aeropuertos y horarios (para cargar un cupo tal cual vuela). */
+  segmentsOut?: BfmSegment[]
+  segmentsBack?: BfmSegment[]
+}
+
+export interface BfmSegment {
+  from: string
+  to: string
+  /** YYYY-MM-DDTHH:MM:SS, hora local de cada aeropuerto. */
+  departure: string
+  arrival: string
+  airline: string | null
+  operatingAirline: string | null
+  flightNumber: string
+  stops: number
 }
 
 export type BfmResult =
@@ -266,6 +283,12 @@ function assertDate(value: string, campo: string): string {
  * origen y el destino invertidos en la vuelta; `NumTrips` acota cuántos
  * itinerarios devuelve (menos payload, misma transacción).
  */
+function normalizeAirline(code: string): string {
+  const c = code.trim().toUpperCase()
+  if (!/^[A-Z0-9]{2}$/.test(c)) throw new Error(`Sabre: código de aerolínea inválido (${code})`)
+  return c
+}
+
 export function buildBfmEnvelope(cfg: SabreConfig, session: SabreSession, input: BfmInput): string {
   const origen = normalizeIata(input.originIata, 'originIata')
   const destino = normalizeIata(input.destIata, 'destIata')
@@ -283,7 +306,7 @@ export function buildBfmEnvelope(cfg: SabreConfig, session: SabreSession, input:
     `<POS><Source PseudoCityCode="${escapeXml(cfg.pcc)}"><RequestorID Type="1" ID="1"><CompanyName Code="TN"/></RequestorID></Source></POS>` +
     `<OriginDestinationInformation RPH="1"><DepartureDateTime>${ida}T00:00:00</DepartureDateTime><OriginLocation LocationCode="${origen}"/><DestinationLocation LocationCode="${destino}"/></OriginDestinationInformation>` +
     `<OriginDestinationInformation RPH="2"><DepartureDateTime>${vuelta}T00:00:00</DepartureDateTime><OriginLocation LocationCode="${destino}"/><DestinationLocation LocationCode="${origen}"/></OriginDestinationInformation>` +
-    `<TravelPreferences><TPA_Extensions><NumTrips Number="${itinerarios}"/><DataSources ATPCO="Enable" LCC="Enable" NDC="Disable"/></TPA_Extensions></TravelPreferences>` +
+    `<TravelPreferences>${input.airlineCode ? `<VendorPref Code="${normalizeAirline(input.airlineCode)}" PreferLevel="Only"/>` : ''}<TPA_Extensions><NumTrips Number="${itinerarios}"/><DataSources ATPCO="Enable" LCC="Enable" NDC="Disable"/></TPA_Extensions></TravelPreferences>` +
     `<TravelerInfoSummary><SeatsRequested>${adultos}</SeatsRequested><AirTravelerAvail><PassengerTypeQuantity Code="ADT" Quantity="${adultos}"/></AirTravelerAvail><PriceRequestInformation CurrencyCode="USD"/></TravelerInfoSummary>` +
     `<TPA_Extensions><IntelliSellTransaction><RequestType Name="50ITINS"/></IntelliSellTransaction></TPA_Extensions>` +
     `</OTA_AirLowFareSearchRQ>`
@@ -346,10 +369,13 @@ function parseElapsed(value: string | null): number | null {
 }
 
 interface Segmento {
+  from: string
+  to: string
   departure: string
   arrival: string
   stops: number
   airline: string | null
+  operatingAirline: string | null
   flightNumber: string
 }
 
@@ -361,10 +387,13 @@ function parseSegments(optionXml: string): Segmento[] {
     const operating = attr(firstBlock(inner, 'OperatingAirline')?.attrs ?? '', 'Code')
     const stops = Number(attr(attrs, 'StopQuantity') ?? '0')
     return {
+      from: attr(firstBlock(inner, 'DepartureAirport')?.attrs ?? '', 'LocationCode') ?? '',
+      to: attr(firstBlock(inner, 'ArrivalAirport')?.attrs ?? '', 'LocationCode') ?? '',
       departure: attr(attrs, 'DepartureDateTime') ?? '',
       arrival: attr(attrs, 'ArrivalDateTime') ?? '',
       stops: Number.isFinite(stops) && stops > 0 ? Math.trunc(stops) : 0,
       airline: marketing || operating,
+      operatingAirline: operating || null,
       flightNumber: attr(attrs, 'FlightNumber') ?? '',
     }
   })
@@ -421,6 +450,8 @@ function parseItinerary(itinXml: string): BfmItinerary | null {
     flightNumbersBack: numerosDeVuelo(vuelta),
     departOut: ida[0].departure,
     arriveBack: vuelta.length > 0 ? vuelta[vuelta.length - 1].arrival : '',
+    segmentsOut: ida,
+    segmentsBack: vuelta,
   }
 }
 

@@ -150,3 +150,12 @@ describe('parseBfmResponse con itinerarios sin tarifa', () => {
     expect(parseBfmResponse(xml).itineraries).toEqual([])
   })
 })
+
+describe('tramos completos del itinerario', () => {
+  const barato = parseBfmResponse(FIXTURE).itineraries[0]
+  it('trae aeropuertos, horarios y número de cada tramo', () => {
+    expect(barato.segmentsOut?.map((s) => `${s.from}-${s.to} ${s.airline}${s.flightNumber} ${s.departure.slice(11, 16)}`)).toEqual(['EZE-MDE AV112 02:35', 'MDE-MIA AV30 10:55'])
+    expect(barato.segmentsBack?.[0]).toMatchObject({ airline: 'AV', flightNumber: '33', departure: '2026-12-06T05:05:00' })
+    expect(barato.segmentsBack?.[barato.segmentsBack.length - 1].to).toBe('EZE')
+  })
+})

@@ -310,7 +310,7 @@ export async function runEstimate(deps: EstimateDeps, input: EstimateInput): Pro
           // diferencia de horarios (son horas locales de husos distintos).
           duration_out_minutes: mejor.durationOutMin,
           duration_back_minutes: mejor.durationBackMin,
-          itineraries: res.itineraries.slice(0, SABRE_MAX_ITINERARIES),
+          itineraries: res.itineraries.slice(0, SABRE_MAX_ITINERARIES).map(({ segmentsOut: _o, segmentsBack: _b, ...it }) => it),
           source: ESTIMATE_SOURCE,
           job_id: jobId,
           elapsed_ms: res.elapsedMs,

@@ -39,7 +39,7 @@ export interface OperatorCupoRow {
   origin_code: string; origin_name: string | null; destination_code: string; destination_name: string | null
   departure_date: string; return_date: string | null; nights: number | null; fixture_name: string | null; package_name: string | null; hotel_name: string | null
   seats: number | null; departure_seats: number; seats_detail: string | null
-  airline_name: string | null; flight_out: string | null; depart_out: string | null; arrive_out: string | null; stops_out: number | null
+  airline_code: string | null; airline_name: string | null; flight_out: string | null; budget_number?: string | null; depart_out: string | null; arrive_out: string | null; stops_out: number | null
   flight_back: string | null; depart_back: string | null; arrive_back: string | null; stops_back: number | null
   pax: number; currency: string; list_price: number | string | null; gross_amount: number | string | null; commission: number | string | null; air_taxes: number | string | null
   dnt_tax: number | string | null; fees: number | string | null; vat: number | string | null; land_tax_not_included: number | string | null
@@ -57,7 +57,13 @@ export interface OperatorCupoView {
   currency: string; netPp: number | null; salePp: number | null; grossPp: number | null; commissionPp: number | null; taxesPp: number | null; landTaxPp: number | null
   status: string; error: string | null; lastSeenAt: string
   own: Array<{ flightId: number; date: string; remaining: number; total: number; days: number }>
+  operator: string; operatorLabel: string
+  /** Carga a la web: si se puede, por qué no, y el vuelo de HUB si ya se cargó. */
+  loadable?: boolean; loadReason?: string | null; loadedFlightId?: number | null
 }
+
+export const OPERATOR_LABELS: Record<string, string> = { eurovips: 'Eurovips' }
+export const operatorLabel = (op: string) => OPERATOR_LABELS[op] ?? op.charAt(0).toUpperCase() + op.slice(1)
 
 const num = (v: number | string | null | undefined) => (v === null || v === undefined || v === '' ? null : Number(v))
 const pp = (v: number | string | null, pax: number) => { const n = num(v); return n === null || !pax ? null : Math.round((n / pax) * 100) / 100 }
@@ -77,7 +83,7 @@ export function buildOperatorView(rows: OperatorCupoRow[], opts: { firstSeats?: 
     const stops = [r.stops_out, r.stops_back].filter((x): x is number => x !== null && x !== undefined)
     const taxes = [r.air_taxes, r.dnt_tax, r.fees, r.vat].map(num).filter((x): x is number => x !== null)
     return {
-      id: r.id, fareType: r.fare_type, region: operatorRegion(r.destination_code, opts.profiles),
+      id: r.id, operator: r.operator, operatorLabel: operatorLabel(r.operator), fareType: r.fare_type, region: operatorRegion(r.destination_code, opts.profiles),
       origin: title(r.origin_name) || r.origin_code, destination: title(r.destination_name) || r.destination_code, destinationCode: r.destination_code,
       departureDate: r.departure_date, returnDate: r.return_date, nights: r.nights,
       name: r.package_name || r.fixture_name || '', hotel: r.hotel_name ? title(r.hotel_name) : null,
