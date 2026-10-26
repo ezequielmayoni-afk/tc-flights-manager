@@ -1,5 +1,5 @@
 /** JS del widget de gift cards (se sirve en GET /api/giftcard/widget y lo carga un tag de GTM en la landing de TC). Fuente: scripts/giftcard-widget.js */
-export const WIDGET_VERSION = '3'
+export const WIDGET_VERSION = '4'
 export const WIDGET_JS = `/* Gift Card Sí, Viajo · widget inyectado por GTM en la landing de TC. Carga config de HUB, arma el formulario,
    crea el pedido y manda a Mercado Pago con las cuotas elegidas. Al volver (?gc=<pedido>) muestra el estado y el código. */
 (function () {
@@ -23,7 +23,9 @@ export const WIDGET_JS = `/* Gift Card Sí, Viajo · widget inyectado por GTM en
     var root = document.getElementById('sv-giftcard') || el('div', { id: 'sv-giftcard' });
     var tries = 0;
     (function attempt() {
-      if (root.parentNode || place(root)) return;
+      // GTM agrega el <div id="sv-giftcard"> del tag al final del body: si está ahí (o suelto), lo movemos debajo del hero.
+      if (root.parentNode && root.parentNode !== document.body) return;
+      if (place(root)) return;
       if (++tries < 80) { setTimeout(attempt, 250); return; }
       var footer = document.querySelector('footer');
       if (footer && footer.parentNode) footer.parentNode.insertBefore(root, footer); else if (document.body) document.body.appendChild(root);

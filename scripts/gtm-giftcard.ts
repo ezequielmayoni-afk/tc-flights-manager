@@ -14,12 +14,11 @@ for (const line of readFileSync(resolve(process.cwd(), '.env.local'), 'utf8').sp
 const PUBLISH = process.argv.includes('--publish')
 const TAG_NAME = 'SV Giftcard widget'
 const TRIGGER_NAME = 'Page View - landing giftcard'
-const HTML = `<div id="sv-giftcard"></div>
-<script>
+const HTML = `<script>
 (function(){
   if (window.__svGiftcardTag) return; window.__svGiftcardTag = true;
   var s = document.createElement('script');
-  s.src = 'https://hub.siviajo.com/api/giftcard/widget?v=3';
+  s.src = 'https://hub.siviajo.com/api/giftcard/widget?v=4';
   s.async = true;
   s.setAttribute('data-api', 'https://hub.siviajo.com/api/giftcard');
   document.head.appendChild(s);

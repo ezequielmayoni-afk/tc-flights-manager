@@ -21,7 +21,9 @@
     var root = document.getElementById('sv-giftcard') || el('div', { id: 'sv-giftcard' });
     var tries = 0;
     (function attempt() {
-      if (root.parentNode || place(root)) return;
+      // GTM agrega el <div id="sv-giftcard"> del tag al final del body: si está ahí (o suelto), lo movemos debajo del hero.
+      if (root.parentNode && root.parentNode !== document.body) return;
+      if (place(root)) return;
       if (++tries < 80) { setTimeout(attempt, 250); return; }
       var footer = document.querySelector('footer');
       if (footer && footer.parentNode) footer.parentNode.insertBefore(root, footer); else if (document.body) document.body.appendChild(root);
