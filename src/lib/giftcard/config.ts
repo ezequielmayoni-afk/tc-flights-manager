@@ -32,7 +32,7 @@ export function giftcardEnv() {
     mpWebhookSecret: env('MP_WEBHOOK_SECRET'),
     fxMarkupPct: Number(env('GIFTCARD_FX_MARKUP_PCT') || '0') || 0,
     /** URL pública de la landing de TC (a donde vuelve el comprador después de pagar). */
-    landingUrl: env('GIFTCARD_LANDING_URL') || 'https://www.siviajo.com/es/landing/34419/giftcard',
+    landingUrl: env('GIFTCARD_LANDING_URL') || 'https://www.siviajo.com/es/landing/34533/giftcard',
     /** Base pública de HUB (webhook y endpoints del widget). */
     hubBaseUrl: env('GIFTCARD_HUB_BASE_URL') || env('NEXT_PUBLIC_APP_URL') || 'https://hub.siviajo.com',
     slackWebhook: env('SLACK_WEBHOOK_URL'),

@@ -62,6 +62,7 @@ Estas landings son permanentes. Google acumula autoridad en la URL, no en la fec
 | Brasil | 34410 | /es/landing/34410/paquetes-a-brasil | pendiente (ítem de primer nivel "Paquetes a Brasil") |
 | Aruba y Curazao | 34413 | /es/landing/34413/paquetes-a-aruba-y-curazao | Caribe → Aruba y Curaçao |
 | Fórmula 1 | 23730 (la landing que ya existía) | /es/landing/23730/paquetes-a-la-formula-1 | Fórmula 1 → Todos los GP |
+| Gift Card (2026-10-26) | 34533 | /es/landing/34533/giftcard | sin menú (widget de compra inyectado por GTM, ver docs/GIFTCARD.md) |
 
 Cómo se cargan de verdad (gestor de landings de TC, replicado por HTTP en `scripts/tc-admin/landing_edit.py`):
 - Una landing personalizada tiene **título/slug/H1/subtítulo/meta por idioma** (pestaña Titulo; Spanish =

@@ -39,8 +39,20 @@ MP), opcionales `GIFTCARD_FX_MARKUP_PCT` (recargo sobre la cotización, 0), `GIF
 - El widget no guarda datos en el navegador; empuja eventos a dataLayer: giftcard_view, giftcard_select_amount,
   giftcard_checkout, giftcard_purchase (value en USD).
 
-## Pendiente al 2026-10-26
-- Crear la landing en TC (`scratchpad landing_giftcard_spec.json` → `landing_edit.py`); poner su URL en
-  `GIFTCARD_LANDING_URL`; publicar la versión de GTM (`scripts/gtm-giftcard.ts --publish`); probar una compra real
-  chica; sumarla al menú y a la home; agregar la URL a `seo_sitemap_entries`.
-- Panel en HUB para ver pedidos y reenviar vouchers (hoy: tabla + Slack).
+## En vivo desde el 2026-10-26
+- Landing personalizada de TC id **34533**: https://www.siviajo.com/es/landing/34533/giftcard (slug `giftcard`;
+  H1 "Gift Card Sí, Viajo: regalá un viaje"; 3 secciones SEO_CONTENT: cómo funciona, FAQ, términos; imagen de
+  cabecera generada con Sharp y alojada en Supabase `public-assets/landings/giftcard-hero-1920.jpg`, recorte
+  `0_187_1920_705`). Creada por HTTP con `scripts/tc-admin/landing_edit.py` (create_landing + set_titles +
+  put_sections + set_header_image). `GIFTCARD_LANDING_URL` apunta a esa URL en el VPS.
+- GTM-WR6MCZWL **versión 134**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=2`) con el trigger 342
+  "Page View - landing giftcard" (Page Path contiene `/giftcard`). Para volver atrás: republicar la versión 133.
+- La URL está en `seo_sitemap_entries` (archivo `landings`).
+- Verificado: la preferencia de MP sale con `installments` = `default_installments` = cuotas elegidas (pedido de
+  prueba, cancelado); el widget renderiza en desktop y mobile sin errores de JS.
+- Login del backoffice sin navegador: `scripts/tc-admin/login_http.py` + código de verificación leído de la casilla
+  hubsiviajo@siviajo.com con la cuenta de servicio de Google (ver memoria `project-giftcard`).
+
+## Pendiente
+- Compra real de prueba (pagar un monto chico y verificar email + código en TC); link en el menú y en la home si se
+  quiere; panel en HUB para ver pedidos y reenviar vouchers (hoy: tabla + Slack); cuotas sin interés en MP.
