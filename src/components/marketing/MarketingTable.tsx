@@ -1966,7 +1966,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                     <TableCell className="text-center text-xs" style={{ width: columnWidths.creado, minWidth: columnWidths.creado, maxWidth: columnWidths.creado }}>
                       {pkg.flight_departure_date || pkg.departure_date ? (
                         <span title={pkg.flight_departure_date ? 'Fecha del vuelo de ida' : 'Sin aéreo cargado: fecha de salida del paquete'} className={pkg.flight_departure_date ? '' : 'text-muted-foreground'}>
-                          {formatDateLong(pkg.flight_departure_date || pkg.departure_date, { day: '2-digit', month: 'short', year: '2-digit' })}
+                          {formatShortDate((pkg.flight_departure_date || pkg.departure_date)!)} &apos;{(pkg.flight_departure_date || pkg.departure_date)!.slice(2, 4)}
                         </span>
                       ) : (
                         <span className="text-muted-foreground">-</span>
