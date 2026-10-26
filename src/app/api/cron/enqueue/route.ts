@@ -29,6 +29,7 @@ async function buildSchedule(schedule: Schedule, db: Db, now: Date): Promise<Enq
       const datePreset = sunday && utcHour === 9 ? 'last_30d' : utcHour === 9 ? 'last_7d' : 'yesterday'
       const inputs: EnqueueInput[] = [
         { kind: 'insights.sync', payload: { datePreset, at: hour }, dedupeKey: `insights.sync:${hour}` },
+        { kind: 'giftcard.reconcile', payload: { at: hour }, dedupeKey: `giftcard.reconcile:${hour}` },
       ]
       // Estimador de Sabre: a las 21:00 UTC, con la tanda repartida en 3 h
       // (run_after escalonado) para terminar una hora antes de que el barrido

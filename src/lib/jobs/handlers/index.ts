@@ -10,6 +10,7 @@ import { cupoSoldOutHandler } from './cupo-sold-out'
 import { tcWriteHandler } from './tc-write'
 import { tcReconcileHandler } from './tc-reconcile'
 import { healthCheckHandler } from './health-check'
+import { giftcardReconcileHandler } from './giftcard-reconcile'
 import { healthDigestHandler } from './health-digest'
 import { ideaProbeHandler } from './idea-probe'
 import { packageRequoteHandler } from './package-requote'
@@ -54,6 +55,7 @@ const HANDLERS: HandlerDefinition[] = [
   tcWriteHandler,
   tcReconcileHandler,
   healthCheckHandler,
+  giftcardReconcileHandler,
   healthDigestHandler,
   // Fase 3 — Producto
   ideaProbeHandler,
