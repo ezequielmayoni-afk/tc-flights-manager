@@ -42,12 +42,14 @@ MP), opcionales `GIFTCARD_FX_MARKUP_PCT` (recargo sobre la cotización, 0), `GIF
 ## En vivo desde el 2026-10-26
 - Landing personalizada de TC id **34533**: https://www.siviajo.com/es/landing/34533/giftcard (slug `giftcard`;
   H1 "Gift Card Sí, Viajo: regalá un viaje"; 3 secciones SEO_CONTENT: cómo funciona, FAQ, términos; imagen de
-  cabecera generada con Sharp y alojada en Supabase `public-assets/landings/giftcard-hero-1920.jpg`, recorte
+  cabecera generada con Sharp y alojada en Supabase `public-assets/landings/giftcard-hero-1920-v2.jpg` (sin logo: el header del sitio ya lo muestra; la tarjeta a la derecha para no pisar el H1), recorte
   `0_187_1920_705`). Creada por HTTP con `scripts/tc-admin/landing_edit.py` (create_landing + set_titles +
   put_sections + set_header_image). `GIFTCARD_LANDING_URL` apunta a esa URL en el VPS.
-- GTM-WR6MCZWL **versión 134**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=2`) con el trigger 342
+- GTM-WR6MCZWL **versión 135**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=3`) con el trigger 342
   "Page View - landing giftcard" (Page Path contiene `/giftcard`). Para volver atrás: republicar la versión 133.
 - La URL está en `seo_sitemap_entries` (archivo `landings`).
+- El widget se carga desde el `<head>` (GTM dispara en Page View antes de que exista el body), por eso espera hasta 20 s
+  a que aparezca `.c-home-sections` (o el hero) y recién ahí se inserta; si no, va antes del footer.
 - Verificado: la preferencia de MP sale con `installments` = `default_installments` = cuotas elegidas (pedido de
   prueba, cancelado); el widget renderiza en desktop y mobile sin errores de JS.
 - Login del backoffice sin navegador: `scripts/tc-admin/login_http.py` + código de verificación leído de la casilla

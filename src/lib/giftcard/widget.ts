@@ -1,5 +1,5 @@
 /** JS del widget de gift cards (se sirve en GET /api/giftcard/widget y lo carga un tag de GTM en la landing de TC). Fuente: scripts/giftcard-widget.js */
-export const WIDGET_VERSION = '2'
+export const WIDGET_VERSION = '3'
 export const WIDGET_JS = `/* Gift Card Sí, Viajo · widget inyectado por GTM en la landing de TC. Carga config de HUB, arma el formulario,
    crea el pedido y manda a Mercado Pago con las cuotas elegidas. Al volver (?gc=<pedido>) muestra el estado y el código. */
 (function () {
@@ -10,11 +10,24 @@ export const WIDGET_JS = `/* Gift Card Sí, Viajo · widget inyectado por GTM en
   function el(tag, attrs, html) { var e = document.createElement(tag); if (attrs) for (var k in attrs) { if (k === 'class') e.className = attrs[k]; else e.setAttribute(k, attrs[k]); } if (html != null) e.innerHTML = html; return e; }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function dl(ev, data) { try { window.dataLayer = window.dataLayer || []; var o = { event: ev }; for (var k in data) o[k] = data[k]; window.dataLayer.push(o); } catch (e) {} }
-  function mount() {
-    var style = el('style', null, CSS); document.head.appendChild(style);
-    var root = document.getElementById('sv-giftcard') || el('div', { id: 'sv-giftcard' });
+  function place(root) {
+    // Debajo del hero y antes de las secciones de la landing. GTM carga el script en el <head>, así que el DOM puede no estar todavía.
     var sections = document.querySelector('.c-home-sections');
-    if (sections && !root.parentNode) sections.insertBefore(root, sections.firstChild); else if (!root.parentNode) document.body.insertBefore(root, document.body.firstChild);
+    if (sections) { sections.insertBefore(root, sections.firstChild); return true; }
+    var hero = document.querySelector('.c-hero-screen');
+    if (hero && hero.parentNode) { hero.parentNode.insertBefore(root, hero.nextSibling); return true; }
+    return false;
+  }
+  function mount() {
+    var style = el('style', null, CSS); (document.head || document.documentElement).appendChild(style);
+    var root = document.getElementById('sv-giftcard') || el('div', { id: 'sv-giftcard' });
+    var tries = 0;
+    (function attempt() {
+      if (root.parentNode || place(root)) return;
+      if (++tries < 80) { setTimeout(attempt, 250); return; }
+      var footer = document.querySelector('footer');
+      if (footer && footer.parentNode) footer.parentNode.insertBefore(root, footer); else if (document.body) document.body.appendChild(root);
+    })();
     return root;
   }
   function getParam(name) { var m = new RegExp('[?&]' + name + '=([^&#]*)').exec(location.search); return m ? decodeURIComponent(m[1]) : null; }
