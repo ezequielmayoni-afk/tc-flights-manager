@@ -53,6 +53,9 @@ function podar(ahora: number): void {
 }
 
 /** El barrido acaba de escribir: lo cacheado quedó viejo. */
+/** Borra una clave puntual (por ejemplo, después de guardar una configuración que el memo sirve). */
+export function ttlMemoForget(key: string): void { memo.delete(key) }
+
 export function invalidatePublicCache(): void {
   memo.clear()
 }

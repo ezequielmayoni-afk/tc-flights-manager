@@ -1,9 +1,9 @@
-/** Cotización USD→ARS: la manual de TC (la misma que usa siviajo.com), con caché de una hora. */
+/** Cotización USD→ARS de la Gift Card: la que Ezequiel carga en HUB (giftcard_settings.fx_rate) y, si está vacía, la manual de TC. */
 import { tcClient } from '@/lib/travelcompositor/client'
 import { ttlMemo } from '@/lib/vuelos-baratos/cache'
 import { giftcardEnv } from './config'
 
-export interface FxQuote { rate: number; source: 'tc' | 'env'; fetchedAt: string; markupPct: number }
+export interface FxQuote { rate: number; source: 'hub' | 'tc' | 'env'; fetchedAt: string; markupPct: number }
 
 async function readTcRate(): Promise<number | null> {
   const r = tcClient as unknown as { request: (p: string, o?: RequestInit) => Promise<unknown> }
@@ -12,15 +12,20 @@ async function readTcRate(): Promise<number | null> {
   return row && row.rate > 0 ? row.rate : null
 }
 
-export async function getFx(): Promise<FxQuote> {
-  return ttlMemo('giftcard:fx', 60 * 60_000, async () => {
-    const markupPct = giftcardEnv().fxMarkupPct
-    const tc = await readTcRate().catch(() => null)
-    const fallback = Number(process.env.GIFTCARD_FX_RATE_FALLBACK || '0') || 0
-    const base = tc ?? fallback
-    if (!base) throw new Error('No hay cotización USD→ARS: TC no respondió y no hay GIFTCARD_FX_RATE_FALLBACK')
-    return { rate: base * (1 + markupPct / 100), source: tc ? 'tc' : 'env', fetchedAt: new Date().toISOString(), markupPct } as FxQuote
-  })
+/** Cotización manual de TC (la misma que usa siviajo.com), con caché de una hora; null si TC no responde. */
+export async function getTcRate(): Promise<number | null> {
+  return ttlMemo('giftcard:fx:tc', 60 * 60_000, async () => readTcRate().catch(() => null))
+}
+
+/** `override` es el tipo de cambio cargado en HUB; si no hay, TC (+ recargo opcional por env) o el fallback por env. */
+export async function getFx(override?: number | null): Promise<FxQuote> {
+  if (override && override > 0) return { rate: override, source: 'hub', fetchedAt: new Date().toISOString(), markupPct: 0 }
+  const markupPct = giftcardEnv().fxMarkupPct
+  const tc = await getTcRate()
+  const fallback = Number(process.env.GIFTCARD_FX_RATE_FALLBACK || '0') || 0
+  const base = tc ?? fallback
+  if (!base) throw new Error('No hay cotización USD→ARS: no está cargada en HUB, TC no respondió y no hay GIFTCARD_FX_RATE_FALLBACK')
+  return { rate: base * (1 + markupPct / 100), source: tc ? 'tc' : 'env', fetchedAt: new Date().toISOString(), markupPct }
 }
 
 /** Pesos enteros (Mercado Pago acepta decimales, pero el precio mostrado es en pesos redondos). */

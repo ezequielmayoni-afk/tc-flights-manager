@@ -38,6 +38,7 @@ const SECTION_ROUTES: Record<string, string> = {
   '/packages/design': 'diseño',
   '/packages/marketing': 'marketing',
   '/packages/comercial': 'comercial',
+  '/giftcard': 'comercial',
   '/packages/requote': 'requote',
   '/packages/seo': 'seo',
   '/packages': 'productos',

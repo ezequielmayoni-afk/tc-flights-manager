@@ -3,6 +3,7 @@ import { generateCode, promoCodeBody, validUntilFrom } from '../voucher'
 import { manifest, preferenceBody, typicalInstallments, verifyWebhookSignature } from '../mp'
 import { createHmac } from 'node:crypto'
 import { usdToArs } from '../fx'
+import { cashArs, normalizePlans, quotePlans } from '../quote'
 
 describe('gift card', () => {
   it('genera códigos SV-XXXX-XXXX sin caracteres ambiguos', () => {
@@ -40,6 +41,22 @@ describe('gift card', () => {
     // empate → el plan más caro, para no prometer de más
     const tie = typicalInstallments(entries.slice(0, 2).concat([{ issuer: { name: 'Banco E' }, payer_costs: [pc(12, 55.39, 19424)] }]), [12])
     expect(tie[0].ratePct).toBe(55.39)
+  })
+  it('cuotas por coeficiente: total = contado × coef, cuota = total / n, y se cobra cuota × n', () => {
+    const cash = cashArs(1000, 1590)
+    expect(cash).toBe(1590000)
+    const q = quotePlans(cash, [{ n: 1, coef: 1, enabled: true }, { n: 6, coef: 1.2, enabled: true }, { n: 12, coef: 1.45, enabled: true }, { n: 3, coef: 1.1, enabled: false }])
+    expect(q.map((x) => x.n)).toEqual([1, 6, 12])
+    expect(q[0]).toMatchObject({ n: 1, coef: 1, installmentArs: 1590000, totalArs: 1590000 })
+    expect(q[1]).toMatchObject({ n: 6, coef: 1.2, installmentArs: 318000, totalArs: 1908000 })
+    expect(q[2].installmentArs).toBe(Math.round(Math.round(1590000 * 1.45) / 12)); expect(q[2].totalArs).toBe(q[2].installmentArs * 12)
+    // 1 pago ignora el coeficiente aunque alguien lo cargue
+    expect(quotePlans(75000, [{ n: 1, coef: 1.3, enabled: true }])[0].totalArs).toBe(75000)
+  })
+  it('normaliza los planes: 1 pago siempre presente y activo, sin duplicados ni valores absurdos', () => {
+    const p = normalizePlans([{ n: 6, coef: 1.2, enabled: true }, { n: 6, coef: 1.3, enabled: true }, { n: 12, coef: 9, enabled: true }, { n: 0, coef: 1, enabled: true }, { n: 3, coef: 1.05 }])
+    expect(p).toEqual([{ n: 1, coef: 1, enabled: true }, { n: 3, coef: 1.05, enabled: true }, { n: 6, coef: 1.3, enabled: true }])
+    expect(normalizePlans([{ n: 1, coef: 1, enabled: false }])[0].enabled).toBe(true)
   })
   it('convierte a pesos redondos', () => { expect(usdToArs(50, 1500)).toBe(75000); expect(usdToArs(33, 1499.5)).toBe(49484) })
   it('verifica la firma del webhook como MP la arma', () => {

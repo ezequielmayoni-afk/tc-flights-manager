@@ -20,7 +20,7 @@ www.siviajo.com/es/landing/{id}/giftcard   (TC: título, H1, meta, foto, 3 secci
 
 Código: `src/lib/giftcard/` (config, fx, mp, voucher, email, issue, widget), rutas en `src/app/api/giftcard/`,
 tabla `giftcard_orders` (`supabase/migrations/20261026_giftcards.sql`), job `giftcard.reconcile`,
-widget fuente `scripts/giftcard-widget.js` (se embebe en `src/lib/giftcard/widget.ts`), tag de GTM por
+widget fuente `scripts/giftcard-widget.js` (se embebe en `src/lib/giftcard/widget.ts` con `node scripts/giftcard-widget-sync.js --bump`), tag de GTM por
 `scripts/gtm-giftcard.ts` (`--publish` para publicar la versión).
 
 ## Variables de entorno (VPS, /opt/hub/.env.local)
@@ -32,10 +32,15 @@ MP), opcionales `GIFTCARD_FX_MARKUP_PCT` (recargo sobre la cotización, 0), `GIF
 
 ## Decisiones
 - Montos: 50, 100, 250, 500, 1.000, 2.500, 5.000 USD y libre desde 50 (tope 10.000). Vigencia 12 meses. Un uso.
-- Cuotas: 1, 3, 6, 9, 12. La landing muestra la estimación de MP para Visa; la preferencia fija ese plan. MP devuelve un
-  plan por emisor (banco) y el orden cambia entre llamadas (el 26/10 a la mañana el primero daba 12 cuotas +55 %; a la
-  tarde 37 de 68 emisores daban 3/6/9/12 sin interés), así que `installmentsFor` toma el plan más común entre emisores
-  (`typicalInstallments`), con caché de una hora; el widget aclara que es estimado y MP cobra lo real según la tarjeta.
+- Cuotas y tipo de cambio (desde 2026-10-27): los carga Ezequiel en HUB, menú **Gift Card** (`/giftcard`, sección
+  comercial; API `/api/giftcard/settings`, tabla `giftcard_settings` fila 1). `fx_rate` vacío = cotización manual de TC.
+  `plans` = [{n, coef, enabled}]: total en n cuotas = round(contado × coef), cuota = round(total / n) y se cobra cuota × n
+  (`src/lib/giftcard/quote.ts`, el mismo cálculo corre en el widget para "otro monto"). 1 pago siempre coef 1.
+  Cada tarjeta de la landing tiene un desplegable "1 pago · $X / 3 cuotas de $Y / …" (como deturista); elegir un plan en
+  una tarjeta lo aplica a todas. El pedido guarda `cash_ars` (contado), `coef` y `amount_ars` = total cobrado; la
+  preferencia de MP lleva ese total con `installments` = n. Ojo: si la cuenta de MP no tiene cuotas sin interés para ese
+  plan, MP suma su propio costo financiero encima del coeficiente; la pantalla muestra "MP hoy" (plan más común entre
+  bancos, Visa) como referencia para calibrar. La caché del config es de 15 s en HUB y 30 s en el navegador.
 - El webhook de MP: la notificación llega al `notification_url` de la preferencia. Si en la cuenta de MP está
   configurada otra URL (la de entradas), igual funciona porque el estado también se relee al volver y en el job.
 - Precio en pesos redondo a la cotización manual de TC (`/microsites/siviajo/manual-exchange-rates`, hoy 1.500).
@@ -48,7 +53,7 @@ MP), opcionales `GIFTCARD_FX_MARKUP_PCT` (recargo sobre la cotización, 0), `GIF
   cabecera generada con Sharp y alojada en Supabase `public-assets/landings/giftcard-hero-1920-v2.jpg` (sin logo: el header del sitio ya lo muestra; la tarjeta a la derecha para no pisar el H1), recorte
   `0_187_1920_705`). Creada por HTTP con `scripts/tc-admin/landing_edit.py` (create_landing + set_titles +
   put_sections + set_header_image). `GIFTCARD_LANDING_URL` apunta a esa URL en el VPS.
-- GTM-WR6MCZWL **versión 136**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=4`) con el trigger 342
+- GTM-WR6MCZWL **versión 137**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=5`) con el trigger 342
   "Page View - landing giftcard" (Page Path contiene `/giftcard`). Para volver atrás: republicar la versión 133.
 - La URL está en `seo_sitemap_entries` (archivo `landings`).
 - El widget se carga desde el `<head>` (GTM dispara en Page View antes de que exista el body), por eso espera hasta 20 s

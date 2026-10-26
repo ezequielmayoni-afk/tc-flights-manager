@@ -28,6 +28,7 @@ import { Building2,
   Lightbulb,
   Compass,
   Send,
+  Gift,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
@@ -63,6 +64,7 @@ const productosItems: NavItem[] = [
   { name: 'Video', href: 'https://hub.siviajo.com:8095', icon: Video, section: 'diseño', external: true },
   { name: 'Marketing', href: '/packages/marketing', icon: Megaphone, section: 'marketing' },
   { name: 'Comercial', href: '/packages/comercial', icon: ShoppingCart, section: 'comercial' },
+  { name: 'Gift Card', href: '/giftcard', icon: Gift, section: 'comercial' },
 ]
 
 // Role permissions - must match middleware

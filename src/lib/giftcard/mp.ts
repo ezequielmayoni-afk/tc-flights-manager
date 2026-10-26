@@ -51,7 +51,7 @@ export function preferenceBody(o: OrderForPreference, now: Date = new Date()) {
   const n = Math.max(1, Math.min(12, Math.round(o.installments || 1)))
   const doc = (o.buyer.document ?? '').replace(/\D/g, '')
   return {
-    items: [{ id: `giftcard-${o.amountUsd}`, title: `Gift Card Sí, Viajo · USD ${o.amountUsd}`.slice(0, 250), description: 'Voucher para viajar con Sí, Viajo. Vigencia 12 meses.', category_id: 'gift_cards', quantity: 1, currency_id: 'ARS', unit_price: o.amountArs }],
+    items: [{ id: `giftcard-${o.amountUsd}`, title: `Gift Card Sí, Viajo · USD ${o.amountUsd}${n > 1 ? ` · ${n} cuotas` : ''}`.slice(0, 250), description: 'Voucher para viajar con Sí, Viajo. Vigencia 12 meses.', category_id: 'gift_cards', quantity: 1, currency_id: 'ARS', unit_price: o.amountArs }],
     payer: {
       name: o.buyer.name, surname: o.buyer.lastname, email: o.buyer.email,
       ...(o.buyer.phone ? { phone: { number: o.buyer.phone.replace(/\D/g, '').slice(-15) } } : {}),
