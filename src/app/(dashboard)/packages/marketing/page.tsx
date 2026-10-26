@@ -29,6 +29,7 @@ export default async function MarketingPage() {
       current_price_per_pax,
       currency,
       departure_date,
+      flight_departure_date,
       date_range_start,
       date_range_end,
       nights_count,

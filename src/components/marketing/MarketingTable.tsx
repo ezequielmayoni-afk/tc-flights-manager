@@ -242,6 +242,7 @@ interface Package {
   price_at_creative_creation?: number | null
   original_price_per_pax?: number | null
   created_at?: string | null
+  flight_departure_date?: string | null
   meta_campaign_id?: string | null
   meta_adset_ids?: string | null
   meta_ad_account_id?: string | null
@@ -1154,7 +1155,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
       switch (sortColumn) {
         case 'id': return pkg.tc_package_id
         case 'paquete': return pkg.title.toLowerCase()
-        case 'creado': return pkg.created_at || ''
+        case 'creado': return pkg.flight_departure_date || pkg.departure_date || ''
         case 'rango': return pkg.date_range_start || ''
         case 'vencimiento': return pkg.marketing_expiration_date || ''
         case 'copies': return packageData[pkg.id]?.copiesCount || 0
@@ -1766,7 +1767,7 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
               </TableHead>
               <ResizableHeader label="ID" columnKey="id" width={columnWidths.id} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} sortable sortDirection={sortColumn === 'id' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Paquete" columnKey="paquete" width={columnWidths.paquete} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} sortable sortDirection={sortColumn === 'paquete' ? sortDir : null} onSort={handleSort} />
-              <ResizableHeader label="Creado" columnKey="creado" width={columnWidths.creado} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creado' ? sortDir : null} onSort={handleSort} />
+              <ResizableHeader label="Vuelo" columnKey="creado" width={columnWidths.creado} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'creado' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Rango" columnKey="rango" width={columnWidths.rango} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'rango' ? sortDir : null} onSort={handleSort} />
               <ResizableHeader label="Vencimiento" columnKey="vencimiento" width={columnWidths.vencimiento} onResize={handleColumnResize} onResizeEnd={handleResizeEnd} centered sortable sortDirection={sortColumn === 'vencimiento' ? sortDir : null} onSort={handleSort} />
               <TableHead
@@ -1961,10 +1962,12 @@ export function MarketingTable({ packages: initialPackages }: MarketingTableProp
                       </div>
                     </TableCell>
 
-                    {/* Created At */}
+                    {/* Fecha del vuelo de ida (si el paquete no tiene aéreo cargado, la fecha de salida) */}
                     <TableCell className="text-center text-xs" style={{ width: columnWidths.creado, minWidth: columnWidths.creado, maxWidth: columnWidths.creado }}>
-                      {pkg.created_at ? (
-                        <span>{formatShortDate(pkg.created_at)}</span>
+                      {pkg.flight_departure_date || pkg.departure_date ? (
+                        <span title={pkg.flight_departure_date ? 'Fecha del vuelo de ida' : 'Sin aéreo cargado: fecha de salida del paquete'} className={pkg.flight_departure_date ? '' : 'text-muted-foreground'}>
+                          {formatDateLong(pkg.flight_departure_date || pkg.departure_date, { day: '2-digit', month: 'short', year: '2-digit' })}
+                        </span>
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
