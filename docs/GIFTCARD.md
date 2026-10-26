@@ -53,7 +53,7 @@ MP), opcionales `GIFTCARD_FX_MARKUP_PCT` (recargo sobre la cotización, 0), `GIF
   cabecera generada con Sharp y alojada en Supabase `public-assets/landings/giftcard-hero-1920-v2.jpg` (sin logo: el header del sitio ya lo muestra; la tarjeta a la derecha para no pisar el H1), recorte
   `0_187_1920_705`). Creada por HTTP con `scripts/tc-admin/landing_edit.py` (create_landing + set_titles +
   put_sections + set_header_image). `GIFTCARD_LANDING_URL` apunta a esa URL en el VPS.
-- GTM-WR6MCZWL **versión 137**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=5`) con el trigger 342
+- GTM-WR6MCZWL **versión 138**: tag 343 "SV Giftcard widget" (carga `/api/giftcard/widget?v=6`) con el trigger 342
   "Page View - landing giftcard" (Page Path contiene `/giftcard`). Para volver atrás: republicar la versión 133.
 - La URL está en `seo_sitemap_entries` (archivo `landings`).
 - El widget se carga desde el `<head>` (GTM dispara en Page View antes de que exista el body), por eso espera hasta 20 s

@@ -18,7 +18,7 @@ const HTML = `<script>
 (function(){
   if (window.__svGiftcardTag) return; window.__svGiftcardTag = true;
   var s = document.createElement('script');
-  s.src = 'https://hub.siviajo.com/api/giftcard/widget?v=5';
+  s.src = 'https://hub.siviajo.com/api/giftcard/widget?v=6';
   s.async = true;
   s.setAttribute('data-api', 'https://hub.siviajo.com/api/giftcard');
   document.head.appendChild(s);
