@@ -32,7 +32,10 @@ MP), opcionales `GIFTCARD_FX_MARKUP_PCT` (recargo sobre la cotización, 0), `GIF
 
 ## Decisiones
 - Montos: 50, 100, 250, 500, 1.000, 2.500, 5.000 USD y libre desde 50 (tope 10.000). Vigencia 12 meses. Un uso.
-- Cuotas: 1, 3, 6, 9, 12. La landing muestra la estimación de MP para Visa; la preferencia fija ese plan.
+- Cuotas: 1, 3, 6, 9, 12. La landing muestra la estimación de MP para Visa; la preferencia fija ese plan. MP devuelve un
+  plan por emisor (banco) y el orden cambia entre llamadas (el 26/10 a la mañana el primero daba 12 cuotas +55 %; a la
+  tarde 37 de 68 emisores daban 3/6/9/12 sin interés), así que `installmentsFor` toma el plan más común entre emisores
+  (`typicalInstallments`), con caché de una hora; el widget aclara que es estimado y MP cobra lo real según la tarjeta.
 - El webhook de MP: la notificación llega al `notification_url` de la preferencia. Si en la cuenta de MP está
   configurada otra URL (la de entradas), igual funciona porque el estado también se relee al volver y en el job.
 - Precio en pesos redondo a la cotización manual de TC (`/microsites/siviajo/manual-exchange-rates`, hoy 1.500).
