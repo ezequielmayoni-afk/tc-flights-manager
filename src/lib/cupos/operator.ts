@@ -54,7 +54,7 @@ export interface OperatorCupoView {
   departureDate: string; returnDate: string | null; nights: number | null; name: string; hotel: string | null
   seats: number | null; departureSeats: number; seatsDetail: string | null; seatsSold: number | null
   airline: string | null; flights: string; schedule: string; direct: boolean | null
-  currency: string; netPp: number | null; grossPp: number | null; commissionPp: number | null; taxesPp: number | null; landTaxPp: number | null
+  currency: string; netPp: number | null; salePp: number | null; grossPp: number | null; commissionPp: number | null; taxesPp: number | null; landTaxPp: number | null
   status: string; error: string | null; lastSeenAt: string
   own: Array<{ flightId: number; date: string; remaining: number; total: number; days: number }>
 }
@@ -84,7 +84,7 @@ export function buildOperatorView(rows: OperatorCupoRow[], opts: { firstSeats?: 
       seats: r.seats, departureSeats: r.departure_seats, seatsDetail: r.seats_detail,
       seatsSold: first !== undefined && first >= r.departure_seats ? first - r.departure_seats : null,
       airline: r.airline_name ? title(r.airline_name) : null, flights, schedule, direct: stops.length ? stops.every(s => s === 0) : null,
-      currency: r.currency, netPp: num(r.net_agency_pp) ?? pp(r.net_agency, r.pax), grossPp: pp(r.gross_amount, r.pax), commissionPp: pp(r.commission, r.pax),
+      currency: r.currency, netPp: num(r.net_agency_pp) ?? pp(r.net_agency, r.pax), salePp: pp(r.net_passenger, r.pax), grossPp: pp(r.gross_amount, r.pax), commissionPp: pp(r.commission, r.pax),
       taxesPp: taxes.length ? pp(taxes.reduce((a, b) => a + b, 0), r.pax) : null, landTaxPp: pp(r.land_tax_not_included, r.pax),
       status: r.status, error: r.error, lastSeenAt: r.last_seen_at,
       own: own.filter(o => o.airport === airport && Math.abs(dayDiff(o.date, r.departure_date)) <= 7)

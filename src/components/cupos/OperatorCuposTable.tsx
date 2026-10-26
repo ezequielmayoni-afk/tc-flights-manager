@@ -78,7 +78,7 @@ export function OperatorCuposTable() {
           <thead className="bg-muted/40 text-[11px] uppercase text-muted-foreground">
             <tr>
               <th className="px-3 py-2 text-left">Salida</th><th className="px-3 py-2 text-left">Destino</th><th className="px-3 py-2 text-left">Producto</th><th className="px-3 py-2 text-left">Aéreo</th>
-              <th className="px-3 py-2 text-right">Lugares</th><th className="px-3 py-2 text-right" title="Neto agencia por persona (base doble)">Neto pp</th><th className="px-3 py-2 text-left">Nuestro cupo</th>
+              <th className="px-3 py-2 text-right">Lugares</th><th className="px-3 py-2 text-right" title="Neto agencia por persona (base doble). Debajo, lo que paga el pasajero">Neto pp</th><th className="px-3 py-2 text-left">Nuestro cupo</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -95,8 +95,8 @@ export function OperatorCuposTable() {
                     <div className={`font-semibold ${r.departureSeats === 0 ? 'text-slate-400' : r.departureSeats <= 3 ? 'text-red-600' : ''}`}>{r.departureSeats}</div>
                     {r.seatsSold ? <div className="text-[11px] text-green-700">−{r.seatsSold} vendidos</div> : null}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums" title={r.status !== 'ok' ? (r.error ?? 'Sin tarifa en la búsqueda') : `Bruto ${money(r.grossPp, r.currency)} · comisión ${money(r.commissionPp, r.currency)} · tasas y gastos ${money(r.taxesPp, r.currency)}${r.landTaxPp ? ` · impuesto terrestre no incluido ${money(r.landTaxPp, r.currency)}` : ''}`}>
-                    {r.status === 'ok' ? <><div className="font-medium">{money(r.netPp, r.currency)}</div><div className="text-[11px] text-muted-foreground">bruto {money(r.grossPp, r.currency)}</div></> : <span className="text-xs text-amber-700">{r.status === 'no_results' ? 'sin tarifa' : 'error'}</span>}
+                  <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums" title={r.status !== 'ok' ? (r.error ?? 'Sin tarifa en la búsqueda') : `Por persona: tarifa sin tasas ${money(r.grossPp, r.currency)} · comisión ${money(r.commissionPp, r.currency)} · tasas, DNT, gastos e IVA ${money(r.taxesPp, r.currency)}${r.landTaxPp ? ` · impuesto del terrestre no incluido ${money(r.landTaxPp, r.currency)}` : ''} · el pasajero paga ${money(r.salePp, r.currency)}`}>
+                    {r.status === 'ok' ? <><div className="font-medium">{money(r.netPp, r.currency)}</div><div className="text-[11px] text-muted-foreground">venta {money(r.salePp, r.currency)}</div></> : <span className="text-xs text-amber-700">{r.status === 'no_results' ? 'sin tarifa' : 'error'}</span>}
                   </td>
                   <td className="px-3 py-2 text-xs">
                     {r.own.length === 0 ? <span className="text-muted-foreground">–</span> : r.own.slice(0, 2).map(o => (
