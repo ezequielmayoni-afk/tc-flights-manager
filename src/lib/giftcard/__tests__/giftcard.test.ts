@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { generateCode, promoCodeBody, validUntilFrom } from '../voucher'
-import { manifest, preferenceBody, verifyWebhookSignature } from '../mp'
+import { manifest, preferenceBody, typicalInstallments, verifyWebhookSignature } from '../mp'
 import { createHmac } from 'node:crypto'
 import { usdToArs } from '../fx'
 
@@ -25,6 +25,21 @@ describe('gift card', () => {
     expect(p.payer.identification).toEqual({ type: 'CUIL', number: '20123456789' })
     expect(p.back_urls.success).toContain('gc=11111111-2222-4333-8444-555555555555')
     expect(p.expiration_date_from).toMatch(/-03:00$/)
+  })
+  it('las cuotas estimadas son el plan más común entre emisores, no el primero que devuelve MP', () => {
+    const pc = (installments: number, rate: number, amount: number) => ({ installments, installment_rate: rate, installment_amount: amount, total_amount: amount * installments })
+    const entries = [
+      { issuer: { name: 'Banco caro' }, payer_costs: [pc(1, 0, 150000), pc(12, 55.39, 19424)] },
+      { issuer: { name: 'Banco A' }, payer_costs: [pc(1, 0, 150000), pc(12, 0, 12500)] },
+      { issuer: { name: 'Banco B' }, payer_costs: [pc(1, 0, 150000), pc(12, 0, 12500), pc(6, 0, 25000)] },
+      { issuer: { name: 'Banco C' }, payer_costs: [pc(12, 55.39, 19424)] },
+      { issuer: { name: 'Banco D' }, payer_costs: [pc(12, 0, 12500)] },
+    ]
+    const q = typicalInstallments(entries, [1, 6, 12])
+    expect(q.map((x) => [x.n, x.ratePct, x.installmentArs])).toEqual([[1, 0, 150000], [6, 0, 25000], [12, 0, 12500]])
+    // empate → el plan más caro, para no prometer de más
+    const tie = typicalInstallments(entries.slice(0, 2).concat([{ issuer: { name: 'Banco E' }, payer_costs: [pc(12, 55.39, 19424)] }]), [12])
+    expect(tie[0].ratePct).toBe(55.39)
   })
   it('convierte a pesos redondos', () => { expect(usdToArs(50, 1500)).toBe(75000); expect(usdToArs(33, 1499.5)).toBe(49484) })
   it('verifica la firma del webhook como MP la arma', () => {

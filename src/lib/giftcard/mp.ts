@@ -92,14 +92,30 @@ export async function searchPayments(externalReference: string): Promise<MpPayme
 }
 
 export interface InstallmentQuote { n: number; installmentArs: number; totalArs: number; ratePct: number; label: string }
+export interface MpPayerCost { installments: number; installment_rate: number; installment_amount: number; total_amount: number; recommended_message?: string }
+export interface MpInstallmentEntry { issuer?: { id?: string; name?: string }; payer_costs?: MpPayerCost[] }
+/** MP devuelve un plan por emisor (banco) y el orden cambia entre llamadas. Para cada cantidad de cuotas tomamos el plan
+ *  más común entre los emisores (si empatan, el más caro), que es lo que paga una tarjeta típica. */
+export function typicalInstallments(entries: MpInstallmentEntry[], wanted: readonly number[]): InstallmentQuote[] {
+  const out: InstallmentQuote[] = []
+  for (const n of wanted) {
+    const buckets = new Map<string, { count: number; c: MpPayerCost }>()
+    for (const e of entries) for (const c of e.payer_costs ?? []) {
+      if (c.installments !== n) continue
+      const k = `${c.installment_rate}:${Math.round(c.installment_amount)}`
+      const b = buckets.get(k); if (b) b.count++; else buckets.set(k, { count: 1, c })
+    }
+    const best = [...buckets.values()].sort((a, b) => b.count - a.count || b.c.installment_rate - a.c.installment_rate)[0]
+    if (best) out.push({ n, installmentArs: Math.round(best.c.installment_amount), totalArs: Math.round(best.c.total_amount), ratePct: best.c.installment_rate, label: best.c.recommended_message ?? '' })
+  }
+  return out
+}
 /** Cuotas estimadas para un monto en pesos (Visa como referencia), con caché de una hora. */
 export async function installmentsFor(amountArs: number): Promise<InstallmentQuote[]> {
   const key = `giftcard:inst:${Math.round(amountArs)}`
   return ttlMemo(key, 60 * 60_000, async () => {
-    const r = await mpFetch<Array<{ payer_costs?: Array<{ installments: number; installment_rate: number; installment_amount: number; total_amount: number; recommended_message?: string }> }>>(`/v1/payment_methods/installments?amount=${Math.round(amountArs)}&payment_method_id=visa&locale=es-AR`)
-    const costs = r?.[0]?.payer_costs ?? []
-    const wanted = new Set<number>(GIFTCARD_INSTALLMENT_OPTIONS as unknown as number[])
-    return costs.filter((c) => wanted.has(c.installments)).map((c) => ({ n: c.installments, installmentArs: Math.round(c.installment_amount), totalArs: Math.round(c.total_amount), ratePct: c.installment_rate, label: c.recommended_message ?? '' }))
+    const r = await mpFetch<MpInstallmentEntry[]>(`/v1/payment_methods/installments?amount=${Math.round(amountArs)}&payment_method_id=visa&locale=es-AR`)
+    return typicalInstallments(Array.isArray(r) ? r : [], GIFTCARD_INSTALLMENT_OPTIONS as unknown as number[])
   })
 }
 
